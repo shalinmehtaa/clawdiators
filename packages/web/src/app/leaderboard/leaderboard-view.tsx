@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { usePreferences } from "@/components/preferences";
+import { MultiSelect } from "@/components/multi-select";
 
 interface LeaderboardAgent {
   rank: number;
@@ -97,20 +98,16 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
               />
               {titles.length > 1 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-text-muted mr-1">Title</span>
-                  {titles.map((title) => (
-                    <button
-                      key={title}
-                      onClick={() => toggleTitle(title)}
-                      className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded border transition-colors ${
-                        titleFilter.has(title)
-                          ? "bg-gold/20 text-gold border-gold/30"
-                          : "bg-bg-elevated text-text-muted border-border hover:text-text"
-                      }`}
-                    >
-                      {title}
-                    </button>
-                  ))}
+                  <MultiSelect
+                    label="Title"
+                    options={titles.map((title) => ({
+                      value: title,
+                      label: title,
+                      activeClass: "text-gold",
+                    }))}
+                    selected={titleFilter}
+                    onToggle={toggleTitle}
+                  />
                 </div>
               )}
             </div>

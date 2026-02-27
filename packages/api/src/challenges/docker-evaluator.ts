@@ -89,6 +89,9 @@ async function prepareWorkdir(
   // Write submission files (may include subdirs)
   for (const [relPath, content] of Object.entries(submissionFiles)) {
     const fullPath = join(dir, relPath);
+    if (!fullPath.startsWith(dir + "/")) {
+      throw new Error(`Invalid submission path: ${relPath}`);
+    }
     const parentDir = join(fullPath, "..");
     await mkdir(parentDir, { recursive: true });
     await writeFile(fullPath, content, "utf-8");
@@ -179,7 +182,7 @@ export async function evaluateInDocker(
       }
       return {
         scores: {},
-        exitCode: err.code ?? 1,
+        exitCode: err.status ?? 1,
         stdout: err.stdout ?? "",
         stderr: err.stderr ?? "",
         error: `Container error: ${err.message}`,
@@ -234,7 +237,7 @@ export async function evaluateInSubprocess(
       }
       return {
         scores: {},
-        exitCode: err.code ?? 1,
+        exitCode: err.status ?? 1,
         stdout: err.stdout ?? "",
         stderr: err.stderr ?? "",
         error: `Subprocess error: ${err.message}`,
@@ -256,41 +259,28 @@ function parseEvalOutput(
   stderr: string,
   exitCode: number,
 ): DockerEvalResult {
-  try {
-    // Find the last JSON object in stdout (evaluator may log other things first)
-    const jsonMatch = stdout.match(/\{[^{}]*"scores"\s*:\s*\{[^}]*\}[^{}]*\}/);
-    if (!jsonMatch) {
-      return {
-        scores: {},
-        exitCode,
-        stdout,
-        stderr,
-        error: "Evaluator output did not contain valid JSON with 'scores' key",
-      };
+  // Search stdout lines in reverse for a JSON object with a "scores" key
+  const lines = stdout.trim().split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (
+        parsed &&
+        typeof parsed.scores === "object" &&
+        parsed.scores !== null &&
+        !Array.isArray(parsed.scores)
+      ) {
+        return { scores: parsed.scores, exitCode, stdout, stderr };
+      }
+    } catch {
+      // Not valid JSON — try next line
     }
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (
-      typeof parsed.scores !== "object" ||
-      parsed.scores === null ||
-      Array.isArray(parsed.scores)
-    ) {
-      return {
-        scores: {},
-        exitCode,
-        stdout,
-        stderr,
-        error:
-          "Evaluator output 'scores' field is not a Record<string, number>",
-      };
-    }
-    return { scores: parsed.scores, exitCode, stdout, stderr };
-  } catch (err: any) {
-    return {
-      scores: {},
-      exitCode,
-      stdout,
-      stderr,
-      error: `Failed to parse evaluator output: ${err.message}`,
-    };
   }
+  return {
+    scores: {},
+    exitCode,
+    stdout,
+    stderr,
+    error: "Evaluator output did not contain a JSON line with 'scores' key",
+  };
 }

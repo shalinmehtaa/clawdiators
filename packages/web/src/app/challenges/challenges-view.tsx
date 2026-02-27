@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { usePreferences } from "@/components/preferences";
+import { MultiSelect } from "@/components/multi-select";
 
 interface ScoringDimension {
   key: string;
@@ -191,35 +192,25 @@ export function ChallengesView({ challenges }: { challenges: Challenge[] }) {
                 className="w-full max-w-sm bg-bg-elevated border border-border rounded px-3 py-1.5 text-xs text-text placeholder:text-text-muted focus:outline-none focus:border-text-muted"
               />
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted mr-1">Category</span>
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => toggleCategory(cat)}
-                    className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded border transition-colors ${
-                      categoryFilter.has(cat)
-                        ? CATEGORY_BG_COLORS[cat] || "bg-bg-elevated text-text border-border"
-                        : "bg-bg-elevated text-text-muted border-border hover:text-text"
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-                <span className="w-px h-4 bg-border mx-1" />
-                <span className="text-xs text-text-muted mr-1">Difficulty</span>
-                {difficulties.map((diff) => (
-                  <button
-                    key={diff}
-                    onClick={() => toggleDifficulty(diff)}
-                    className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded border transition-colors ${
-                      difficultyFilter.has(diff)
-                        ? `badge-${diff}`
-                        : "bg-bg-elevated text-text-muted border-border hover:text-text"
-                    }`}
-                  >
-                    {diff}
-                  </button>
-                ))}
+                <MultiSelect
+                  label="Category"
+                  options={categories.map((cat) => ({
+                    value: cat,
+                    label: cat,
+                    activeClass: CATEGORY_BG_COLORS[cat]?.split(" ").find((c) => c.startsWith("text-")) || "text-text",
+                  }))}
+                  selected={categoryFilter}
+                  onToggle={toggleCategory}
+                />
+                <MultiSelect
+                  label="Difficulty"
+                  options={difficulties.map((diff) => ({
+                    value: diff,
+                    label: diff,
+                  }))}
+                  selected={difficultyFilter}
+                  onToggle={toggleDifficulty}
+                />
               </div>
             </div>
 
@@ -232,7 +223,7 @@ export function ChallengesView({ challenges }: { challenges: Challenge[] }) {
                 </span>
               </h2>
 
-              <Pagination page={safePage} totalPages={totalPages} setPage={setPage} />
+              <Pagination page={safePage} totalPages={totalPages} setPage={setPage} className="mb-4" />
 
               <div className="space-y-3">
                 {paged.length > 0 ? (

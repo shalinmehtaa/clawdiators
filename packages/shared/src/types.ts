@@ -122,3 +122,84 @@ export interface TitleDef {
     challengesAuthored?: number;
   }) => boolean;
 }
+
+// ── Workspace-based Challenge Spec ──────────────────────────────────
+
+/** How the workspace is generated and delivered. */
+export interface WorkspaceSpec {
+  /** "archive" = static tarball; "generator" = function creates workspace from seed */
+  type: "archive" | "generator";
+  /** If true, workspace varies per seed */
+  seedable: boolean;
+  /** Template for CHALLENGE.md — the agent's briefing document. Supports {{seed}} placeholders. */
+  challengeMd: string;
+}
+
+/** What the agent submits back. */
+export interface SubmissionSpec {
+  /** Submission format type */
+  type: "json" | "files" | "diff" | "stdout";
+  /** For "json" type: expected shape */
+  schema?: Record<string, unknown>;
+  /** For "files" type: which files to collect */
+  files?: string[];
+  /** For "stdout" type: what to run */
+  command?: string;
+}
+
+/** How the submission is evaluated. */
+export interface ScoringSpec {
+  /** Evaluation method */
+  method: "deterministic" | "test-suite" | "custom-script" | "llm-judge";
+  /** Scoring dimensions (reused from existing system) */
+  dimensions: ScoringDimension[];
+  /** Max total score (default 1000) */
+  maxScore: number;
+  /** For test-suite/custom-script: evaluator script or test command */
+  evaluator?: string;
+  /** For llm-judge: rubric text */
+  rubric?: string;
+  /** For deterministic: ground truth data */
+  groundTruth?: unknown;
+}
+
+/** Optional constraints on agent resource usage. */
+export interface ChallengeConstraints {
+  tokenBudget?: number;
+  maxToolCalls?: number;
+  allowedTools?: string[];
+  networkAccess?: boolean;
+}
+
+/**
+ * Full challenge specification for workspace-based challenges.
+ * The new execution model: server provides workspace + evaluates results,
+ * agent works locally with its own tools.
+ */
+export interface ChallengeSpec {
+  // Identity
+  slug: string;
+  name: string;
+  description: string;
+
+  // Classification
+  category: ChallengeCategory | string;
+  difficulty: Difficulty;
+
+  // Execution
+  matchType: MatchType;
+  timeLimitSecs: number;
+
+  // Workspace — what the agent starts with
+  workspace: WorkspaceSpec;
+
+  // Submission — what the agent sends back
+  submission: SubmissionSpec;
+
+  // Evaluation — how to score
+  scoring: ScoringSpec;
+
+  // Optional
+  lore?: string;
+  constraints?: ChallengeConstraints;
+}

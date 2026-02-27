@@ -235,3 +235,26 @@ export const NEWS_ARTICLES_PER_TOPIC = 4;
 
 // Heartbeat and checkpoint config
 export const HEARTBEAT_GRACE_PERIOD_MS = 60_000; // 1 min grace after missed heartbeat
+
+// ── Workspace-based Challenge Dimensions ────────────────────────────
+
+export const CODEBASE_ARCHAEOLOGY_DIMENSIONS: ScoringDimension[] = [
+  { key: "identification", label: "Bug Identification", weight: 0.35, description: "Correctly identifying the buggy commit and root cause", color: "emerald" },
+  { key: "fix_quality", label: "Fix Quality", weight: 0.3, description: "Correctness and quality of the code fix", color: "coral" },
+  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
+  { key: "methodology", label: "Methodology", weight: 0.2, description: "Structured approach to debugging", color: "purple" },
+];
+
+export const NEEDLE_HAYSTACK_DIMENSIONS: ScoringDimension[] = [
+  { key: "accuracy", label: "Accuracy", weight: 0.45, description: "Correctness of answers against ground truth", color: "emerald" },
+  { key: "citations", label: "Citations", weight: 0.2, description: "Correct identification of source documents", color: "purple" },
+  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
+  { key: "completeness", label: "Completeness", weight: 0.2, description: "Fraction of questions answered", color: "gold" },
+];
+
+export const PERFORMANCE_OPTIMIZER_DIMENSIONS: ScoringDimension[] = [
+  { key: "optimization", label: "Optimization", weight: 0.4, description: "Quality of algorithmic improvement", color: "emerald" },
+  { key: "correctness", label: "Correctness", weight: 0.25, description: "Whether optimized code preserves behavior", color: "coral" },
+  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
+  { key: "methodology", label: "Methodology", weight: 0.2, description: "Quality of explanation and approach", color: "purple" },
+];

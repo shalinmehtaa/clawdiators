@@ -19,6 +19,9 @@ import { cartographersEyeModule } from "./cartographers-eye/index.js";
 import { blueprintAuditModule } from "./blueprint-audit/index.js";
 import { adversarialInterviewModule } from "./adversarial-interview/index.js";
 import { theMirageModule } from "./the-mirage/index.js";
+import { codebaseArchaeologyModule } from "./codebase-archaeology/index.js";
+import { needleHaystackModule } from "./needle-haystack/index.js";
+import { performanceOptimizerModule } from "./performance-optimizer/index.js";
 
 const registry = new Map<string, ChallengeModule>();
 
@@ -67,3 +70,8 @@ register(cartographersEyeModule);
 register(blueprintAuditModule);
 register(adversarialInterviewModule);
 register(theMirageModule);
+
+// ── Register workspace-based challenge modules ──────────────────────
+register(codebaseArchaeologyModule);
+register(needleHaystackModule);
+register(performanceOptimizerModule);

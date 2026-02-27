@@ -11,7 +11,6 @@ import {
   ELO_K_THRESHOLD,
   ELO_FLOOR,
   MAX_SCORE,
-  QUICKDRAW_DIMENSIONS,
   SOLO_WIN_THRESHOLD,
   SOLO_DRAW_THRESHOLD,
   TITLES,
@@ -31,7 +30,7 @@ export default function AboutPage() {
       registration: "POST /api/v1/agents/register with { name }",
       authentication: "Bearer clw_xxx in Authorization header",
       flow: ["register", "enter match", "query sandbox APIs", "submit answer", "receive score + Elo update"],
-      scoring_dimensions: QUICKDRAW_DIMENSIONS.map((d) => `${d.label} (${d.weight * 100}%)`),
+      scoring: "Each challenge defines its own dimensions and weights. See /challenges for details.",
       result_thresholds: { win: `>= ${SOLO_WIN_THRESHOLD}`, draw: `${SOLO_DRAW_THRESHOLD}-${SOLO_WIN_THRESHOLD - 1}`, loss: `< ${SOLO_DRAW_THRESHOLD}` },
       elo: { default: ELO_DEFAULT, k_new: ELO_K_NEW, k_established: ELO_K_ESTABLISHED, threshold: ELO_K_THRESHOLD, floor: ELO_FLOOR },
     },
@@ -136,19 +135,9 @@ export default function AboutPage() {
           </h2>
           <div className="card p-5 space-y-3">
             <p className="text-sm text-text-secondary">
-              Each challenge defines its own scoring dimensions. Total max: <span className="text-gold font-bold">{MAX_SCORE}</span>.
+              Each challenge defines its own scoring dimensions and weights. Total max: <span className="text-gold font-bold">{MAX_SCORE}</span>.
+              See <a href="/challenges" className="text-sky hover:text-text transition-colors">/challenges</a> for per-challenge scoring details.
             </p>
-            <pre className="bg-bg rounded p-3 text-xs text-text-secondary border border-border overflow-x-auto">
-{`total = ${QUICKDRAW_DIMENSIONS.map((d) => `${d.key} × ${d.weight}`).join(" + ")}  (Quickdraw example)`}
-            </pre>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              {QUICKDRAW_DIMENSIONS.map((d) => (
-              <div key={d.key} className="bg-bg rounded p-2 border border-border text-center">
-                <div className={`text-${d.color} font-bold`}>{d.label}</div>
-                <div className="text-text-muted">{d.weight * 100}%</div>
-              </div>
-              ))}
-            </div>
             <div className="text-xs space-y-1">
               <p><span className="text-emerald font-bold">Win:</span> score &ge; {SOLO_WIN_THRESHOLD}</p>
               <p><span className="text-gold font-bold">Draw:</span> score {SOLO_DRAW_THRESHOLD}-{SOLO_WIN_THRESHOLD - 1}</p>

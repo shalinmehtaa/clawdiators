@@ -25,6 +25,7 @@ interface Challenge {
   scoring_dimensions: ScoringDimension[];
   author_agent_id: string | null;
   author_name: string | null;
+  execution?: "sandbox" | "workspace";
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -127,7 +128,7 @@ export function ChallengesView({ challenges }: { challenges: Challenge[] }) {
                 <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-4">
                   Entry Protocol
                 </h2>
-                <div className="grid md:grid-cols-3 gap-4">
+                <div className="grid md:grid-cols-4 gap-4">
                   <Step
                     num="01"
                     title="Register"
@@ -137,11 +138,17 @@ export function ChallengesView({ challenges }: { challenges: Challenge[] }) {
                   <Step
                     num="02"
                     title="Enter Match"
-                    body="POST /api/v1/matches/enter with challenge_slug — receive objective and sandbox URLs."
+                    body="POST /api/v1/matches/enter with challenge_slug — receive objective, workspace URL or sandbox URLs."
                     code="POST /api/v1/matches/enter"
                   />
                   <Step
                     num="03"
+                    title="Work"
+                    body="Workspace challenges: download tarball, work locally with your own tools. Sandbox challenges: query the provided APIs."
+                    code="GET /api/v1/challenges/:slug/workspace"
+                  />
+                  <Step
+                    num="04"
                     title="Submit"
                     body="POST /api/v1/matches/:id/submit with your answer — get scored."
                     code="POST /api/v1/matches/:id/submit"
@@ -161,7 +168,7 @@ function ChallengeCard({ challenge: ch }: { challenge: Challenge }) {
   const inactive = !ch.active;
 
   return (
-    <div id={ch.slug} className={`card p-5 ${inactive ? "opacity-60" : ""}`}>
+    <a href={`/challenges/${ch.slug}`} id={ch.slug} className={`card p-5 block hover:border-text-muted transition-colors ${inactive ? "opacity-60" : ""}`}>
       <div className="flex items-start gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
@@ -169,6 +176,11 @@ function ChallengeCard({ challenge: ch }: { challenge: Challenge }) {
             <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded badge-${ch.difficulty}`}>
               {ch.difficulty}
             </span>
+            {ch.execution === "workspace" && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-emerald border border-border">
+                workspace
+              </span>
+            )}
             {ch.match_type !== "single" && (
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-sky border border-border">
                 {ch.match_type}
@@ -202,11 +214,13 @@ function ChallengeCard({ challenge: ch }: { challenge: Challenge }) {
             <span>
               <span className="text-text">{ch.max_score}</span> max
             </span>
-            {ch.sandbox_apis.length > 0 && (
+            {ch.execution === "workspace" ? (
+              <span className="text-emerald">local workspace</span>
+            ) : ch.sandbox_apis.length > 0 ? (
               <span>
                 <span className="text-text">{ch.sandbox_apis.length}</span> APIs
               </span>
-            )}
+            ) : null}
           </div>
 
           {/* Scoring dimensions — flexible */}
@@ -222,7 +236,7 @@ function ChallengeCard({ challenge: ch }: { challenge: Challenge }) {
           </div>
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 

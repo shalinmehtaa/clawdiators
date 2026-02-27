@@ -42,6 +42,8 @@ matchRoutes.post(
       return errorEnvelope(c, "Challenge module not implemented", 501, "This trial's arena is still under construction.");
     }
 
+    const isWorkspace = mod.execution === "workspace";
+
     // Check for existing active match
     const existingActive = await db.query.matches.findFirst({
       where: and(
@@ -58,6 +60,24 @@ matchRoutes.post(
           .where(eq(matches.id, existingActive.id));
       } else {
         // Return existing match info
+        if (isWorkspace) {
+          return envelope(c, {
+            match_id: existingActive.id,
+            bout_name: existingActive.boutName,
+            status: "active",
+            objective: existingActive.objective,
+            time_limit_secs: challenge.timeLimitSecs,
+            expires_at: existingActive.expiresAt,
+            match_type: challenge.matchType,
+            execution: "workspace",
+            workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${existingActive.seed}`,
+            challenge_md: mod.workspaceSpec?.challengeMd ?? null,
+            submission_spec: mod.submissionSpec ?? null,
+            submit_url: `/api/v1/matches/${existingActive.id}/submit`,
+            note: "You already have an active match. Complete or wait for it to expire.",
+          }, 200, "Your current bout awaits, gladiator. Do not keep the crowd waiting.");
+        }
+
         const sandboxUrls: Record<string, string> = {};
         for (const api of mod.sandboxApiNames()) {
           sandboxUrls[api] = `/api/v1/sandbox/${existingActive.id}/${api}`;
@@ -70,6 +90,7 @@ matchRoutes.post(
           time_limit_secs: challenge.timeLimitSecs,
           expires_at: existingActive.expiresAt,
           match_type: challenge.matchType,
+          execution: "sandbox",
           sandbox_urls: sandboxUrls,
           submit_url: `/api/v1/matches/${existingActive.id}/submit`,
           note: "You already have an active match. Complete or wait for it to expire.",
@@ -98,17 +119,46 @@ matchRoutes.post(
       })
       .returning();
 
-    const sandboxUrls: Record<string, string> = {};
-    for (const api of mod.sandboxApiNames()) {
-      sandboxUrls[api] = `/api/v1/sandbox/${match.id}/${api}`;
-    }
-
     const extraUrls: Record<string, string> = {};
     if (challenge.matchType === "multi-checkpoint") {
       extraUrls.checkpoint_url = `/api/v1/matches/${match.id}/checkpoint`;
     }
     if (challenge.matchType === "long-running") {
       extraUrls.heartbeat_url = `/api/v1/matches/${match.id}/heartbeat`;
+    }
+
+    if (isWorkspace) {
+      return envelope(
+        c,
+        {
+          match_id: match.id,
+          bout_name: boutName,
+          challenge: {
+            slug: challenge.slug,
+            name: challenge.name,
+            category: challenge.category,
+            match_type: challenge.matchType,
+          },
+          execution: "workspace",
+          objective: data.objective,
+          time_limit_secs: challenge.timeLimitSecs,
+          started_at: match.startedAt,
+          expires_at: match.expiresAt,
+          workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}`,
+          challenge_md: mod.workspaceSpec?.challengeMd ?? null,
+          submission_spec: mod.submissionSpec ?? null,
+          submit_url: `/api/v1/matches/${match.id}/submit`,
+          ...extraUrls,
+        },
+        201,
+        `${boutName} begins! Download your workspace and get to work. You have ${challenge.timeLimitSecs} seconds.`,
+      );
+    }
+
+    // Sandbox-based challenge (legacy)
+    const sandboxUrls: Record<string, string> = {};
+    for (const api of mod.sandboxApiNames()) {
+      sandboxUrls[api] = `/api/v1/sandbox/${match.id}/${api}`;
     }
 
     return envelope(
@@ -122,6 +172,7 @@ matchRoutes.post(
           category: challenge.category,
           match_type: challenge.matchType,
         },
+        execution: "sandbox",
         objective: data.objective,
         time_limit_secs: challenge.timeLimitSecs,
         started_at: match.startedAt,
@@ -139,6 +190,13 @@ matchRoutes.post(
 // POST /matches/:matchId/submit — submit answer
 const submitSchema = z.object({
   answer: z.record(z.unknown()),
+  metadata: z.object({
+    token_count: z.number().optional(),
+    tool_call_count: z.number().optional(),
+    model_id: z.string().optional(),
+    harness_id: z.string().optional(),
+    wall_clock_secs: z.number().optional(),
+  }).optional(),
 });
 
 matchRoutes.post(
@@ -487,12 +545,17 @@ matchRoutes.get("/:matchId", async (c) => {
     where: eq(challenges.id, match.challengeId),
   });
 
+  // Look up module for execution model
+  const mod = challenge ? (await import("../challenges/registry.js")).getChallenge(challenge.slug) : null;
+  const execution = mod?.execution ?? "sandbox";
+
   return envelope(c, {
     id: match.id,
     bout_name: match.boutName,
     challenge_id: match.challengeId,
     challenge_slug: challenge?.slug ?? null,
     match_type: challenge?.matchType ?? "single",
+    execution,
     agent: agent
       ? { id: agent.id, name: agent.name, title: agent.title }
       : null,
@@ -518,10 +581,28 @@ matchRoutes.get("/:matchId", async (c) => {
 // GET /matches — match history
 matchRoutes.get("/", async (c) => {
   const agentId = c.req.query("agentId");
+  const challengeSlug = c.req.query("challengeSlug");
   const limit = Math.min(Number(c.req.query("limit")) || 20, 100);
 
+  // If filtering by challengeSlug, resolve to challengeId first
+  let challengeIdFilter: string | undefined;
+  if (challengeSlug) {
+    const challenge = await db.query.challenges.findFirst({
+      where: eq(challenges.slug, challengeSlug),
+    });
+    if (challenge) {
+      challengeIdFilter = challenge.id;
+    } else {
+      return envelope(c, []);
+    }
+  }
+
+  const conditions = [];
+  if (agentId) conditions.push(eq(matches.agentId, agentId));
+  if (challengeIdFilter) conditions.push(eq(matches.challengeId, challengeIdFilter));
+
   const allMatches = await db.query.matches.findMany({
-    where: agentId ? eq(matches.agentId, agentId) : undefined,
+    where: conditions.length > 0 ? and(...conditions) : undefined,
     orderBy: desc(matches.startedAt),
     limit,
   });
@@ -532,6 +613,7 @@ matchRoutes.get("/", async (c) => {
       id: m.id,
       bout_name: m.boutName,
       agent_id: m.agentId,
+      challenge_id: m.challengeId,
       status: m.status,
       result: m.result,
       score: m.score,

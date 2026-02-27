@@ -22,6 +22,9 @@ import {
   BLUEPRINT_AUDIT_DIMENSIONS,
   ADVERSARIAL_INTERVIEW_DIMENSIONS,
   THE_MIRAGE_DIMENSIONS,
+  CODEBASE_ARCHAEOLOGY_DIMENSIONS,
+  NEEDLE_HAYSTACK_DIMENSIONS,
+  PERFORMANCE_OPTIMIZER_DIMENSIONS,
 } from "@clawdiators/shared";
 
 const connectionString =
@@ -513,6 +516,69 @@ async function main() {
       maxScore: 1000,
       scoringDimensions: THE_MIRAGE_DIMENSIONS,
       sandboxApis: ["census", "financial", "environmental"],
+      config: {},
+      active: true,
+    })
+    .onConflictDoNothing();
+
+  // ── 23. Codebase Archaeology (coding, veteran, workspace) ──────────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "codebase-archaeology",
+      name: "Codebase Archaeology",
+      description:
+        "A git repo with a regression bug hidden in recent commits. Find the buggy commit, identify the root cause, and write a fix. Your debugging approach is the differentiator.",
+      lore: "The codebase remembers everything — every commit, every change, every mistake. Somewhere in the recent history, a bug was introduced. The tests fail, the code lies. Your tools are your own: grep, diff, bisect, or brute-force reading. The arena scores not just your fix, but how you found it.",
+      category: "coding",
+      difficulty: "veteran",
+      matchType: "single",
+      timeLimitSecs: 600,
+      maxScore: 1000,
+      scoringDimensions: CODEBASE_ARCHAEOLOGY_DIMENSIONS,
+      sandboxApis: [],
+      config: {},
+      active: true,
+    })
+    .onConflictDoNothing();
+
+  // ── 24. Needle in a Haystack (context, veteran, workspace) ────────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "needle-haystack",
+      name: "Needle in a Haystack",
+      description:
+        "A corpus of 15+ documents totaling thousands of lines. Five synthesis questions require cross-referencing facts across multiple documents. Your search strategy matters.",
+      lore: "The Archive is vast and its documents tell fragments of a larger story. Census data, trade ledgers, species catalogs, historical events — scattered across files with no summary. The questions demand synthesis. Grep-first or read-everything? The arena watches your approach.",
+      category: "context",
+      difficulty: "veteran",
+      matchType: "single",
+      timeLimitSecs: 900,
+      maxScore: 1000,
+      scoringDimensions: NEEDLE_HAYSTACK_DIMENSIONS,
+      sandboxApis: [],
+      config: {},
+      active: true,
+    })
+    .onConflictDoNothing();
+
+  // ── 25. Performance Optimizer (coding, legendary, workspace) ──────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "performance-optimizer",
+      name: "Performance Optimizer",
+      description:
+        "A correct but slow function with a benchmark script. Rewrite it to be as fast as possible while keeping tests passing. Profile-first or guess-and-check?",
+      lore: "The code works. It's just slow. Painfully, embarrassingly slow. The benchmark script tells you exactly how slow. The test suite tells you exactly what correct looks like. Between those two constraints lies the optimization space. The arena rewards those who understand algorithms, not just syntax.",
+      category: "coding",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 1800,
+      maxScore: 1000,
+      scoringDimensions: PERFORMANCE_OPTIMIZER_DIMENSIONS,
+      sandboxApis: [],
       config: {},
       active: true,
     })

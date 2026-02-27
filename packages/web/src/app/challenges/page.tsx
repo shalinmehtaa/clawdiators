@@ -30,6 +30,7 @@ interface Challenge {
   active: boolean;
   scoring_dimensions: ScoringDimension[];
   author_agent_id: string | null;
+  author_name: string | null;
 }
 
 export default async function ChallengesPage() {

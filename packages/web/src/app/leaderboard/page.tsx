@@ -14,6 +14,7 @@ interface LeaderboardAgent {
   name: string;
   base_model: string | null;
   tagline: string | null;
+  harness: { id: string; name: string; description?: string; version?: string; tools?: string[] } | null;
   elo: number;
   match_count: number;
   win_count: number;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { usePreferences } from "@/components/preferences";
 import { MultiSelect } from "@/components/multi-select";
 
@@ -69,14 +70,39 @@ const DIMENSION_COLORS: Record<string, string> = {
   coral: "text-coral",
 };
 
+interface TrackSummary {
+  slug: string;
+  name: string;
+  description: string;
+  lore: string;
+  challenge_slugs: string[];
+  challenge_count: number;
+  scoring_method: string;
+  max_score: number;
+}
+
 const PAGE_SIZE = 8;
 
-export function ChallengesView({ challenges }: { challenges: Challenge[] }) {
+export function ChallengesView({
+  challenges,
+  tracks = [],
+}: {
+  challenges: Challenge[];
+  tracks?: TrackSummary[];
+}) {
   const { showRaw } = usePreferences();
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<"challenges" | "tracks">(
+    searchParams.get("tab") === "tracks" ? "tracks" : "challenges"
+  );
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set());
   const [difficultyFilter, setDifficultyFilter] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setTab(searchParams.get("tab") === "tracks" ? "tracks" : "challenges");
+  }, [searchParams]);
 
   const active = challenges.filter((c) => c.active);
   const comingSoon = challenges.filter((c) => !c.active);
@@ -142,10 +168,68 @@ export function ChallengesView({ challenges }: { challenges: Challenge[] }) {
           </div>
         </div>
 
+        {/* Tab toggle */}
+        <div className="flex gap-1 text-xs mb-6">
+          <button
+            onClick={() => setTab("challenges")}
+            className={`px-3 py-1.5 rounded transition-colors ${
+              tab === "challenges"
+                ? "bg-bg-elevated text-text border border-border"
+                : "text-text-muted hover:text-text"
+            }`}
+          >
+            Challenges
+          </button>
+          <button
+            onClick={() => setTab("tracks")}
+            className={`px-3 py-1.5 rounded transition-colors ${
+              tab === "tracks"
+                ? "bg-bg-elevated text-text border border-border"
+                : "text-text-muted hover:text-text"
+            }`}
+          >
+            Tracks
+          </button>
+        </div>
+
         {showRaw ? (
           <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(challenges, null, 2)}
+            {JSON.stringify(tab === "challenges" ? challenges : tracks, null, 2)}
           </pre>
+        ) : tab === "tracks" ? (
+          /* Tracks grid */
+          tracks.length === 0 ? (
+            <div className="card p-8 text-center">
+              <p className="text-text-muted text-sm">No tracks available yet.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {tracks.map((track) => (
+                <a
+                  key={track.slug}
+                  href={`/tracks/${track.slug}`}
+                  className="card p-5 block hover:border-text-muted transition-colors"
+                >
+                  <h2 className="text-sm font-bold mb-1">{track.name}</h2>
+                  <p className="text-xs text-text-secondary mb-3">
+                    {track.description}
+                  </p>
+                  <div className="flex items-center gap-3 text-[10px] text-text-muted">
+                    <span>
+                      <span className="text-gold font-bold">{track.challenge_count}</span> challenges
+                    </span>
+                    <span>Scoring: {track.scoring_method}</span>
+                  </div>
+                  {track.lore && (
+                    <p className="text-[10px] text-text-muted mt-2 italic">
+                      {track.lore.slice(0, 100)}
+                      {track.lore.length > 100 ? "..." : ""}
+                    </p>
+                  )}
+                </a>
+              ))}
+            </div>
+          )
         ) : (
           <>
             {/* Entry protocol — first */}

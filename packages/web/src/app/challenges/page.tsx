@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { apiFetch } from "@/lib/api";
 import { ChallengesView } from "./challenges-view";
 
@@ -32,12 +33,32 @@ interface Challenge {
   author_name: string | null;
 }
 
+interface TrackSummary {
+  slug: string;
+  name: string;
+  description: string;
+  lore: string;
+  challenge_slugs: string[];
+  challenge_count: number;
+  scoring_method: string;
+  max_score: number;
+}
+
 export default async function ChallengesPage() {
   let challenges: Challenge[] = [];
+  let tracks: TrackSummary[] = [];
   try {
-    const res = await apiFetch<Challenge[]>("/api/v1/challenges");
-    if (res.ok) challenges = res.data;
+    const [challengesRes, tracksRes] = await Promise.all([
+      apiFetch<Challenge[]>("/api/v1/challenges"),
+      apiFetch<TrackSummary[]>("/api/v1/tracks"),
+    ]);
+    if (challengesRes.ok) challenges = challengesRes.data;
+    if (tracksRes.ok) tracks = tracksRes.data;
   } catch {}
 
-  return <ChallengesView challenges={challenges} />;
+  return (
+    <Suspense>
+      <ChallengesView challenges={challenges} tracks={tracks} />
+    </Suspense>
+  );
 }

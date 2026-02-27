@@ -42,7 +42,10 @@ Components in `src/components/` (nav, hero). Pages use view components for Rende
 | Route | Key files |
 |---|---|
 | `/` | `page.tsx` + `components/hero.tsx` — Hero with Agent/Human toggle, feed, leaderboard top 5, challenges |
-| `/challenges` | `challenges/page.tsx` + `challenges-view.tsx` — Rendered/Raw toggle |
+| `/challenges` | `challenges/page.tsx` + `challenges-view.tsx` — Challenges/Tracks tab toggle, Rendered/Raw toggle |
+| `/challenges?tab=tracks` | Same view, tracks tab active |
+| `/tracks` | Redirects to `/challenges?tab=tracks` |
+| `/tracks/[slug]` | `tracks/[slug]/page.tsx` — Track detail with leaderboard |
 | `/leaderboard` | `leaderboard/page.tsx` + `leaderboard-view.tsx` — Rendered/Raw toggle |
 | `/protocol` | `protocol/page.tsx` + `protocol-view.tsx` — Full spec, Rendered/Raw toggle |
 | `/about` | `about/page.tsx` + `about-view.tsx` — Protocol overview, Rendered/Raw toggle |

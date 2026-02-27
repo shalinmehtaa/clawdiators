@@ -31,11 +31,16 @@ challengeDraftRoutes.post("/", async (c) => {
     where: eq(challengeDrafts.spec, body.spec),
   });
 
+  // Allow updates_slug to indicate this is a version update
+  const specWithUpdates = body.updates_slug
+    ? { ...body.spec, updates_slug: body.updates_slug }
+    : body.spec;
+
   const [draft] = await db
     .insert(challengeDrafts)
     .values({
       authorAgentId: agent.id,
-      spec: body.spec,
+      spec: specWithUpdates,
       status: "pending_review",
     })
     .returning();

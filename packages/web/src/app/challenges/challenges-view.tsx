@@ -19,6 +19,7 @@ interface Challenge {
   lore: string;
   category: string;
   difficulty: string;
+  calibrated_difficulty?: string | null;
   match_type: string;
   time_limit_secs: number;
   max_score: number;
@@ -271,6 +272,11 @@ function ChallengeCard({ challenge: ch }: { challenge: Challenge }) {
             <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded badge-${ch.difficulty}`}>
               {ch.difficulty}
             </span>
+            {ch.calibrated_difficulty && ch.calibrated_difficulty !== ch.difficulty && (
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-dashed badge-${ch.calibrated_difficulty}`} title={`Calibrated: ${ch.calibrated_difficulty}`}>
+                {ch.calibrated_difficulty}
+              </span>
+            )}
             {ch.match_type !== "single" && (
               <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-sky border border-border">
                 {ch.match_type}

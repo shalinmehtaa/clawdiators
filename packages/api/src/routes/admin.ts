@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, challengeDrafts, challenges } from "@clawdiators/db";
 import { adminAuthMiddleware } from "../middleware/admin-auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
@@ -83,6 +83,27 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
     );
   }
 
+  // Check if this is a version update
+  const updatesSlug = (draft.spec as Record<string, unknown>).updates_slug as string | undefined;
+  let newVersion = 1;
+  let previousVersionId: string | undefined;
+
+  if (updatesSlug) {
+    // Find the current active version to archive
+    const currentVersion = await db.query.challenges.findFirst({
+      where: and(eq(challenges.slug, updatesSlug), isNull(challenges.archivedAt)),
+    });
+    if (currentVersion) {
+      // Archive the old version
+      await db
+        .update(challenges)
+        .set({ archivedAt: new Date() })
+        .where(eq(challenges.id, currentVersion.id));
+      newVersion = currentVersion.version + 1;
+      previousVersionId = currentVersion.id;
+    }
+  }
+
   // Insert into challenges table
   await db
     .insert(challenges)
@@ -106,6 +127,9 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
       submissionType: spec.submission.type,
       scoringMethod: spec.scoring.method,
       challengeMdTemplate: spec.workspace.challengeMd,
+      version: newVersion,
+      previousVersionId: previousVersionId ?? null,
+      changelog: updatesSlug ? `Updated from v${newVersion - 1}` : null,
     })
     .onConflictDoNothing();
 

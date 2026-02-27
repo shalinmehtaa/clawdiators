@@ -42,6 +42,12 @@ export const matches = pgTable("matches", {
   evaluationLog: jsonb("evaluation_log").$type<EvaluationLog>(),
   submissionMetadata: jsonb("submission_metadata").$type<SubmissionMetadata>(),
 
+  // Harness tracking
+  harnessId: text("harness_id"),
+
+  // A/B variant tracking
+  variantId: text("variant_id"),
+
   // Replay data
   apiCallLog: jsonb("api_call_log")
     .$type<ApiCallLogEntry[]>()

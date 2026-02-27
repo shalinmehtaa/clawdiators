@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, desc, and } from "drizzle-orm";
-import { db, matches, agents, challenges } from "@clawdiators/db";
+import { db, matches, agents, challenges, challengeTracks, trackProgress } from "@clawdiators/db";
 import { ELO_DEFAULT, HEARTBEAT_GRACE_PERIOD_MS } from "@clawdiators/shared";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
@@ -10,6 +10,7 @@ import { generateBoutName, generateFlavourText, computeTitle, computeAllTitles }
 import { calculateElo, scoreToResult } from "../services/elo.js";
 import { getChallenge } from "../challenges/registry.js";
 import { evaluate } from "../challenges/evaluator.js";
+import { recalibrateChallenge } from "../services/calibration.js";
 
 export const matchRoutes = new Hono();
 
@@ -78,7 +79,24 @@ matchRoutes.post(
     // Generate match
     const seed = Math.floor(Math.random() * 2147483647);
     const boutName = generateBoutName(seed);
-    const data = mod.generateData(seed, challenge.config);
+
+    // Select variant if challenge has A/B variants
+    let variantId: string | null = null;
+    let effectiveConfig = challenge.config;
+    if (challenge.variants && challenge.variants.length > 0) {
+      const variants = challenge.variants;
+      const totalWeight = variants.reduce((sum, v) => sum + (v.weight ?? 1), 0);
+      let roll = (seed % 10000) / 10000 * totalWeight;
+      let selected = variants[0];
+      for (const v of variants) {
+        roll -= v.weight ?? 1;
+        if (roll <= 0) { selected = v; break; }
+      }
+      variantId = selected.id;
+      effectiveConfig = { ...challenge.config, ...selected.config_overrides };
+    }
+
+    const data = mod.generateData(seed, effectiveConfig);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + challenge.timeLimitSecs * 1000);
 
@@ -93,6 +111,7 @@ matchRoutes.post(
         objective: data.objective,
         startedAt: now,
         expiresAt,
+        variantId,
       })
       .returning();
 
@@ -132,6 +151,16 @@ matchRoutes.post(
 );
 
 // POST /matches/:matchId/submit — submit answer
+const replayStepSchema = z.object({
+  ts: z.string(),
+  tool: z.string(),
+  input: z.string().max(5000),
+  output: z.string().max(5000).optional(),
+  duration_ms: z.number(),
+  error: z.boolean().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
 const submitSchema = z.object({
   answer: z.record(z.unknown()),
   metadata: z.object({
@@ -140,6 +169,7 @@ const submitSchema = z.object({
     model_id: z.string().optional(),
     harness_id: z.string().optional(),
     wall_clock_secs: z.number().optional(),
+    replay_log: z.array(replayStepSchema).max(1000).optional(),
   }).optional(),
 });
 
@@ -186,8 +216,17 @@ matchRoutes.post(
 
     const now = new Date();
 
+    // Build effective config (merge variant overrides if applicable)
+    let submitConfig = challenge.config;
+    if (match.variantId && challenge.variants) {
+      const variant = challenge.variants.find((v) => v.id === match.variantId);
+      if (variant) {
+        submitConfig = { ...challenge.config, ...variant.config_overrides };
+      }
+    }
+
     // Generate ground truth from seed via module
-    const data = mod.generateData(match.seed, challenge.config);
+    const data = mod.generateData(match.seed, submitConfig);
 
     // Evaluate via dispatcher (deterministic, test-suite, or custom-script)
     const scoringInput = {
@@ -239,6 +278,7 @@ matchRoutes.post(
         completedAt: now,
         evaluationLog,
         submissionMetadata: metadata ?? null,
+        harnessId: metadata?.harness_id ?? null,
       })
       .where(eq(matches.id, matchId));
 
@@ -295,6 +335,91 @@ matchRoutes.post(
         updatedAt: now,
       })
       .where(eq(agents.id, agent.id));
+
+    // Increment calibration sample size and recalibrate every 20 submissions
+    const newSampleSize = (challenge.calibrationSampleSize ?? 0) + 1;
+    await db
+      .update(challenges)
+      .set({ calibrationSampleSize: newSampleSize })
+      .where(eq(challenges.id, challenge.id));
+
+    if (newSampleSize % 20 === 0) {
+      recalibrateChallenge(challenge.id).catch(() => {
+        // Best-effort calibration
+      });
+    }
+
+    // Update track progress (best-effort)
+    try {
+      const allTracks = await db.query.challengeTracks.findMany({
+        where: eq(challengeTracks.active, true),
+      });
+      for (const track of allTracks) {
+        if (!track.challengeSlugs.includes(challenge.slug)) continue;
+
+        // Upsert track progress
+        const existing = await db.query.trackProgress.findFirst({
+          where: and(
+            eq(trackProgress.trackId, track.id),
+            eq(trackProgress.agentId, agent.id),
+          ),
+        });
+
+        const bestScores = existing?.bestScores ?? {};
+        const prevBest = bestScores[challenge.slug] ?? 0;
+        if (breakdown.total > prevBest) {
+          bestScores[challenge.slug] = breakdown.total;
+        }
+
+        const completedSlugs = [...new Set([
+          ...(existing?.completedSlugs ?? []),
+          challenge.slug,
+        ])];
+
+        // Compute cumulative score based on scoring method
+        let cumulativeScore = 0;
+        const scoreValues = Object.values(bestScores) as number[];
+        if (track.scoringMethod === "sum") {
+          cumulativeScore = scoreValues.reduce((a, b) => a + b, 0);
+        } else if (track.scoringMethod === "average") {
+          cumulativeScore = scoreValues.length > 0
+            ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
+            : 0;
+        } else if (track.scoringMethod === "min") {
+          cumulativeScore = scoreValues.length > 0
+            ? Math.min(...scoreValues)
+            : 0;
+        }
+
+        const isCompleted = completedSlugs.length >= track.challengeSlugs.length;
+
+        if (existing) {
+          await db
+            .update(trackProgress)
+            .set({
+              completedSlugs,
+              bestScores,
+              cumulativeScore,
+              completed: isCompleted,
+              completedAt: isCompleted && !existing.completed ? now : existing.completedAt,
+            })
+            .where(eq(trackProgress.id, existing.id));
+        } else {
+          await db.insert(trackProgress).values({
+            trackId: track.id,
+            agentId: agent.id,
+            completedSlugs,
+            bestScores,
+            cumulativeScore,
+            completed: isCompleted,
+            startedAt: now,
+            completedAt: isCompleted ? now : null,
+          });
+        }
+      }
+    } catch {
+      // Track progress update is best-effort
+    }
 
     return envelope(
       c,
@@ -525,6 +650,7 @@ matchRoutes.get("/:matchId", async (c) => {
     challenge_id: match.challengeId,
     challenge_slug: challenge?.slug ?? null,
     match_type: challenge?.matchType ?? "single",
+    variant_id: match.variantId ?? null,
     agent: agent
       ? { id: agent.id, name: agent.name, title: agent.title }
       : null,

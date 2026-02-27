@@ -5,8 +5,9 @@ import {
   integer,
   jsonb,
   boolean,
+  timestamp,
 } from "drizzle-orm/pg-core";
-import type { ScoringDimension } from "@clawdiators/shared";
+import type { ScoringDimension, ChallengeVariant } from "@clawdiators/shared";
 import { agents } from "./agents";
 
 export const challenges = pgTable("challenges", {
@@ -34,6 +35,20 @@ export const challenges = pgTable("challenges", {
   submissionType: text("submission_type").notNull().default("json"),
   scoringMethod: text("scoring_method").notNull().default("deterministic"),
   challengeMdTemplate: text("challenge_md_template"),
+
+  // Calibration
+  calibratedDifficulty: text("calibrated_difficulty"),
+  calibrationData: jsonb("calibration_data"),
+  calibrationSampleSize: integer("calibration_sample_size").notNull().default(0),
+
+  // A/B Testing Variants
+  variants: jsonb("variants").$type<ChallengeVariant[] | null>().default(null),
+
+  // Versioning
+  version: integer("version").notNull().default(1),
+  previousVersionId: uuid("previous_version_id"),
+  changelog: text("changelog"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
 export type Challenge = typeof challenges.$inferSelect;

@@ -44,6 +44,16 @@ export const CATEGORY_COLORS: Record<string, string> = {
   multimodal: "sky",
 };
 
+// ── Difficulty Calibration ──────────────────────────────────────────
+
+export const CALIBRATION_MIN_SAMPLES = 20;
+export const CALIBRATION_THRESHOLDS = {
+  newcomer: { minWinRate: 0.65, minCompletionRate: 0.85 },
+  contender: { minWinRate: 0.45, minCompletionRate: 0.70 },
+  veteran: { minWinRate: 0.25, minCompletionRate: 0.50 },
+  // everything below = legendary
+} as const;
+
 // ── Scoring Dimensions ──────────────────────────────────────────────
 
 export const CIPHER_FORGE_DIMENSIONS: ScoringDimension[] = [

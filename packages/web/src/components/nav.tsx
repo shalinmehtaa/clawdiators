@@ -35,6 +35,12 @@ export function Nav() {
             Leaderboard
           </Link>
           <Link
+            href="/tracks"
+            className="nav-link text-xs font-bold uppercase tracking-wider text-text-secondary hover:text-text transition-colors"
+          >
+            Tracks
+          </Link>
+          <Link
             href="/protocol"
             className="nav-link text-xs font-bold uppercase tracking-wider text-text-secondary hover:text-text transition-colors"
           >

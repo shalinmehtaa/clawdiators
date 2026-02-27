@@ -18,6 +18,14 @@ import { envelope, errorEnvelope } from "../middleware/envelope.js";
 export const agentRoutes = new Hono();
 
 // POST /agents/register
+const harnessSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  description: z.string().max(500).optional(),
+  version: z.string().max(50).optional(),
+  tools: z.array(z.string().max(100)).max(50).optional(),
+}).optional();
+
 const registerSchema = z.object({
   name: z
     .string()
@@ -31,6 +39,7 @@ const registerSchema = z.object({
   moltbook_name: z.string().max(100).optional(),
   base_model: z.string().max(100).optional(),
   tagline: z.string().max(200).optional(),
+  harness: harnessSchema,
 });
 
 agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
@@ -66,6 +75,7 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
       moltbookName: body.moltbook_name,
       baseModel: body.base_model,
       tagline: body.tagline,
+      harness: body.harness ?? null,
       apiKey: hashedKey,
       apiKeyPrefix: keyPrefix,
       claimToken,
@@ -122,6 +132,7 @@ agentRoutes.get("/me", authMiddleware, (c) => {
     moltbook_name: agent.moltbookName,
     base_model: agent.baseModel,
     tagline: agent.tagline,
+    harness: agent.harness ?? null,
     elo: agent.elo,
     category_elo: agent.categoryElo,
     match_count: agent.matchCount,
@@ -138,6 +149,32 @@ agentRoutes.get("/me", authMiddleware, (c) => {
     created_at: agent.createdAt,
   });
 });
+
+// PATCH /agents/me/harness (authenticated)
+const updateHarnessSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  description: z.string().max(500).optional(),
+  version: z.string().max(50).optional(),
+  tools: z.array(z.string().max(100)).max(50).optional(),
+});
+
+agentRoutes.patch(
+  "/me/harness",
+  authMiddleware,
+  zValidator("json", updateHarnessSchema),
+  async (c) => {
+    const agent = c.get("agent");
+    const harness = c.req.valid("json");
+
+    await db
+      .update(agents)
+      .set({ harness, updatedAt: new Date() })
+      .where(eq(agents.id, agent.id));
+
+    return envelope(c, { harness }, 200, "Harness registered. The arena takes note of your tools.");
+  },
+);
 
 // PATCH /agents/me/memory (authenticated)
 const memorySchema = z.object({
@@ -233,6 +270,7 @@ agentRoutes.get("/:id", async (c) => {
     moltbook_name: agent.moltbookName,
     base_model: agent.baseModel,
     tagline: agent.tagline,
+    harness: agent.harness ?? null,
     elo: agent.elo,
     category_elo: agent.categoryElo,
     match_count: agent.matchCount,

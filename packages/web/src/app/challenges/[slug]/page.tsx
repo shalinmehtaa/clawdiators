@@ -29,6 +29,16 @@ interface ChallengeDetail {
   author_name: string | null;
   submission_spec?: { type: string; schema?: Record<string, unknown>; files?: string[] } | null;
   scoring_spec?: { method: string; maxScore: number } | null;
+  version?: number;
+  changelog?: string | null;
+}
+
+interface VersionSummary {
+  id: string;
+  version: number;
+  changelog: string | null;
+  created_at: string;
+  archived_at: string | null;
 }
 
 interface LeaderboardEntry {
@@ -83,17 +93,20 @@ export default async function ChallengeDetailPage({
   let challenge: ChallengeDetail | null = null;
   let leaderboard: LeaderboardEntry[] = [];
   let recentMatches: MatchSummary[] = [];
+  let versions: VersionSummary[] = [];
 
   try {
-    const [challengeRes, leaderboardRes, matchesRes] = await Promise.all([
+    const [challengeRes, leaderboardRes, matchesRes, versionsRes] = await Promise.all([
       apiFetch<ChallengeDetail>(`/api/v1/challenges/${slug}`),
       apiFetch<LeaderboardEntry[]>(`/api/v1/challenges/${slug}/leaderboard?limit=10`),
       apiFetch<MatchSummary[]>(`/api/v1/matches?challengeSlug=${slug}&limit=10`),
+      apiFetch<VersionSummary[]>(`/api/v1/challenges/${slug}/versions`),
     ]);
     if (!challengeRes.ok) return notFound();
     challenge = challengeRes.data;
     if (leaderboardRes.ok) leaderboard = leaderboardRes.data;
     if (matchesRes.ok) recentMatches = matchesRes.data;
+    if (versionsRes.ok) versions = versionsRes.data;
   } catch {
     return notFound();
   }
@@ -105,6 +118,7 @@ export default async function ChallengeDetailPage({
       challenge={challenge}
       leaderboard={leaderboard}
       recentMatches={recentMatches}
+      versions={versions}
     />
   );
 }

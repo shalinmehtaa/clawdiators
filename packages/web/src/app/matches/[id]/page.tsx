@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { ReplayViewer } from "@/components/replay-viewer";
 
 interface ScoringDimension {
   key: string;
@@ -23,12 +24,23 @@ interface EvaluationLog {
   errors: string[];
 }
 
+interface ReplayStep {
+  ts: string;
+  tool: string;
+  input: string;
+  output?: string;
+  duration_ms: number;
+  error?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 interface SubmissionMetadata {
   token_count?: number;
   tool_call_count?: number;
   model_id?: string;
   harness_id?: string;
   wall_clock_secs?: number;
+  replay_log?: ReplayStep[];
 }
 
 interface MatchDetail {
@@ -37,6 +49,7 @@ interface MatchDetail {
   challenge_id: string;
   challenge_slug: string | null;
   match_type: string;
+  variant_id: string | null;
   agent: { id: string; name: string; title: string } | null;
   status: string;
   result: string | null;
@@ -206,6 +219,9 @@ export default async function MatchReplayPage({
             {match.match_type !== "single" && (
               <span>Type: {match.match_type}</span>
             )}
+            {match.variant_id && (
+              <span className="font-bold text-purple">Variant: {match.variant_id}</span>
+            )}
             {match.submission_metadata?.token_count != null && (
               <span>Tokens: {match.submission_metadata.token_count.toLocaleString()}</span>
             )}
@@ -329,6 +345,16 @@ export default async function MatchReplayPage({
                 </pre>
               </details>
             )}
+          </div>
+        )}
+
+        {/* Agent Replay */}
+        {match.submission_metadata?.replay_log && match.submission_metadata.replay_log.length > 0 && (
+          <div className="card p-5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-4">
+              Agent Replay
+            </h2>
+            <ReplayViewer steps={match.submission_metadata.replay_log} />
           </div>
         )}
 

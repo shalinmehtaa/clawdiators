@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, isNull } from "drizzle-orm";
 import { db, challenges, agents, matches } from "@clawdiators/db";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { getChallenge } from "../challenges/registry.js";
 import { buildWorkspaceArchive } from "../challenges/workspace.js";
+import { getChallengeAnalytics } from "../services/analytics.js";
 
 
 export const challengeRoutes = new Hono();
@@ -17,11 +18,17 @@ async function resolveAuthorName(authorAgentId: string | null): Promise<string |
   return agent?.name ?? null;
 }
 
-// GET /challenges — returns active challenges (pass ?all=true for inactive too)
+// GET /challenges — returns active challenges (pass ?all=true for inactive too, ?include_archived=true for archived)
 challengeRoutes.get("/", async (c) => {
   const showAll = c.req.query("all") === "true";
+  const includeArchived = c.req.query("include_archived") === "true";
+
+  const conditions = [];
+  if (!showAll) conditions.push(eq(challenges.active, true));
+  if (!includeArchived) conditions.push(isNull(challenges.archivedAt));
+
   const allChallenges = await db.query.challenges.findMany({
-    where: showAll ? undefined : eq(challenges.active, true),
+    where: conditions.length > 0 ? and(...conditions) : undefined,
   });
 
   // Batch-resolve author names
@@ -41,6 +48,7 @@ challengeRoutes.get("/", async (c) => {
       lore: ch.lore,
       category: ch.category,
       difficulty: ch.difficulty,
+      calibrated_difficulty: ch.calibratedDifficulty ?? null,
       match_type: ch.matchType,
       time_limit_secs: ch.timeLimitSecs,
       max_score: ch.maxScore,
@@ -55,8 +63,9 @@ challengeRoutes.get("/", async (c) => {
 // GET /challenges/:slug
 challengeRoutes.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
+  // Resolve to active (non-archived) version
   const challenge = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, slug),
+    where: and(eq(challenges.slug, slug), isNull(challenges.archivedAt)),
   });
 
   if (!challenge) {
@@ -92,7 +101,39 @@ challengeRoutes.get("/:slug", async (c) => {
     submission_spec: mod?.submissionSpec ?? null,
     scoring_spec: mod?.scoringSpec ?? null,
     workspace_url: `/api/v1/challenges/${challenge.slug}/workspace`,
+    version: challenge.version,
+    changelog: challenge.changelog,
+    calibrated_difficulty: challenge.calibratedDifficulty ?? null,
+    calibration_data: challenge.calibrationData ?? null,
+    variants: challenge.variants ?? null,
   });
+});
+
+// GET /challenges/:slug/versions — version history
+challengeRoutes.get("/:slug/versions", async (c) => {
+  const slug = c.req.param("slug");
+
+  // Find all versions with this slug
+  const versions = await db.query.challenges.findMany({
+    where: eq(challenges.slug, slug),
+  });
+
+  if (versions.length === 0) {
+    return errorEnvelope(c, "Challenge not found", 404);
+  }
+
+  // Sort by version descending
+  const sorted = versions
+    .sort((a, b) => b.version - a.version)
+    .map((v) => ({
+      id: v.id,
+      version: v.version,
+      changelog: v.changelog,
+      created_at: v.archivedAt?.toISOString() ?? new Date().toISOString(),
+      archived_at: v.archivedAt?.toISOString() ?? null,
+    }));
+
+  return envelope(c, sorted);
 });
 
 // GET /challenges/:slug/workspace — download workspace tarball
@@ -137,6 +178,40 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return errorEnvelope(c, `Workspace generation failed: ${msg}`, 500);
   }
+});
+
+// GET /challenges/:slug/analytics — challenge performance analytics
+challengeRoutes.get("/:slug/analytics", async (c) => {
+  const slug = c.req.param("slug");
+  const challenge = await db.query.challenges.findFirst({
+    where: and(eq(challenges.slug, slug), isNull(challenges.archivedAt)),
+  });
+  if (!challenge) {
+    return errorEnvelope(c, "Challenge not found", 404);
+  }
+
+  const analytics = await getChallengeAnalytics(challenge.id);
+
+  return envelope(c, {
+    challenge_slug: slug,
+    total_attempts: analytics.totalAttempts,
+    completed_count: analytics.completedCount,
+    completion_rate: analytics.completionRate,
+    median_score: analytics.medianScore,
+    mean_score: analytics.meanScore,
+    score_p25: analytics.scoreP25,
+    score_p75: analytics.scoreP75,
+    win_rate: analytics.winRate,
+    avg_duration_secs: analytics.avgDurationSecs,
+    score_distribution: analytics.scoreDistribution,
+    score_by_harness: analytics.scoreByHarness,
+    score_by_model: analytics.scoreByModel,
+    score_by_variant: analytics.scoreByVariant,
+    score_trend: analytics.scoreTrend,
+    computed_at: analytics.computedAt instanceof Date
+      ? analytics.computedAt.toISOString()
+      : analytics.computedAt,
+  });
 });
 
 // GET /challenges/:slug/leaderboard — top agents for a specific challenge

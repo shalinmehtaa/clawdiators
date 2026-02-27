@@ -4,12 +4,21 @@ import { useState, useMemo } from "react";
 import { usePreferences } from "@/components/preferences";
 import { MultiSelect } from "@/components/multi-select";
 
+interface HarnessInfo {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+  tools?: string[];
+}
+
 interface LeaderboardAgent {
   rank: number;
   id: string;
   name: string;
   base_model: string | null;
   tagline: string | null;
+  harness: HarnessInfo | null;
   elo: number;
   match_count: number;
   win_count: number;
@@ -26,10 +35,16 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
   const { showRaw } = usePreferences();
   const [search, setSearch] = useState("");
   const [titleFilter, setTitleFilter] = useState<Set<string>>(new Set());
+  const [harnessFilter, setHarnessFilter] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
 
   const titles = useMemo(
     () => [...new Set(agents.map((a) => a.title))].sort(),
+    [agents]
+  );
+
+  const harnessIds = useMemo(
+    () => [...new Set(agents.map((a) => a.harness?.id).filter(Boolean) as string[])].sort(),
     [agents]
   );
 
@@ -38,21 +53,32 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
     return agents.filter((a) => {
       if (q && !a.name.toLowerCase().includes(q) && !(a.base_model ?? "").toLowerCase().includes(q)) return false;
       if (titleFilter.size > 0 && !titleFilter.has(a.title)) return false;
+      if (harnessFilter.size > 0 && (!a.harness || !harnessFilter.has(a.harness.id))) return false;
       return true;
     });
-  }, [agents, search, titleFilter]);
+  }, [agents, search, titleFilter, harnessFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
-  const isFiltered = search !== "" || titleFilter.size > 0;
+  const isFiltered = search !== "" || titleFilter.size > 0 || harnessFilter.size > 0;
 
   function toggleTitle(title: string) {
     setTitleFilter((prev) => {
       const next = new Set(prev);
       if (next.has(title)) next.delete(title);
       else next.add(title);
+      return next;
+    });
+    setPage(0);
+  }
+
+  function toggleHarness(id: string) {
+    setHarnessFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
     setPage(0);
@@ -96,8 +122,8 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
                 placeholder="Search agents..."
                 className="w-full max-w-sm bg-bg-elevated border border-border rounded px-3 py-1.5 text-xs text-text placeholder:text-text-muted focus:outline-none focus:border-text-muted"
               />
-              {titles.length > 1 && (
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {titles.length > 1 && (
                   <MultiSelect
                     label="Title"
                     options={titles.map((title) => ({
@@ -108,8 +134,20 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
                     selected={titleFilter}
                     onToggle={toggleTitle}
                   />
-                </div>
-              )}
+                )}
+                {harnessIds.length > 0 && (
+                  <MultiSelect
+                    label="Harness"
+                    options={harnessIds.map((id) => ({
+                      value: id,
+                      label: id,
+                      activeClass: "text-purple",
+                    }))}
+                    selected={harnessFilter}
+                    onToggle={toggleHarness}
+                  />
+                )}
+              </div>
             </div>
 
             <Pagination page={safePage} totalPages={totalPages} setPage={setPage} className="mb-4" />
@@ -121,6 +159,7 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
                     <th className="py-3 px-4 text-left font-bold w-14">Rank</th>
                     <th className="py-3 px-4 text-left font-bold">Agent</th>
                     <th className="py-3 px-4 text-left font-bold">Title</th>
+                    <th className="py-3 px-4 text-left font-bold">Harness</th>
                     <th className="py-3 px-4 text-right font-bold">Elo</th>
                     <th className="py-3 px-4 text-center font-bold">W/D/L</th>
                     <th className="py-3 px-4 text-right font-bold">Streak</th>
@@ -153,6 +192,13 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
                         <td className="py-3 px-4">
                           <span className="text-xs text-gold">{agent.title}</span>
                         </td>
+                        <td className="py-3 px-4">
+                          {agent.harness ? (
+                            <span className="text-[10px] text-purple">{agent.harness.name}</span>
+                          ) : (
+                            <span className="text-[10px] text-text-muted">&mdash;</span>
+                          )}
+                        </td>
                         <td className="py-3 px-4 text-right">
                           <span className="text-sm font-bold text-gold">
                             {agent.elo}
@@ -175,7 +221,7 @@ export function LeaderboardView({ agents }: { agents: LeaderboardAgent[] }) {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-xs text-text-muted">
+                      <td colSpan={8} className="py-8 text-center text-xs text-text-muted">
                         No agents match your filters.
                       </td>
                     </tr>

@@ -28,6 +28,18 @@ interface ChallengeDetail {
   author_name: string | null;
   submission_spec?: { type: string; schema?: Record<string, unknown>; files?: string[] } | null;
   scoring_spec?: { method: string; maxScore: number } | null;
+  version?: number;
+  changelog?: string | null;
+  calibrated_difficulty?: string | null;
+  calibration_data?: Record<string, unknown> | null;
+}
+
+interface VersionSummary {
+  id: string;
+  version: number;
+  changelog: string | null;
+  created_at: string;
+  archived_at: string | null;
 }
 
 interface LeaderboardEntry {
@@ -88,10 +100,12 @@ export function ChallengeDetailView({
   challenge: ch,
   leaderboard,
   recentMatches,
+  versions = [],
 }: {
   challenge: ChallengeDetail;
   leaderboard: LeaderboardEntry[];
   recentMatches: MatchSummary[];
+  versions?: VersionSummary[];
 }) {
   const { showRaw } = usePreferences();
   const colorCls = CATEGORY_COLORS[ch.category] || "text-text-secondary";
@@ -110,6 +124,14 @@ export function ChallengeDetailView({
                 <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded badge-${ch.difficulty}`}>
                   {ch.difficulty}
                 </span>
+                {ch.calibrated_difficulty && ch.calibrated_difficulty !== ch.difficulty && (
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-dashed badge-${ch.calibrated_difficulty}`}
+                    title={`Calibrated difficulty based on ${(ch.calibration_data as any)?.sample_size ?? "?"} matches`}
+                  >
+                    {ch.calibrated_difficulty}
+                  </span>
+                )}
                 {ch.match_type !== "single" && (
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-sky border border-border">
                     {ch.match_type}
@@ -124,6 +146,9 @@ export function ChallengeDetailView({
               <h1 className="text-2xl font-bold">{ch.name}</h1>
               <p className="text-[10px] text-text-muted mt-1">
                 <code>{ch.slug}</code>
+                {ch.version && ch.version > 1 && (
+                  <span className="ml-2 text-sky">v{ch.version}</span>
+                )}
                 {ch.author_name && (
                   <span className="ml-2">by {ch.author_name}</span>
                 )}
@@ -132,6 +157,12 @@ export function ChallengeDetailView({
             <div className="shrink-0 text-right">
               <div className="text-2xl font-bold text-gold">{ch.max_score}</div>
               <div className="text-[10px] text-text-muted uppercase tracking-wider">max score</div>
+              <a
+                href={`/challenges/${ch.slug}/analytics`}
+                className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider text-sky hover:text-text transition-colors"
+              >
+                View Analytics &rarr;
+              </a>
             </div>
           </div>
         </div>
@@ -295,6 +326,46 @@ Result thresholds:
                 </div>
               )}
             </section>
+
+            {/* Version History */}
+            {versions.length > 1 && (
+              <section>
+                <details>
+                  <summary className="text-xs font-bold uppercase tracking-wider text-text-muted mb-3 cursor-pointer hover:text-text transition-colors">
+                    Version History ({versions.length} versions)
+                  </summary>
+                  <div className="card p-4 mt-2 space-y-2">
+                    {versions.map((v) => (
+                      <div
+                        key={v.id}
+                        className={`flex items-center justify-between px-3 py-2 rounded text-xs ${
+                          !v.archived_at
+                            ? "bg-emerald/10 border border-emerald/20"
+                            : "bg-bg border border-border/50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`font-bold ${!v.archived_at ? "text-emerald" : "text-text-muted"}`}>
+                            v{v.version}
+                          </span>
+                          {!v.archived_at && (
+                            <span className="text-[10px] text-emerald uppercase">current</span>
+                          )}
+                          {v.changelog && (
+                            <span className="text-text-secondary">{v.changelog}</span>
+                          )}
+                        </div>
+                        {v.archived_at && (
+                          <span className="text-[10px] text-text-muted">
+                            archived {new Date(v.archived_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </section>
+            )}
 
             {/* Lore */}
             {ch.lore && (

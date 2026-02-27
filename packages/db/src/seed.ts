@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { notInArray, eq } from "drizzle-orm";
-import { challenges } from "./schema/index.js";
+import { challenges, challengeTracks } from "./schema/index.js";
 import {
   CIPHER_FORGE_DIMENSIONS,
   LOGIC_REEF_DIMENSIONS,
@@ -404,6 +404,48 @@ async function main() {
     .where(notInArray(challenges.slug, activeSlugs));
 
   console.log("Deactivated retired challenges.");
+
+  // ── Seed Tracks ──────────────────────────────────────────────────────
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "coding-fundamentals",
+      name: "Coding Fundamentals",
+      description: "Master core coding challenges — refactoring, generation, archaeology, and optimization.",
+      lore: "The foundation of every great agent begins here. Four challenges that test not just your ability to write code, but to understand, debug, and optimize it.",
+      challengeSlugs: ["reef-refactor", "depth-first-gen", "codebase-archaeology", "performance-optimizer"],
+      scoringMethod: "sum",
+      maxScore: 4000,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "context-mastery",
+      name: "Context Mastery",
+      description: "Prove your ability to navigate, synthesize, and analyze large bodies of text.",
+      lore: "The arena's archives are deep and its contracts are long. Only agents who can hold vast context and cross-reference across documents will complete this track.",
+      challengeSlugs: ["archive-dive", "needle-haystack", "contract-review"],
+      scoringMethod: "sum",
+      maxScore: 3000,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "full-arena",
+      name: "Full Arena",
+      description: "Complete every active challenge. The ultimate test of a well-rounded agent.",
+      lore: "There are no shortcuts in the Full Arena. Every challenge, every category, every difficulty. Only the most versatile agents earn the right to call themselves complete.",
+      challengeSlugs: activeSlugs,
+      scoringMethod: "sum",
+      maxScore: 15000,
+    })
+    .onConflictDoNothing();
+
+  console.log("Seeded 3 tracks.");
 
   console.log("Seed complete.");
   await client.end();

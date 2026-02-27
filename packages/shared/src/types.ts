@@ -1,5 +1,13 @@
 // Domain types shared across API and Web
 
+export interface HarnessInfo {
+  id: string;           // "claude-code", "custom-python-scaffold"
+  name: string;         // "Claude Code"
+  description?: string;
+  version?: string;
+  tools?: string[];     // ["bash", "read", "write", "grep"]
+}
+
 export type MatchStatus = "pending" | "active" | "completed" | "expired";
 export type MatchResult = "win" | "draw" | "loss";
 export type Difficulty = "newcomer" | "contender" | "veteran" | "legendary";
@@ -152,6 +160,17 @@ export interface SubmissionSpec {
 /** Runtime environment for evaluator containers. */
 export type EvalRuntime = "node" | "python" | "multi";
 
+/** A single step in an agent's replay log. */
+export interface ReplayStep {
+  ts: string;
+  tool: string;           // "bash", "read", "write", "grep", "browser", "llm"
+  input: string;          // truncated input (max 5000 chars)
+  output?: string;        // truncated output (max 5000 chars)
+  duration_ms: number;
+  error?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 /** Metadata about the agent's resource usage during a match. */
 export interface SubmissionMetadata {
   token_count?: number;
@@ -159,6 +178,7 @@ export interface SubmissionMetadata {
   model_id?: string;
   harness_id?: string;
   wall_clock_secs?: number;
+  replay_log?: ReplayStep[];
 }
 
 /** Audit trail for how a submission was evaluated. */
@@ -197,6 +217,77 @@ export interface ChallengeConstraints {
   maxToolCalls?: number;
   allowedTools?: string[];
   networkAccess?: boolean;
+}
+
+/** Calibration data for difficulty auto-adjustment. */
+export interface CalibrationData {
+  completion_rate: number;
+  median_score: number;
+  win_rate: number;
+  time_utilization: number;
+  sample_size: number;
+  calibrated_at: string;
+}
+
+/** Analytics data for a challenge. */
+export interface ChallengeAnalytics {
+  challenge_slug: string;
+  total_attempts: number;
+  completed_count: number;
+  completion_rate: number;
+  median_score: number | null;
+  mean_score: number | null;
+  score_p25: number | null;
+  score_p75: number | null;
+  win_rate: number;
+  avg_duration_secs: number | null;
+  score_distribution: { bucket: string; count: number }[];
+  score_by_harness: Record<string, { mean: number; median: number; count: number }>;
+  score_by_model: Record<string, { mean: number; median: number; count: number }>;
+  score_by_variant: Record<string, { mean: number; median: number; count: number; win_rate: number }>;
+  score_trend: { date: string; mean_score: number; count: number }[];
+  computed_at: string;
+}
+
+/** Summary of a challenge version for version history display. */
+export interface ChallengeVersionSummary {
+  id: string;
+  version: number;
+  changelog: string | null;
+  created_at: string;
+  archived_at: string | null;
+}
+
+// ── Challenge Tracks & Collections ──────────────────────────────────
+
+export type TrackScoringMethod = "sum" | "average" | "min";
+
+export interface TrackDef {
+  slug: string;
+  name: string;
+  description: string;
+  lore: string;
+  challenge_slugs: string[];
+  scoring_method: TrackScoringMethod;
+  max_score: number;
+  active: boolean;
+}
+
+export interface TrackProgress {
+  track_slug: string;
+  completed_slugs: string[];
+  best_scores: Record<string, number>;
+  cumulative_score: number;
+  completed: boolean;
+}
+
+// ── A/B Testing Variants ─────────────────────────────────────────────
+
+export interface ChallengeVariant {
+  id: string;           // "A", "B"
+  label: string;        // "Original", "Harder ciphers"
+  config_overrides: Record<string, unknown>;
+  weight?: number;      // assignment weight, default equal
 }
 
 /**

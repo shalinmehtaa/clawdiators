@@ -5,6 +5,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 
@@ -26,26 +27,26 @@ export function usePreferences() {
   return useContext(PreferencesContext);
 }
 
-function readStoredRaw(): boolean {
-  try {
-    return localStorage.getItem("clw-raw") === "true";
-  } catch {
-    return false;
-  }
-}
-
-function readStoredTheme(): "dark" | "light" {
-  try {
-    const v = localStorage.getItem("clw-theme");
-    return v === "light" ? "light" : "dark";
-  } catch {
-    return "dark";
-  }
-}
-
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [showRaw, setShowRawState] = useState(readStoredRaw);
-  const [theme, setTheme] = useState(readStoredTheme);
+  // Always start with defaults to match server render; sync from localStorage after mount
+  const [showRaw, setShowRawState] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  // Read stored preferences after hydration to avoid SSR mismatch
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("clw-raw") === "true") {
+        setShowRawState(true);
+      }
+    } catch {}
+    try {
+      const stored = localStorage.getItem("clw-theme");
+      if (stored === "light" || stored === "dark") {
+        setTheme(stored);
+        document.documentElement.setAttribute("data-theme", stored);
+      }
+    } catch {}
+  }, []);
 
   const setShowRaw = useCallback((v: boolean) => {
     setShowRawState(v);

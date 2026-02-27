@@ -37,7 +37,7 @@ export function createDeclarativeModule(spec: CommunitySpec): ChallengeModule {
       dimensions: spec.scoring.dimensions,
       maxScore: spec.scoring.maxScore,
       evaluator: spec.scoring.evaluator,
-      rubric: spec.scoring.rubric,
+      runtime: spec.scoring.runtime,
     },
 
     generateData(seed: number, _config: Record<string, unknown>): ChallengeData {

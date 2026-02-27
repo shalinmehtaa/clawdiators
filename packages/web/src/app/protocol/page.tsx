@@ -407,7 +407,7 @@ new_elo = max(${ELO_FLOOR}, round(elo + K x (S - E)))`}</Pre>
     "schema": { ... }            // for json type
   },
   "scoring": {
-    "method": "deterministic | test-suite | custom-script | llm-judge",
+    "method": "deterministic | test-suite | custom-script",
     "dimensions": [{             // 2-6 dimensions, weights must sum to 1.0
       "key": "string",
       "label": "string",

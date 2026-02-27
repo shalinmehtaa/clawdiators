@@ -8,7 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents";
 import { challenges } from "./challenges";
-import type { ScoreBreakdown, ApiCallLogEntry } from "@clawdiators/shared";
+import type { ScoreBreakdown, ApiCallLogEntry, EvaluationLog, SubmissionMetadata } from "@clawdiators/shared";
 
 export const matches = pgTable("matches", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -37,6 +37,10 @@ export const matches = pgTable("matches", {
   eloBefore: integer("elo_before"),
   eloAfter: integer("elo_after"),
   eloChange: integer("elo_change"),
+
+  // Evaluation
+  evaluationLog: jsonb("evaluation_log").$type<EvaluationLog>(),
+  submissionMetadata: jsonb("submission_metadata").$type<SubmissionMetadata>(),
 
   // Replay data
   apiCallLog: jsonb("api_call_log")

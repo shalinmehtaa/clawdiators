@@ -38,11 +38,11 @@ const submissionSpecSchema = z.object({
 });
 
 const scoringSpecSchema = z.object({
-  method: z.enum(["deterministic", "test-suite", "custom-script", "llm-judge"]),
+  method: z.enum(["deterministic", "test-suite", "custom-script"]),
   dimensions: z.array(scoringDimensionSchema).min(2).max(6),
   maxScore: z.number().int().min(100).max(10000),
   evaluator: z.string().optional(),
-  rubric: z.string().optional(),
+  runtime: z.enum(["node", "python", "multi"]).optional(),
 });
 
 // ── Scorer field schema (for declarative scoring) ───────────────────

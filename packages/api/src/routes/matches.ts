@@ -9,6 +9,7 @@ import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { generateBoutName, generateFlavourText, computeTitle, computeAllTitles } from "../services/whimsy.js";
 import { calculateElo, scoreToResult } from "../services/elo.js";
 import { getChallenge } from "../challenges/registry.js";
+import { evaluate } from "../challenges/evaluator.js";
 
 export const matchRoutes = new Hono();
 
@@ -149,7 +150,7 @@ matchRoutes.post(
   async (c) => {
     const agent = c.get("agent");
     const matchId = c.req.param("matchId");
-    const { answer } = c.req.valid("json");
+    const { answer, metadata } = c.req.valid("json");
 
     // Get match
     const match = await db.query.matches.findFirst({
@@ -188,15 +189,17 @@ matchRoutes.post(
     // Generate ground truth from seed via module
     const data = mod.generateData(match.seed, challenge.config);
 
-    // Score via module
-    const { breakdown } = mod.score({
+    // Evaluate via dispatcher (deterministic, test-suite, or custom-script)
+    const scoringInput = {
       submission: answer,
       groundTruth: data.groundTruth,
       startedAt: match.startedAt,
       submittedAt: now,
       apiCallCount: match.apiCallLog.length,
       checkpoints: match.checkpoints,
-    });
+    };
+    const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput);
+    const { breakdown } = evalResult;
 
     // Determine result (solo calibration)
     const result = scoreToResult(breakdown.total);
@@ -234,6 +237,8 @@ matchRoutes.post(
         eloChange: eloResult.change,
         flavourText,
         completedAt: now,
+        evaluationLog,
+        submissionMetadata: metadata ?? null,
       })
       .where(eq(matches.id, matchId));
 
@@ -304,6 +309,7 @@ matchRoutes.post(
         elo_change: eloResult.change,
         title: newTitle,
         flavour_text: flavourText,
+        evaluation_log: evaluationLog,
         reflect_url: `/api/v1/matches/${match.id}/reflect`,
       },
       200,
@@ -346,6 +352,8 @@ matchRoutes.post(
       return errorEnvelope(c, "This challenge does not support checkpoints", 400);
     }
 
+    const mod = getChallenge(challenge.slug);
+
     const checkpoint = {
       phase: body.phase ?? match.checkpoints.length,
       data: body.data,
@@ -358,10 +366,33 @@ matchRoutes.post(
       .set({ checkpoints: newCheckpoints })
       .where(eq(matches.id, matchId));
 
+    // Partial evaluation for deterministic challenges
+    let partialScore: number | undefined;
+    let feedback: string | undefined;
+    if (mod && mod.scoringSpec?.method === "deterministic") {
+      try {
+        const data = mod.generateData(match.seed, challenge.config);
+        const partial = mod.score({
+          submission: body.data,
+          groundTruth: data.groundTruth,
+          startedAt: match.startedAt,
+          submittedAt: new Date(),
+          apiCallCount: match.apiCallLog.length,
+          checkpoints: newCheckpoints,
+        });
+        partialScore = partial.breakdown.total;
+        feedback = `Partial score: ${partialScore}`;
+      } catch {
+        // Partial eval is best-effort
+      }
+    }
+
     return envelope(c, {
       match_id: matchId,
       checkpoint_number: newCheckpoints.length,
       phase: checkpoint.phase,
+      partial_score: partialScore ?? null,
+      feedback: feedback ?? null,
     }, 200, "Checkpoint recorded. The next phase awaits.");
   },
 );
@@ -510,6 +541,8 @@ matchRoutes.get("/:matchId", async (c) => {
     api_call_log: match.apiCallLog,
     checkpoints: match.checkpoints,
     flavour_text: match.flavourText,
+    evaluation_log: match.evaluationLog ?? null,
+    submission_metadata: match.submissionMetadata ?? null,
     started_at: match.startedAt,
     submitted_at: match.submittedAt,
     completed_at: match.completedAt,

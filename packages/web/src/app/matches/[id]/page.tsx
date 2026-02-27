@@ -10,6 +10,27 @@ interface ScoringDimension {
   color: string;
 }
 
+interface EvaluationLog {
+  method: string;
+  runtime?: string;
+  startedAt: string;
+  completedAt: string;
+  containerExitCode?: number;
+  stdout?: string;
+  rawScores: Record<string, number>;
+  finalScores: Record<string, number>;
+  total: number;
+  errors: string[];
+}
+
+interface SubmissionMetadata {
+  token_count?: number;
+  tool_call_count?: number;
+  model_id?: string;
+  harness_id?: string;
+  wall_clock_secs?: number;
+}
+
 interface MatchDetail {
   id: string;
   bout_name: string;
@@ -36,6 +57,8 @@ interface MatchDetail {
   }[];
   checkpoints: Record<string, unknown>[];
   flavour_text: string | null;
+  evaluation_log: EvaluationLog | null;
+  submission_metadata: SubmissionMetadata | null;
   started_at: string;
   submitted_at: string | null;
   completed_at: string | null;
@@ -175,13 +198,25 @@ export default async function MatchReplayPage({
           <p className="text-sm text-text leading-relaxed">
             {match.objective}
           </p>
-          <div className="flex gap-3 mt-3 text-[10px] text-text-muted">
+          <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-text-muted">
             {durationSecs !== null && <span>Duration: {durationSecs}s</span>}
             {match.api_call_log.length > 0 && (
               <span>API calls: {match.api_call_log.length}</span>
             )}
             {match.match_type !== "single" && (
               <span>Type: {match.match_type}</span>
+            )}
+            {match.submission_metadata?.token_count != null && (
+              <span>Tokens: {match.submission_metadata.token_count.toLocaleString()}</span>
+            )}
+            {match.submission_metadata?.tool_call_count != null && (
+              <span>Tool calls: {match.submission_metadata.tool_call_count}</span>
+            )}
+            {match.submission_metadata?.model_id && (
+              <span>Model: {match.submission_metadata.model_id}</span>
+            )}
+            {match.submission_metadata?.wall_clock_secs != null && (
+              <span>Wall clock: {match.submission_metadata.wall_clock_secs}s</span>
             )}
           </div>
         </div>
@@ -229,6 +264,73 @@ export default async function MatchReplayPage({
             </div>
           )}
         </div>
+
+        {/* Evaluation Details */}
+        {match.evaluation_log && (
+          <div className="card p-5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-4">
+              Evaluation Details
+            </h2>
+            <div className="flex flex-wrap gap-2 mb-3">
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                  match.evaluation_log.method === "deterministic"
+                    ? "bg-emerald/10 text-emerald"
+                    : match.evaluation_log.method === "test-suite"
+                      ? "bg-sky/10 text-sky"
+                      : "bg-gold/10 text-gold"
+                }`}
+              >
+                {match.evaluation_log.method}
+              </span>
+              {match.evaluation_log.runtime && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple/10 text-purple">
+                  {match.evaluation_log.runtime}
+                </span>
+              )}
+              {match.evaluation_log.containerExitCode != null && (
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                    match.evaluation_log.containerExitCode === 0
+                      ? "bg-emerald/10 text-emerald"
+                      : "bg-coral/10 text-coral"
+                  }`}
+                >
+                  exit {match.evaluation_log.containerExitCode}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-4 text-[10px] text-text-muted mb-3">
+              <span>
+                Duration:{" "}
+                {Math.round(
+                  (new Date(match.evaluation_log.completedAt).getTime() -
+                    new Date(match.evaluation_log.startedAt).getTime())
+                )}ms
+              </span>
+              <span>Score: {match.evaluation_log.total}</span>
+            </div>
+            {match.evaluation_log.errors.length > 0 && (
+              <div className="mb-3">
+                {match.evaluation_log.errors.map((err, i) => (
+                  <p key={i} className="text-[10px] text-coral">
+                    {err}
+                  </p>
+                ))}
+              </div>
+            )}
+            {match.evaluation_log.stdout && (
+              <details className="text-[10px]">
+                <summary className="cursor-pointer text-text-muted hover:text-text-secondary transition-colors">
+                  Evaluator stdout
+                </summary>
+                <pre className="mt-2 bg-bg rounded p-3 text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
+                  {match.evaluation_log.stdout}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
 
         {/* Checkpoints (for multi-checkpoint matches) */}
         {match.checkpoints.length > 0 && (

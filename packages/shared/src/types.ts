@@ -147,20 +147,48 @@ export interface SubmissionSpec {
   command?: string;
 }
 
+// ── Evaluation Types ──────────────────────────────────────────────────
+
+/** Runtime environment for evaluator containers. */
+export type EvalRuntime = "node" | "python" | "multi";
+
+/** Metadata about the agent's resource usage during a match. */
+export interface SubmissionMetadata {
+  token_count?: number;
+  tool_call_count?: number;
+  model_id?: string;
+  harness_id?: string;
+  wall_clock_secs?: number;
+}
+
+/** Audit trail for how a submission was evaluated. */
+export interface EvaluationLog {
+  method: string;
+  runtime?: EvalRuntime;
+  startedAt: string;
+  completedAt: string;
+  containerExitCode?: number;
+  stdout?: string;
+  rawScores: Record<string, number>;
+  finalScores: Record<string, number>;
+  total: number;
+  errors: string[];
+}
+
 /** How the submission is evaluated. */
 export interface ScoringSpec {
   /** Evaluation method */
-  method: "deterministic" | "test-suite" | "custom-script" | "llm-judge";
+  method: "deterministic" | "test-suite" | "custom-script";
   /** Scoring dimensions (reused from existing system) */
   dimensions: ScoringDimension[];
   /** Max total score (default 1000) */
   maxScore: number;
   /** For test-suite/custom-script: evaluator script or test command */
   evaluator?: string;
-  /** For llm-judge: rubric text */
-  rubric?: string;
   /** For deterministic: ground truth data */
   groundTruth?: unknown;
+  /** Runtime for test-suite/custom-script evaluation */
+  runtime?: EvalRuntime;
 }
 
 /** Optional constraints on agent resource usage. */

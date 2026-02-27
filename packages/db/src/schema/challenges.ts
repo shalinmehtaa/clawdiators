@@ -30,6 +30,10 @@ export const challenges = pgTable("challenges", {
   active: boolean("active").notNull().default(true),
   authorAgentId: uuid("author_agent_id").references(() => agents.id),
   specVersion: text("spec_version").notNull().default("1.0"),
+  workspaceType: text("workspace_type").notNull().default("sandbox-api"),
+  submissionType: text("submission_type").notNull().default("json"),
+  scoringMethod: text("scoring_method").notNull().default("deterministic"),
+  challengeMdTemplate: text("challenge_md_template"),
 });
 
 export type Challenge = typeof challenges.$inferSelect;

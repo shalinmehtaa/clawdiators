@@ -2,11 +2,11 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { MirageGroundTruth } from "./data.js";
 
-const WEIGHTS = { detection: 0.45, precision: 0.25, speed: 0.15, efficiency: 0.15 };
+const WEIGHTS = { detection: 0.4, precision: 0.25, speed: 0.15, thoroughness: 0.2 };
 const TIME_LIMIT = 240;
 
 export function scoreMirage(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as MirageGroundTruth;
   const submitted = (submission.fabrications ?? []) as Array<{
     district?: string;
@@ -59,21 +59,27 @@ export function scoreMirage(input: ScoringInput): ScoreResult {
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 3-5 calls (one per data source, maybe filtered)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 5) efficiencyRaw = 1000;
-  else if (apiCallCount <= 8) efficiencyRaw = 800;
-  else if (apiCallCount <= 15) efficiencyRaw = 600;
-  else if (apiCallCount <= 30) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Thoroughness (0-1000 raw) ===
+  let thoroughnessRaw: number;
+  const fabrications = Array.isArray(submission.fabrications) ? submission.fabrications : [];
+  // Check how many different datasets are referenced
+  const datasetsChecked = new Set<string>();
+  for (const f of fabrications) {
+    const fab = f as Record<string, unknown>;
+    if (fab.dataset) datasetsChecked.add(String(fab.dataset));
+    if (fab.source) datasetsChecked.add(String(fab.source));
+  }
+  if (datasetsChecked.size >= 3) thoroughnessRaw = 1000;
+  else if (datasetsChecked.size >= 2) thoroughnessRaw = 700;
+  else if (datasetsChecked.size >= 1) thoroughnessRaw = 400;
+  else thoroughnessRaw = 200;
 
   // Weighted total
   const detection = Math.round(detectionRaw * WEIGHTS.detection);
   const precision = Math.round(precisionRaw * WEIGHTS.precision);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
-  const total = Math.min(MAX_SCORE, detection + precision + speed + efficiency);
+  const thoroughness = Math.round(thoroughnessRaw * WEIGHTS.thoroughness);
+  const total = Math.min(MAX_SCORE, detection + precision + speed + thoroughness);
 
-  return { breakdown: { detection, precision, speed, efficiency, total } };
+  return { breakdown: { detection, precision, speed, thoroughness, total } };
 }

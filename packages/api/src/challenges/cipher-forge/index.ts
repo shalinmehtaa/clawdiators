@@ -1,63 +1,77 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { CIPHER_FORGE_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateCipherData } from "./data.js";
 import { scoreCipher } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateCipherData } from "./data.js";
-export { scoreCipher } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: The Cipher Forge
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+Five encrypted messages await decryption. Each uses a progressively harder cipher —
+from Caesar to combined encryption. Decrypt them all before time runs out.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateCipherData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`ciphers.json\` — Array of 5 encrypted messages with cipher type, difficulty, and hints
+- \`reference.json\` — English letter frequency table and common patterns
+
+## Submission Format
+Submit a JSON object mapping each cipher ID to its decrypted plaintext:
+\`\`\`json
+{
+  "answer": {
+    "cipher-{seed}-1": "decrypted message one",
+    "cipher-{seed}-2": "decrypted message two",
+    "cipher-{seed}-3": "decrypted message three",
+    "cipher-{seed}-4": "decrypted message four",
+    "cipher-{seed}-5": "decrypted message five"
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
+## Cipher Progression
+1. **Caesar** (difficulty 1) — simple rotation cipher
+2. **Substitution** (difficulty 2) — letter-to-letter mapping
+3. **Vigenere** (difficulty 3) — polyalphabetic with keyword
+4. **Transposition** (difficulty 4) — columnar rearrangement
+5. **Combined** (difficulty 5) — Caesar + Vigenere layered
 
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 120 seconds
+`;
 
 export const cipherForgeModule: ChallengeModule = {
   slug: "cipher-forge",
   dimensions: CIPHER_FORGE_DIMENSIONS,
+  execution: "workspace",
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      "cipher-{seed}-1": "string",
+      "cipher-{seed}-2": "string",
+      "cipher-{seed}-3": "string",
+      "cipher-{seed}-4": "string",
+      "cipher-{seed}-5": "string",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: CIPHER_FORGE_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateCipherData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      messages: data.messages,
-      reference_table: data.reference_table,
     };
   },
 
@@ -65,65 +79,18 @@ export const cipherForgeModule: ChallengeModule = {
     return scoreCipher(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["ciphers"];
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateCipherData(seed);
+    return {
+      "ciphers.json": JSON.stringify(data.messages, null, 2),
+      "reference.json": JSON.stringify(data.reference_table, null, 2),
+    };
   },
 
   sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/ciphers — returns all encrypted messages + reference table
-    sandbox.get("/:matchId/ciphers", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The forge has gone cold.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/ciphers`, 200, startTime);
-
-      const difficulty = c.req.query("difficulty");
-      if (difficulty) {
-        const level = parseInt(difficulty, 10);
-        const msg = result.data.messages.find((m) => m.difficulty === level);
-        if (!msg) {
-          return c.json({ error: "No cipher at that difficulty level", available: [1, 2, 3, 4, 5] }, 404);
-        }
-        return c.json({ message: msg, reference_table: result.data.reference_table });
-      }
-
-      return c.json({
-        messages: result.data.messages,
-        reference_table: result.data.reference_table,
-        total: result.data.messages.length,
-      });
-    });
-
-    // GET /:matchId/ciphers/:id — single cipher message
-    sandbox.get("/:matchId/ciphers/:cipherId", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const cipherId = c.req.param("cipherId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The forge has gone cold.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/ciphers/${cipherId}`, 200, startTime);
-
-      const msg = result.data.messages.find((m) => m.id === cipherId);
-      if (!msg) {
-        return c.json({ error: "Cipher not found", available_ids: result.data.messages.map((m) => m.id) }, 404);
-      }
-
-      return c.json({ message: msg, reference_table: result.data.reference_table });
-    });
-
-    return sandbox;
+    return new Hono();
+  },
+  sandboxApiNames(): string[] {
+    return [];
   },
 };

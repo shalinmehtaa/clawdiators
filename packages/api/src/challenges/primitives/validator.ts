@@ -1,13 +1,12 @@
 /**
  * Zod schema for community challenge specs.
- * Validates slug format, dimension weights, time limits, known primitives, etc.
+ * Supports both workspace-based (new) and legacy sandbox-based specs.
  */
 import { z } from "zod";
 import { SCORING_PRIMITIVES } from "./scoring.js";
 
 const VALID_CATEGORIES = [
-  "calibration", "toolchain", "efficiency", "recovery", "relay",
-  "coding", "reasoning", "context", "memory", "endurance",
+  "coding", "reasoning", "context", "endurance",
   "adversarial", "multimodal",
 ] as const;
 
@@ -23,6 +22,31 @@ const scoringDimensionSchema = z.object({
   color: z.enum(VALID_COLORS),
 });
 
+// ── Workspace spec schemas ──────────────────────────────────────────
+
+const workspaceSpecSchema = z.object({
+  type: z.enum(["archive", "generator"]),
+  seedable: z.boolean(),
+  challengeMd: z.string().min(10).max(5000),
+});
+
+const submissionSpecSchema = z.object({
+  type: z.enum(["json", "files", "diff", "stdout"]),
+  schema: z.record(z.unknown()).optional(),
+  files: z.array(z.string()).optional(),
+  command: z.string().optional(),
+});
+
+const scoringSpecSchema = z.object({
+  method: z.enum(["deterministic", "test-suite", "custom-script", "llm-judge"]),
+  dimensions: z.array(scoringDimensionSchema).min(2).max(6),
+  maxScore: z.number().int().min(100).max(10000),
+  evaluator: z.string().optional(),
+  rubric: z.string().optional(),
+});
+
+// ── Scorer field schema (for declarative scoring) ───────────────────
+
 const scorerFieldSchema = z.object({
   key: z.string(),
   primitive: z.string().refine(
@@ -33,15 +57,12 @@ const scorerFieldSchema = z.object({
   weight: z.number().min(0).max(1000).optional(),
 });
 
-const sandboxApiSchema = z.object({
-  name: z.string().min(1).max(40).regex(/^[a-z][a-z0-9_-]*$/),
-  description: z.string().min(1).max(200),
-  endpoints: z.array(z.object({
-    method: z.enum(["GET", "POST"]),
-    path: z.string().min(1),
-    description: z.string().min(1),
-  })).min(1),
-});
+const scorerSchema = z.object({
+  fields: z.array(scorerFieldSchema).min(1),
+  timeDimension: z.string().optional(),
+}).optional();
+
+// ── Data template schema ────────────────────────────────────────────
 
 const dataPoolSchema = z.object({
   name: z.string(),
@@ -67,6 +88,8 @@ const phaseSchema = z.object({
   description: z.string().min(1),
 });
 
+// ── Community spec schema (workspace-first) ─────────────────────────
+
 export const communitySpecSchema = z.object({
   slug: z.string()
     .min(3).max(40)
@@ -78,20 +101,17 @@ export const communitySpecSchema = z.object({
   difficulty: z.enum(VALID_DIFFICULTIES),
   matchType: z.enum(VALID_MATCH_TYPES),
   timeLimitSecs: z.number().int().min(10).max(7200),
-  scoringDimensions: z.array(scoringDimensionSchema).min(2).max(6),
-  scorer: z.object({
-    fields: z.array(scorerFieldSchema).min(1),
-    timeDimension: z.string().optional(),
-    efficiencyDimension: z.string().optional(),
-    optimalCalls: z.number().int().min(1).optional(),
-    maxCalls: z.number().int().min(1).optional(),
-  }),
-  sandboxApis: z.array(sandboxApiSchema).min(1).max(6),
+  // Workspace spec (required for new challenges)
+  workspace: workspaceSpecSchema,
+  submission: submissionSpecSchema,
+  scoring: scoringSpecSchema,
+  // Optional scoring primitives for declarative scoring
+  scorer: scorerSchema,
   dataTemplate: dataTemplateSchema.optional(),
   phases: z.array(phaseSchema).optional(),
 }).refine(
   (spec) => {
-    const sum = spec.scoringDimensions.reduce((s, d) => s + d.weight, 0);
+    const sum = spec.scoring.dimensions.reduce((s, d) => s + d.weight, 0);
     return Math.abs(sum - 1.0) < 0.001;
   },
   { message: "Scoring dimension weights must sum to 1.0" },

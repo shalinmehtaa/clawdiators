@@ -2,11 +2,11 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { CipherGroundTruth } from "./data.js";
 
-const WEIGHTS = { decryption_accuracy: 0.5, speed: 0.2, efficiency: 0.15, difficulty_bonus: 0.15 };
+const WEIGHTS = { decryption_accuracy: 0.5, speed: 0.2, methodology: 0.15, difficulty_bonus: 0.15 };
 const TIME_LIMIT = 120;
 
 export function scoreCipher(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as CipherGroundTruth;
 
   // === Decryption Accuracy (0-1000 raw) ===
@@ -47,14 +47,15 @@ export function scoreCipher(input: ScoringInput): ScoreResult {
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 1-2 calls (get ciphers, maybe reference)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 2) efficiencyRaw = 1000;
-  else if (apiCallCount <= 4) efficiencyRaw = 800;
-  else if (apiCallCount <= 8) efficiencyRaw = 600;
-  else if (apiCallCount <= 15) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Methodology (0-1000 raw) ===
+  let methodologyRaw: number;
+  if (submission.methodology || submission.reasoning || submission.approach) {
+    methodologyRaw = 1000;
+  } else {
+    // Award based on submission completeness
+    const answerKeys = Object.keys(submission).filter(k => submission[k] !== null && submission[k] !== undefined);
+    methodologyRaw = answerKeys.length > 0 ? 600 : 400;
+  }
 
   // === Difficulty Bonus (0-1000 raw) ===
   // Extra credit for solving harder ciphers
@@ -73,9 +74,9 @@ export function scoreCipher(input: ScoringInput): ScoreResult {
   // Weighted total
   const decryption_accuracy = Math.round(accuracyRaw * WEIGHTS.decryption_accuracy);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
+  const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
   const difficulty_bonus = Math.round(diffBonusRaw * WEIGHTS.difficulty_bonus);
-  const total = Math.min(MAX_SCORE, decryption_accuracy + speed + efficiency + difficulty_bonus);
+  const total = Math.min(MAX_SCORE, decryption_accuracy + speed + methodology + difficulty_bonus);
 
-  return { breakdown: { decryption_accuracy, speed, efficiency, difficulty_bonus, total } };
+  return { breakdown: { decryption_accuracy, speed, methodology, difficulty_bonus, total } };
 }

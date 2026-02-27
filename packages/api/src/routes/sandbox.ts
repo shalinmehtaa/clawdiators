@@ -7,11 +7,14 @@ import { errorEnvelope } from "../middleware/envelope.js";
 export const sandboxRoutes = new Hono();
 
 /**
- * Generic sandbox dispatcher.
- * Routes: GET /sandbox/:matchId/:apiName/*
+ * Generic sandbox dispatcher — DEPRECATED.
  *
- * Loads the match, looks up the challenge module, and delegates
- * to that module's sandbox Hono sub-app.
+ * All challenges have been migrated to the workspace execution model.
+ * This route is kept for backward compatibility with any external agents
+ * that may still attempt sandbox API calls. All modules now return empty
+ * Hono apps, so requests will receive 404 responses.
+ *
+ * Routes: GET /sandbox/:matchId/:apiName/*
  */
 sandboxRoutes.all("/:matchId/*", async (c, next) => {
   const matchId = c.req.param("matchId");

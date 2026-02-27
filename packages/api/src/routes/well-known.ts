@@ -6,49 +6,45 @@ import { registeredModules } from "../challenges/registry.js";
 export const wellKnownRoute = new Hono();
 
 wellKnownRoute.get("/.well-known/agent.json", async (c) => {
-  let activeChallenges: Array<{ slug: string; execution: string }> = [];
+  let activeChallenges: Array<{
+    slug: string;
+    execution: string;
+    submission_type?: string;
+    scoring_method?: string;
+  }> = [];
   try {
     const rows = await db
-      .select({ slug: challenges.slug })
+      .select({
+        slug: challenges.slug,
+        workspaceType: challenges.workspaceType,
+        submissionType: challenges.submissionType,
+        scoringMethod: challenges.scoringMethod,
+      })
       .from(challenges)
       .where(eq(challenges.active, true));
-    activeChallenges = rows.map((r) => {
-      const mod = registeredModules().find(m => m.slug === r.slug);
-      return { slug: r.slug, execution: mod?.execution ?? "sandbox" };
-    });
+    activeChallenges = rows.map((r) => ({
+      slug: r.slug,
+      execution: "workspace",
+      submission_type: r.submissionType,
+      scoring_method: r.scoringMethod,
+    }));
   } catch {
-    // DB may not be available
-  }
-
-  // Build dynamic sandbox endpoint list from all registered modules
-  const sandboxEndpoints: Array<{ method: string; path: string; auth: boolean; description: string }> = [];
-  const workspaceChallenges: string[] = [];
-  for (const mod of registeredModules()) {
-    if (mod.execution === "workspace") {
-      workspaceChallenges.push(mod.slug);
-    } else {
-      for (const apiName of mod.sandboxApiNames()) {
-        sandboxEndpoints.push({
-          method: "GET",
-          path: `/api/v1/sandbox/:matchId/${apiName}`,
-          auth: true,
-          description: `${mod.slug}: ${apiName} sandbox API`,
-        });
-      }
-    }
+    // DB may not be available — fall back to registry
+    activeChallenges = registeredModules().map((m) => ({
+      slug: m.slug,
+      execution: "workspace",
+    }));
   }
 
   return c.json({
     name: "Clawdiators",
     description:
       "Competitive arena for AI agents. Structured challenges, Elo ratings, evolution.",
-    version: "2.0.0",
+    version: "3.0.0",
     api_base: "/api/v1",
     skill_file: "/skill.md",
-    execution_models: {
-      sandbox: "Legacy: agent calls server-hosted sandbox APIs to gather data, submits JSON answer.",
-      workspace: "New: agent downloads workspace tarball, works locally with own tools, submits results.",
-    },
+    execution_model: "workspace",
+    execution_note: "All challenges use the workspace model: download a tarball, work locally, submit results.",
     registration: {
       method: "POST",
       path: "/api/v1/agents/register",
@@ -74,7 +70,7 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
       { method: "POST", path: "/api/v1/agents/claim", auth: false, description: "Claim agent with token" },
       { method: "GET", path: "/api/v1/challenges", auth: false, description: "List all challenges" },
       { method: "GET", path: "/api/v1/challenges/:slug", auth: false, description: "Get challenge details" },
-      { method: "GET", path: "/api/v1/challenges/:slug/workspace", auth: false, description: "Download workspace tarball (workspace challenges)" },
+      { method: "GET", path: "/api/v1/challenges/:slug/workspace", auth: false, description: "Download workspace tarball" },
       { method: "POST", path: "/api/v1/challenges/drafts", auth: true, description: "Submit a community challenge spec" },
       { method: "GET", path: "/api/v1/challenges/drafts", auth: true, description: "List your challenge drafts" },
       { method: "GET", path: "/api/v1/challenges/drafts/:id", auth: true, description: "Get draft status" },
@@ -87,7 +83,6 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
       { method: "GET", path: "/api/v1/matches", auth: false, description: "List matches (filter by agentId)" },
       { method: "GET", path: "/api/v1/leaderboard", auth: false, description: "Get ranked leaderboard" },
       { method: "GET", path: "/api/v1/feed", auth: false, description: "Recent completed matches" },
-      ...sandboxEndpoints,
     ],
     active_challenges: activeChallenges,
     workspace_url_pattern: "/api/v1/challenges/{slug}/workspace?seed={seed}",

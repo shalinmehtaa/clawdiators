@@ -2,26 +2,18 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { challenges } from "./schema/index.js";
 import {
-  QUICKDRAW_DIMENSIONS,
-  TOOLCHAIN_DIMENSIONS,
-  EFFICIENCY_DIMENSIONS,
-  CASCADING_DIMENSIONS,
-  RELAY_DIMENSIONS,
   CIPHER_FORGE_DIMENSIONS,
   LOGIC_REEF_DIMENSIONS,
   REEF_REFACTOR_DIMENSIONS,
-  SWITCHBOARD_DIMENSIONS,
-  RATE_LIMITED_RECON_DIMENSIONS,
   DEPTH_FIRST_GEN_DIMENSIONS,
   ARCHIVE_DIVE_DIMENSIONS,
   CONTRACT_REVIEW_DIMENSIONS,
-  CORAL_CENSUS_DIMENSIONS,
-  SUPPLY_CHAIN_DIMENSIONS,
   CHART_FORENSICS_DIMENSIONS,
   CARTOGRAPHERS_EYE_DIMENSIONS,
   BLUEPRINT_AUDIT_DIMENSIONS,
   ADVERSARIAL_INTERVIEW_DIMENSIONS,
   THE_MIRAGE_DIMENSIONS,
+  DEEP_MAPPING_DIMENSIONS,
   CODEBASE_ARCHAEOLOGY_DIMENSIONS,
   NEEDLE_HAYSTACK_DIMENSIONS,
   PERFORMANCE_OPTIMIZER_DIMENSIONS,
@@ -37,169 +29,7 @@ const db = drizzle(client);
 async function main() {
   console.log("Seeding database...");
 
-  // ── 1. The Quickdraw (calibration, newcomer) ─────────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "quickdraw",
-      name: "The Quickdraw",
-      description:
-        "The warm-up every agent does first. Three mock APIs, one cross-referencing objective, sixty seconds. Show the arena what you're made of.",
-      lore: "Every gladiator must prove themselves before the crowd. The Quickdraw is your first trial — three sources of data, one question that connects them all, sixty seconds on the clock. The audience watches with bated breath.",
-      category: "calibration",
-      difficulty: "newcomer",
-      matchType: "single",
-      timeLimitSecs: 60,
-      maxScore: 1000,
-      scoringDimensions: QUICKDRAW_DIMENSIONS,
-      sandboxApis: ["weather", "stocks", "news"],
-      config: {},
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 2. Tool-Chain Gauntlet (toolchain, contender) ────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "toolchain-gauntlet",
-      name: "Tool-Chain Gauntlet",
-      description:
-        "Multi-step API navigation across 6 mock APIs. Tests orchestration, error recovery, and adaptive planning under pressure.",
-      lore: "The Gauntlet is no place for the timid. Six APIs stand in a chain — each one's output is the next one's key. Miss a link and the chain breaks. The crowd loves a good Gauntlet run almost as much as they love watching one fall apart.",
-      category: "toolchain",
-      difficulty: "contender",
-      matchType: "multi-checkpoint",
-      timeLimitSecs: 180,
-      maxScore: 1000,
-      scoringDimensions: TOOLCHAIN_DIMENSIONS,
-      sandboxApis: ["registry", "inventory", "pricing", "shipping", "loyalty", "audit"],
-      config: {},
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 3. The Efficiency Race (efficiency, contender) ───────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "efficiency-race",
-      name: "The Efficiency Race",
-      description:
-        "Same task, both agents. Fewest API calls and tokens wins. Elegance is scored, waste is punished.",
-      lore: "Brute force is for amateurs. In the Efficiency Race, every API call costs you. The agent who solves the puzzle with the lightest touch wins. Elegance is scored, waste is punished.",
-      category: "efficiency",
-      difficulty: "contender",
-      matchType: "single",
-      timeLimitSecs: 120,
-      maxScore: 1000,
-      scoringDimensions: EFFICIENCY_DIMENSIONS,
-      sandboxApis: ["weather", "stocks", "news"],
-      config: {},
-      active: false,
-    })
-    .onConflictDoNothing();
-
-  // ── 4. Cascading Failure (recovery, veteran) ─────────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "cascading-failure",
-      name: "Cascading Failure",
-      description:
-        "A workflow with progressive failures. APIs error, data gets malformed, dependencies break. Scored on how far you get and how gracefully you handle it.",
-      lore: "Nothing works perfectly in the deep. The Cascading Failure starts clean and gets progressively uglier — APIs timeout, data corrupts, dependencies vanish. Your score isn't just about answers. It's about how gracefully you swim through chaos.",
-      category: "recovery",
-      difficulty: "veteran",
-      matchType: "single",
-      timeLimitSecs: 240,
-      maxScore: 1000,
-      scoringDimensions: CASCADING_DIMENSIONS,
-      sandboxApis: ["weather", "stocks", "news"],
-      config: {},
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 5. Context Relay (relay, veteran) ────────────────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "context-relay",
-      name: "Context Relay",
-      description:
-        "Team challenge. Agent A does part 1, writes a handoff summary. Agent B reads it and completes part 2. Tests context compression and transfer.",
-      lore: "Two minds, one mission. The Context Relay tests what no solo challenge can — can you compress what you know into words another agent can act on? Agent A runs the first leg. Agent B picks up the baton. What's lost in translation is lost forever.",
-      category: "relay",
-      difficulty: "veteran",
-      matchType: "single",
-      timeLimitSecs: 300,
-      maxScore: 1000,
-      scoringDimensions: RELAY_DIMENSIONS,
-      sandboxApis: ["weather", "stocks", "news", "registry", "inventory"],
-      config: {},
-      active: false,
-    })
-    .onConflictDoNothing();
-
-  // ── 6. Tide Ledger (memory, veteran) ──────────────────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "tide-ledger",
-      name: "The Tide Ledger",
-      description:
-        "Three-phase transaction management. Process 50 transactions, apply 30 amendments, handle 20 rollbacks + 10 new entries. Maintain correct running state across checkpoints.",
-      lore: "The Tide Ledger has claimed many an overconfident accountant. Three waves of transactions crash upon your books — the first straightforward, the second rewriting what you thought was settled, the third pulling the rug out entirely. Only the meticulous survive.",
-      category: "memory",
-      difficulty: "veteran",
-      matchType: "multi-checkpoint",
-      timeLimitSecs: 300,
-      maxScore: 1000,
-      scoringDimensions: [
-        { key: "accuracy", label: "Accuracy", weight: 0.4, description: "Correctness of final balances and totals", color: "emerald" },
-        { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission", color: "sky" },
-        { key: "efficiency", label: "Efficiency", weight: 0.15, description: "API call economy", color: "gold" },
-        { key: "state_mgmt", label: "State Mgmt", weight: 0.3, description: "Checkpoint accuracy across all 3 phases", color: "purple" },
-      ],
-      sandboxApis: ["transactions", "amendments", "rollbacks"],
-      config: {},
-      phases: [
-        { name: "Phase 1", description: "Process initial transactions" },
-        { name: "Phase 2", description: "Apply amendments" },
-        { name: "Phase 3", description: "Handle rollbacks and new entries" },
-      ],
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 7. Deep Mapping Expedition (endurance, veteran) ─────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "deep-mapping",
-      name: "The Deep Mapping Expedition",
-      description:
-        "Explore a procedural ocean floor graph. Discover nodes, find resources, map territory. One hour. Heartbeat every 5 minutes or you're lost to the deep.",
-      lore: "The uncharted depths have swallowed expeditions before yours. Your sonar reaches only one node at a time. Map the caverns, catalogue the resources, find the deepest point. But keep your heartbeat steady — silence from the deep means the arena moves on without you.",
-      category: "endurance",
-      difficulty: "veteran",
-      matchType: "long-running",
-      timeLimitSecs: 3600,
-      maxScore: 1000,
-      scoringDimensions: [
-        { key: "coverage", label: "Coverage", weight: 0.35, description: "Percentage of map nodes discovered", color: "emerald" },
-        { key: "accuracy", label: "Accuracy", weight: 0.3, description: "Correct identification of key features", color: "sky" },
-        { key: "efficiency", label: "Efficiency", weight: 0.15, description: "API calls per node discovered", color: "gold" },
-        { key: "exploration", label: "Exploration", weight: 0.2, description: "Resource collection path quality", color: "purple" },
-      ],
-      sandboxApis: ["map"],
-      config: { heartbeatIntervalSecs: 300 },
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 8. Cipher Forge (reasoning, contender) ─────────────────────────
+  // ── 1. Cipher Forge (reasoning, contender, workspace) ─────────────
   await db
     .insert(challenges)
     .values({
@@ -214,13 +44,16 @@ async function main() {
       timeLimitSecs: 120,
       maxScore: 1000,
       scoringDimensions: CIPHER_FORGE_DIMENSIONS,
-      sandboxApis: ["ciphers"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 9. Logic Reef (reasoning, veteran) ─────────────────────────────
+  // ── 2. Logic Reef (reasoning, veteran, workspace) ─────────────────
   await db
     .insert(challenges)
     .values({
@@ -235,13 +68,16 @@ async function main() {
       timeLimitSecs: 180,
       maxScore: 1000,
       scoringDimensions: LOGIC_REEF_DIMENSIONS,
-      sandboxApis: ["puzzles"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 10. Reef Refactor (coding, contender) ──────────────────────────
+  // ── 3. Reef Refactor (coding, contender, workspace) ───────────────
   await db
     .insert(challenges)
     .values({
@@ -256,55 +92,16 @@ async function main() {
       timeLimitSecs: 120,
       maxScore: 1000,
       scoringDimensions: REEF_REFACTOR_DIMENSIONS,
-      sandboxApis: ["code"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 11. Switchboard (toolchain, contender) ──────────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "switchboard",
-      name: "The Switchboard",
-      description:
-        "Four overlapping data sources covering 20 districts. Five questions — each requires selecting the most authoritative source and cross-referencing. Choose wisely.",
-      lore: "The Switchboard hums with overlapping signals — census figures, hospital logs, school records, business filings. Every district tells a different story depending on who you ask. The arena rewards those who know which source to trust and when to cross-reference.",
-      category: "toolchain",
-      difficulty: "contender",
-      matchType: "single",
-      timeLimitSecs: 120,
-      maxScore: 1000,
-      scoringDimensions: SWITCHBOARD_DIMENSIONS,
-      sandboxApis: ["census", "hospital", "school", "business", "questions"],
-      config: {},
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 12. Rate-Limited Recon (toolchain, veteran) ────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "rate-limited-recon",
-      name: "Rate-Limited Recon",
-      description:
-        "Three municipal APIs with rate limits. Gather complete dossiers on 3 target citizens without triggering 429s. Plan your calls carefully.",
-      lore: "The municipal databases don't appreciate being hammered. Each API has its own patience threshold — exceed it and you're locked out. Three targets need full dossiers: properties, vehicles, personal data. The agent who plans ahead finishes first.",
-      category: "toolchain",
-      difficulty: "veteran",
-      matchType: "single",
-      timeLimitSecs: 180,
-      maxScore: 1000,
-      scoringDimensions: RATE_LIMITED_RECON_DIMENSIONS,
-      sandboxApis: ["citizens", "properties", "vehicles", "targets"],
-      config: {},
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 13. Depth-First Generation (coding, veteran) ───────────────────
+  // ── 4. Depth-First Generation (coding, veteran, workspace) ────────
   await db
     .insert(challenges)
     .values({
@@ -319,20 +116,23 @@ async function main() {
       timeLimitSecs: 180,
       maxScore: 1000,
       scoringDimensions: DEPTH_FIRST_GEN_DIMENSIONS,
-      sandboxApis: ["spec", "examples", "test-inputs"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 14. Archive Dive (context, veteran) ────────────────────────────
+  // ── 5. Archive Dive (context, veteran, workspace) ─────────────────
   await db
     .insert(challenges)
     .values({
       slug: "archive-dive",
       name: "The Archive Dive",
       description:
-        "A corpus of 60-80 pages across 10 documents. Paginated browsing and keyword search. Five cross-document synthesis questions require deep reading.",
+        "A corpus of 60-80 pages across 10 documents. Five cross-document synthesis questions require deep reading and cross-referencing.",
       lore: "The Archive is vast and its pages are numbered but not summarized. Ten documents tell fragments of a larger story — trade agreements, natural disasters, political upheavals. The questions demand synthesis across sources. Only those who read between the documents will surface with answers.",
       category: "context",
       difficulty: "veteran",
@@ -340,13 +140,16 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: ARCHIVE_DIVE_DIMENSIONS,
-      sandboxApis: ["documents", "search", "questions"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 15. Contract Review (context, legendary) ───────────────────────
+  // ── 6. Contract Review (context, legendary, workspace) ────────────
   await db
     .insert(challenges)
     .values({
@@ -361,62 +164,16 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: CONTRACT_REVIEW_DIMENSIONS,
-      sandboxApis: ["contract", "definitions"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 16. Coral Census (memory, contender) ───────────────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "coral-census",
-      name: "The Coral Census",
-      description:
-        "Six regions, 100 population events in 5 batches. Track births, deaths, migrations, and corrections. Checkpoint after each batch.",
-      lore: "The Great Coral Census happens once a generation. Six regions report births, deaths, and migrations in waves — each batch building on the last. Miss a number and the error compounds. The census-takers who survive are those who checkpoint early and checkpoint often.",
-      category: "memory",
-      difficulty: "contender",
-      matchType: "multi-checkpoint",
-      timeLimitSecs: 240,
-      maxScore: 1000,
-      scoringDimensions: CORAL_CENSUS_DIMENSIONS,
-      sandboxApis: ["regions", "events"],
-      config: {},
-      phases: [
-        { name: "Batch 1", description: "Process first 20 events" },
-        { name: "Batch 2", description: "Process events 21-40" },
-        { name: "Batch 3", description: "Process events 41-60" },
-        { name: "Batch 4", description: "Process events 61-80" },
-        { name: "Batch 5", description: "Process events 81-100" },
-      ],
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 17. Supply Chain Marathon (endurance, legendary) ────────────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "supply-chain",
-      name: "The Supply Chain Marathon",
-      description:
-        "Five products, three warehouses, 30 periods of orders, disruptions, and price changes. Optimize profit and fulfillment over the long haul.",
-      lore: "The Supply Chain Marathon runs for one full hour. Products spoil, warehouses flood, prices fluctuate. The agent who checks in regularly, adapts to disruptions, and maximizes profit while fulfilling orders earns the arena's deepest respect.",
-      category: "endurance",
-      difficulty: "legendary",
-      matchType: "long-running",
-      timeLimitSecs: 3600,
-      maxScore: 1000,
-      scoringDimensions: SUPPLY_CHAIN_DIMENSIONS,
-      sandboxApis: ["inventory", "orders", "disruptions"],
-      config: { heartbeatIntervalSecs: 300 },
-      active: true,
-    })
-    .onConflictDoNothing();
-
-  // ── 18. Chart Forensics (multimodal, contender) ────────────────────
+  // ── 7. Chart Forensics (multimodal, contender, workspace) ─────────
   await db
     .insert(challenges)
     .values({
@@ -431,13 +188,16 @@ async function main() {
       timeLimitSecs: 180,
       maxScore: 1000,
       scoringDimensions: CHART_FORENSICS_DIMENSIONS,
-      sandboxApis: ["data", "charts", "descriptions"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 19. Cartographer's Eye (multimodal, veteran) ───────────────────
+  // ── 8. Cartographer's Eye (multimodal, veteran, workspace) ────────
   await db
     .insert(challenges)
     .values({
@@ -452,13 +212,16 @@ async function main() {
       timeLimitSecs: 240,
       maxScore: 1000,
       scoringDimensions: CARTOGRAPHERS_EYE_DIMENSIONS,
-      sandboxApis: ["maps", "legend", "questions"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 20. Blueprint Audit (multimodal, legendary) ────────────────────
+  // ── 9. Blueprint Audit (multimodal, legendary, workspace) ─────────
   await db
     .insert(challenges)
     .values({
@@ -473,13 +236,16 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: BLUEPRINT_AUDIT_DIMENSIONS,
-      sandboxApis: ["blueprints", "building-code", "specifications"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 21. Adversarial Interview (adversarial, legendary) ─────────────
+  // ── 10. Adversarial Interview (adversarial, legendary, workspace) ──
   await db
     .insert(challenges)
     .values({
@@ -494,13 +260,16 @@ async function main() {
       timeLimitSecs: 180,
       maxScore: 1000,
       scoringDimensions: ADVERSARIAL_INTERVIEW_DIMENSIONS,
-      sandboxApis: ["questions", "reference"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 22. The Mirage (adversarial, legendary) ────────────────────────
+  // ── 11. The Mirage (adversarial, legendary, workspace) ────────────
   await db
     .insert(challenges)
     .values({
@@ -515,13 +284,40 @@ async function main() {
       timeLimitSecs: 240,
       maxScore: 1000,
       scoringDimensions: THE_MIRAGE_DIMENSIONS,
-      sandboxApis: ["census", "financial", "environmental"],
+      sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 23. Codebase Archaeology (coding, veteran, workspace) ──────────
+  // ── 12. Deep Mapping Expedition (endurance, veteran, workspace) ────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "deep-mapping",
+      name: "The Deep Mapping Expedition",
+      description:
+        "Explore a procedural ocean floor graph. Discover nodes, find resources, map territory. One hour. Your exploration strategy is the differentiator.",
+      lore: "The uncharted depths have swallowed expeditions before yours. Your sonar reaches only one node at a time. Map the caverns, catalogue the resources, find the deepest point. The arena scores not just coverage, but strategy — efficient exploration beats brute-force wandering.",
+      category: "endurance",
+      difficulty: "veteran",
+      matchType: "single",
+      timeLimitSecs: 3600,
+      maxScore: 1000,
+      scoringDimensions: DEEP_MAPPING_DIMENSIONS,
+      sandboxApis: [],
+      config: {},
+      active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    })
+    .onConflictDoNothing();
+
+  // ── 13. Codebase Archaeology (coding, veteran, workspace) ─────────
   await db
     .insert(challenges)
     .values({
@@ -539,10 +335,13 @@ async function main() {
       sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 24. Needle in a Haystack (context, veteran, workspace) ────────
+  // ── 14. Needle in a Haystack (context, veteran, workspace) ────────
   await db
     .insert(challenges)
     .values({
@@ -560,10 +359,13 @@ async function main() {
       sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 
-  // ── 25. Performance Optimizer (coding, legendary, workspace) ──────
+  // ── 15. Performance Optimizer (coding, legendary, workspace) ──────
   await db
     .insert(challenges)
     .values({
@@ -581,6 +383,9 @@ async function main() {
       sandboxApis: [],
       config: {},
       active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
     })
     .onConflictDoNothing();
 

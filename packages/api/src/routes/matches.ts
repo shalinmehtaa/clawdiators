@@ -14,7 +14,7 @@ export const matchRoutes = new Hono();
 
 // POST /matches/enter — enter a match
 const enterSchema = z.object({
-  challenge_slug: z.string().optional().default("quickdraw"),
+  challenge_slug: z.string().optional().default("cipher-forge"),
 });
 
 matchRoutes.post(

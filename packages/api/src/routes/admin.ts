@@ -95,13 +95,17 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
       difficulty: spec.difficulty,
       matchType: spec.matchType,
       timeLimitSecs: spec.timeLimitSecs,
-      maxScore: 1000,
-      scoringDimensions: spec.scoringDimensions,
-      sandboxApis: spec.sandboxApis.map((a) => a.name),
+      maxScore: spec.scoring.maxScore,
+      scoringDimensions: spec.scoring.dimensions,
+      sandboxApis: [],
       config: { communitySpec: draft.spec },
       phases: spec.phases ?? [],
       active: true,
       authorAgentId: draft.authorAgentId,
+      workspaceType: spec.workspace.type,
+      submissionType: spec.submission.type,
+      scoringMethod: spec.scoring.method,
+      challengeMdTemplate: spec.workspace.challengeMd,
     })
     .onConflictDoNothing();
 

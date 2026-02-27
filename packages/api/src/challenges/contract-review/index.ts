@@ -1,63 +1,69 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { CONTRACT_REVIEW_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateContractData } from "./data.js";
 import { scoreContract } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateContractData } from "./data.js";
-export { scoreContract } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: The Contract Review
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+A 30-section fictional deep-sea trade contract with planted issues: inconsistencies,
+undefined terms, contradictions, and missing cross-references. Find them all.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateContractData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`contract/\` — 30 section files (one per contract section)
+- \`definitions.json\` — Defined terms and their meanings
+
+## Submission Format
+\`\`\`json
+{
+  "answer": {
+    "issues": [
+      {
+        "section": "section_id",
+        "clause": "specific clause text",
+        "type": "inconsistency|undefined_term|contradiction|missing_reference|ambiguous",
+        "description": "explanation of the issue"
+      }
+    ]
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
-
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 300 seconds
+- Review all 30 sections
+`;
 
 export const contractReviewModule: ChallengeModule = {
   slug: "contract-review",
   dimensions: CONTRACT_REVIEW_DIMENSIONS,
+  execution: "workspace",
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      issues: "[{ section: string, clause: string, type: string, description: string }]",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: CONTRACT_REVIEW_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateContractData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      sections: data.sections.map(s => ({ id: s.id, title: s.title })),
-      definitions: data.definitions,
     };
   },
 
@@ -65,115 +71,22 @@ export const contractReviewModule: ChallengeModule = {
     return scoreContract(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["contract", "definitions"];
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateContractData(seed);
+    const files: Record<string, string> = {};
+    for (const section of data.sections) {
+      const s = section as { id: string; title: string; clauses: string[] };
+      const content = s.clauses.map((c, i) => `${i + 1}. ${c}`).join("\n\n");
+      files[`contract/${s.id}.txt`] = `# ${s.title}\n\n${content}`;
+    }
+    files["definitions.json"] = JSON.stringify(data.definitions, null, 2);
+    return files;
   },
 
   sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/contract — returns section list (id + title only) or search results
-    sandbox.get("/:matchId/contract", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The contract has dissolved into the abyss.");
-      }
-
-      const searchTerm = c.req.query("search");
-
-      if (searchTerm) {
-        // Search: return sections containing the search term with matching clause excerpts
-        const query = searchTerm.toLowerCase();
-        const matches: Array<{ id: string; title: string; matching_clauses: string[] }> = [];
-
-        for (const section of result.data.sections) {
-          const matchingClauses: string[] = [];
-          for (const clause of section.clauses) {
-            if (clause.toLowerCase().includes(query)) {
-              matchingClauses.push(clause);
-            }
-          }
-          if (matchingClauses.length > 0) {
-            matches.push({
-              id: section.id,
-              title: section.title,
-              matching_clauses: matchingClauses,
-            });
-          }
-        }
-
-        await logApiCall(matchId, result.match.apiCallLog, "GET",
-          `/sandbox/${matchId}/contract?search=${encodeURIComponent(searchTerm)}`, 200, startTime);
-
-        return c.json({
-          query: searchTerm,
-          results: matches,
-          total_matches: matches.length,
-        });
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/contract`, 200, startTime);
-
-      return c.json({
-        sections: result.data.sections.map(s => ({ id: s.id, title: s.title })),
-        total_sections: result.data.sections.length,
-        instructions: "Use GET /:matchId/contract/:sectionId to read individual sections. Use GET /:matchId/definitions for defined terms. Use ?search=term to find sections containing a specific term.",
-      });
-    });
-
-    // GET /:matchId/contract/:sectionId — returns full section with clauses
-    sandbox.get("/:matchId/contract/:sectionId", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const sectionId = c.req.param("sectionId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The contract has dissolved into the abyss.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/contract/${sectionId}`, 200, startTime);
-
-      const section = result.data.sections.find(s => s.id === sectionId);
-      if (!section) {
-        return c.json({
-          error: "Section not found",
-          available_ids: result.data.sections.map(s => s.id),
-        }, 404);
-      }
-
-      return c.json({
-        id: section.id,
-        title: section.title,
-        clauses: section.clauses,
-        clause_count: section.clauses.length,
-      });
-    });
-
-    // GET /:matchId/definitions — returns all defined terms
-    sandbox.get("/:matchId/definitions", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The contract has dissolved into the abyss.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/definitions`, 200, startTime);
-
-      return c.json({
-        definitions: result.data.definitions,
-        total: result.data.definitions.length,
-      });
-    });
-
-    return sandbox;
+    return new Hono();
+  },
+  sandboxApiNames(): string[] {
+    return [];
   },
 };

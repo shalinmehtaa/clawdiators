@@ -2,11 +2,11 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { MappingGroundTruth } from "./data.js";
 
-const WEIGHTS = { coverage: 0.35, accuracy: 0.3, efficiency: 0.15, exploration: 0.2 };
+const WEIGHTS = { coverage: 0.35, accuracy: 0.3, exploration: 0.2, strategy: 0.15 };
 const TIME_LIMIT = 3600; // 1 hour
 
 export function scoreMapping(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as MappingGroundTruth;
 
   // === Coverage: how many nodes discovered (0-1000 raw) ===
@@ -63,16 +63,16 @@ export function scoreMapping(input: ScoringInput): ScoreResult {
     }
   }
 
-  // === Efficiency: time and API calls ===
-  const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
-  // For long-running, don't penalize time as harshly — penalize API call waste
-  let efficiencyRaw: number;
-  const callsPerNode = apiCallCount / Math.max(discoveredCount, 1);
-  if (callsPerNode <= 1.5) efficiencyRaw = 1000;
-  else if (callsPerNode <= 2) efficiencyRaw = 800;
-  else if (callsPerNode <= 3) efficiencyRaw = 600;
-  else if (callsPerNode <= 5) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Strategy (0-1000 raw) ===
+  // Reward efficient exploration — fewer revisits, more unique discoveries
+  let strategyRaw: number;
+  const exploredNodes = Array.isArray(submission.explored_nodes) ? submission.explored_nodes : [];
+  const uniqueNodes = new Set(exploredNodes.map(String));
+  const revisitRatio = uniqueNodes.size > 0 ? uniqueNodes.size / exploredNodes.length : 0;
+  if (revisitRatio >= 0.9) strategyRaw = 1000;
+  else if (revisitRatio >= 0.7) strategyRaw = 750;
+  else if (revisitRatio >= 0.5) strategyRaw = 500;
+  else strategyRaw = 300;
 
   // === Exploration quality: path value ===
   let explorationRaw = 0;
@@ -92,9 +92,9 @@ export function scoreMapping(input: ScoringInput): ScoreResult {
   // Weighted total
   const coverage = Math.round(coverageRaw * WEIGHTS.coverage);
   const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
+  const strategy = Math.round(strategyRaw * WEIGHTS.strategy);
   const exploration = Math.round(explorationRaw * WEIGHTS.exploration);
-  const total = Math.min(MAX_SCORE, coverage + accuracy + efficiency + exploration);
+  const total = Math.min(MAX_SCORE, coverage + accuracy + strategy + exploration);
 
-  return { breakdown: { coverage, accuracy, efficiency, exploration, total } };
+  return { breakdown: { coverage, accuracy, strategy, exploration, total } };
 }

@@ -1,19 +1,11 @@
 import type { ChallengeModule } from "./types.js";
-import { quickdrawModule } from "./quickdraw/index.js";
-import { cascadingFailureModule } from "./cascading-failure/index.js";
-import { toolchainGauntletModule } from "./toolchain-gauntlet/index.js";
-import { tideLedgerModule } from "./tide-ledger/index.js";
 import { deepMappingModule } from "./deep-mapping/index.js";
 import { cipherForgeModule } from "./cipher-forge/index.js";
 import { logicReefModule } from "./logic-reef/index.js";
 import { reefRefactorModule } from "./reef-refactor/index.js";
-import { switchboardModule } from "./switchboard/index.js";
-import { rateLimitedReconModule } from "./rate-limited-recon/index.js";
 import { depthFirstGenModule } from "./depth-first-gen/index.js";
 import { archiveDiveModule } from "./archive-dive/index.js";
 import { contractReviewModule } from "./contract-review/index.js";
-import { coralCensusModule } from "./coral-census/index.js";
-import { supplyChainModule } from "./supply-chain/index.js";
 import { chartForensicsModule } from "./chart-forensics/index.js";
 import { cartographersEyeModule } from "./cartographers-eye/index.js";
 import { blueprintAuditModule } from "./blueprint-audit/index.js";
@@ -49,29 +41,19 @@ export function registerModule(mod: ChallengeModule): void {
   registry.set(mod.slug, mod);
 }
 
-// ── Register built-in challenge modules ──────────────────────────────
-register(quickdrawModule);
-register(cascadingFailureModule);
-register(toolchainGauntletModule);
-register(tideLedgerModule);
-register(deepMappingModule);
+// ── Register workspace-based challenge modules ──────────────────────
 register(cipherForgeModule);
-register(logicReefModule);
 register(reefRefactorModule);
-register(switchboardModule);
-register(rateLimitedReconModule);
 register(depthFirstGenModule);
+register(logicReefModule);
 register(archiveDiveModule);
+register(adversarialInterviewModule);
 register(contractReviewModule);
-register(coralCensusModule);
-register(supplyChainModule);
+register(theMirageModule);
 register(chartForensicsModule);
+register(deepMappingModule);
 register(cartographersEyeModule);
 register(blueprintAuditModule);
-register(adversarialInterviewModule);
-register(theMirageModule);
-
-// ── Register workspace-based challenge modules ──────────────────────
 register(codebaseArchaeologyModule);
 register(needleHaystackModule);
 register(performanceOptimizerModule);

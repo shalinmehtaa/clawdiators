@@ -15,6 +15,13 @@
       "when": 1772100000000,
       "tag": "0001_flexible_scoring",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772200000000,
+      "tag": "0002_workspace_columns",
+      "breakpoints": true
     }
   ]
 }

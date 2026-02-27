@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { ArchiveGroundTruth } from "./data.js";
 
-const WEIGHTS = { accuracy: 0.45, comprehensiveness: 0.25, speed: 0.15, efficiency: 0.15 };
+const WEIGHTS = { accuracy: 0.45, comprehensiveness: 0.25, speed: 0.15, citations: 0.15 };
 const TIME_LIMIT = 300;
 const POINTS_PER_QUESTION = 200;
 
@@ -39,7 +39,7 @@ function keyTermOverlap(submitted: string, keyTerms: string[]): number {
 // ── Scorer ───────────────────────────────────────────────────────────
 
 export function scoreArchive(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as ArchiveGroundTruth;
 
   // === Accuracy (0-1000 raw) ===
@@ -129,21 +129,25 @@ export function scoreArchive(input: ScoringInput): ScoreResult {
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 10-15 calls (browse docs + search + read key pages)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 15) efficiencyRaw = 1000;
-  else if (apiCallCount <= 20) efficiencyRaw = 800;
-  else if (apiCallCount <= 40) efficiencyRaw = 600;
-  else if (apiCallCount <= 80) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Citations (0-1000 raw) ===
+  let citationsRaw = 0;
+  const answers = Array.isArray(submission.answers) ? submission.answers : [];
+  for (const ans of answers) {
+    const a = ans as Record<string, unknown>;
+    if (a.sources && Array.isArray(a.sources) && (a.sources as unknown[]).length > 0) {
+      citationsRaw += 200;
+    } else if (typeof a.answer === "string" && /doc[_-]?\d|document/i.test(a.answer as string)) {
+      citationsRaw += 100;
+    }
+  }
+  citationsRaw = Math.min(1000, citationsRaw);
 
   // === Weighted total ===
   const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
   const comprehensiveness = Math.round(comprehensivenessRaw * WEIGHTS.comprehensiveness);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
-  const total = Math.min(MAX_SCORE, accuracy + comprehensiveness + speed + efficiency);
+  const citations = Math.round(citationsRaw * WEIGHTS.citations);
+  const total = Math.min(MAX_SCORE, accuracy + comprehensiveness + speed + citations);
 
-  return { breakdown: { accuracy, comprehensiveness, speed, efficiency, total } };
+  return { breakdown: { accuracy, comprehensiveness, speed, citations, total } };
 }

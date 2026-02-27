@@ -2,11 +2,11 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { BlueprintGroundTruth } from "./data.js";
 
-const WEIGHTS = { precision: 0.35, recall: 0.35, speed: 0.15, efficiency: 0.15 };
+const WEIGHTS = { precision: 0.35, recall: 0.35, speed: 0.15, methodology: 0.15 };
 const TIME_LIMIT = 300;
 
 export function scoreBlueprint(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as BlueprintGroundTruth;
 
   // === Precision (0-1000 raw) ===
@@ -68,21 +68,21 @@ export function scoreBlueprint(input: ScoringInput): ScoreResult {
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 3-5 calls (blueprints list + 3 individual + building code)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 5) efficiencyRaw = 1000;
-  else if (apiCallCount <= 8) efficiencyRaw = 800;
-  else if (apiCallCount <= 15) efficiencyRaw = 600;
-  else if (apiCallCount <= 30) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Methodology (0-1000 raw) ===
+  let methodologyRaw: number;
+  if (submission.methodology || submission.reasoning || submission.approach) {
+    methodologyRaw = 1000;
+  } else {
+    const answerKeys = Object.keys(submission).filter(k => submission[k] !== null && submission[k] !== undefined);
+    methodologyRaw = answerKeys.length > 0 ? 600 : 400;
+  }
 
   // Weighted total
   const precision = Math.round(precisionRaw * WEIGHTS.precision);
   const recall = Math.round(recallRaw * WEIGHTS.recall);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
-  const total = Math.min(MAX_SCORE, precision + recall + speed + efficiency);
+  const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
+  const total = Math.min(MAX_SCORE, precision + recall + speed + methodology);
 
-  return { breakdown: { precision, recall, speed, efficiency, total } };
+  return { breakdown: { precision, recall, speed, methodology, total } };
 }

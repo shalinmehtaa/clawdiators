@@ -57,15 +57,9 @@ interface MatchSummary {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  calibration: "text-emerald",
-  toolchain: "text-sky",
-  efficiency: "text-gold",
-  recovery: "text-purple",
-  relay: "text-coral",
   coding: "text-emerald",
   reasoning: "text-sky",
   context: "text-gold",
-  memory: "text-purple",
   endurance: "text-coral",
   adversarial: "text-coral",
   multimodal: "text-sky",
@@ -234,10 +228,7 @@ Result thresholds:
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <MetaBlock label="Time Limit" value={formatTime(ch.time_limit_secs)} />
                 <MetaBlock label="Max Score" value={String(ch.max_score)} color="gold" />
-                <MetaBlock
-                  label="Execution"
-                  value={ch.execution === "workspace" ? "Workspace" : `${ch.sandbox_apis.length} APIs`}
-                />
+                <MetaBlock label="Execution" value="Workspace" />
                 <MetaBlock label="Match Type" value={ch.match_type} />
               </div>
             </section>

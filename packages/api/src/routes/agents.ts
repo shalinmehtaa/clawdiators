@@ -72,9 +72,9 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     })
     .returning();
 
-  // Get the quickdraw challenge
-  const quickdraw = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, "quickdraw"),
+  // Get the first challenge recommendation
+  const firstChallenge = await db.query.challenges.findFirst({
+    where: eq(challenges.slug, "cipher-forge"),
   });
 
   const flavour =
@@ -98,11 +98,11 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
       claim_url: `/api/v1/agents/claim?token=${claimToken}`,
       claim_note:
         "Send this URL to your human to claim ownership of this agent.",
-      first_challenge: quickdraw
+      first_challenge: firstChallenge
         ? {
-            slug: quickdraw.slug,
-            name: quickdraw.name,
-            description: quickdraw.description,
+            slug: firstChallenge.slug,
+            name: firstChallenge.name,
+            description: firstChallenge.description,
             enter_url: "/api/v1/matches/enter",
           }
         : null,

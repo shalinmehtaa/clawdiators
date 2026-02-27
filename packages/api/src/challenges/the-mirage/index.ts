@@ -1,64 +1,70 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { THE_MIRAGE_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateMirageData } from "./data.js";
 import { scoreMirage } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateMirageData } from "./data.js";
-export { scoreMirage } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: The Mirage
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+Three datasets for 15 districts — census, financial, and environmental. Each is
+internally consistent, but cross-referencing reveals fabricated data points.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateMirageData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`census/\` — Census data files per district
+- \`financial/\` — Financial data files per district
+- \`environmental/\` — Environmental data files per district
+
+## Submission Format
+\`\`\`json
+{
+  "answer": {
+    "fabrications": [
+      {
+        "district": "district_name",
+        "dataset": "census|financial|environmental",
+        "field": "specific field name",
+        "reason": "explanation of why this is fabricated"
+      }
+    ]
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
-
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 240 seconds
+- Cross-reference all three datasets to find inconsistencies
+`;
 
 export const theMirageModule: ChallengeModule = {
   slug: "the-mirage",
   dimensions: THE_MIRAGE_DIMENSIONS,
+  execution: "workspace",
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      fabrications: "[{ district: string, dataset: string, field: string, reason: string }]",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: THE_MIRAGE_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateMirageData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      census: data.census,
-      financial: data.financial,
-      environmental: data.environmental,
     };
   },
 
@@ -66,94 +72,28 @@ export const theMirageModule: ChallengeModule = {
     return scoreMirage(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["census", "financial", "environmental"];
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateMirageData(seed);
+    const files: Record<string, string> = {};
+    const census = data.census as Array<Record<string, unknown>>;
+    const financial = data.financial as Array<Record<string, unknown>>;
+    const environmental = data.environmental as Array<Record<string, unknown>>;
+    for (const d of census) {
+      files[`census/${d.district}.json`] = JSON.stringify(d, null, 2);
+    }
+    for (const d of financial) {
+      files[`financial/${d.district}.json`] = JSON.stringify(d, null, 2);
+    }
+    for (const d of environmental) {
+      files[`environmental/${d.district}.json`] = JSON.stringify(d, null, 2);
+    }
+    return files;
   },
 
   sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/census — all census records or filtered by district
-    sandbox.get("/:matchId/census", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The mirage fades.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/census`, 200, startTime);
-
-      const district = c.req.query("district");
-      if (district) {
-        const entry = result.data.census.find(
-          (r) => r.district.toLowerCase() === district.toLowerCase(),
-        );
-        if (!entry) {
-          return c.json({ error: "District not found", available: result.data.census.map((r) => r.district) }, 404);
-        }
-        return c.json(entry);
-      }
-
-      return c.json({ districts: result.data.census, total: result.data.census.length });
-    });
-
-    // GET /:matchId/financial — all financial records or filtered by district
-    sandbox.get("/:matchId/financial", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The mirage fades.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/financial`, 200, startTime);
-
-      const district = c.req.query("district");
-      if (district) {
-        const entry = result.data.financial.find(
-          (r) => r.district.toLowerCase() === district.toLowerCase(),
-        );
-        if (!entry) {
-          return c.json({ error: "District not found", available: result.data.financial.map((r) => r.district) }, 404);
-        }
-        return c.json(entry);
-      }
-
-      return c.json({ districts: result.data.financial, total: result.data.financial.length });
-    });
-
-    // GET /:matchId/environmental — all environmental records or filtered by district
-    sandbox.get("/:matchId/environmental", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The mirage fades.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/environmental`, 200, startTime);
-
-      const district = c.req.query("district");
-      if (district) {
-        const entry = result.data.environmental.find(
-          (r) => r.district.toLowerCase() === district.toLowerCase(),
-        );
-        if (!entry) {
-          return c.json({ error: "District not found", available: result.data.environmental.map((r) => r.district) }, 404);
-        }
-        return c.json(entry);
-      }
-
-      return c.json({ districts: result.data.environmental, total: result.data.environmental.length });
-    });
-
-    return sandbox;
+    return new Hono();
+  },
+  sandboxApiNames(): string[] {
+    return [];
   },
 };

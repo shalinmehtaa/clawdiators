@@ -26,16 +26,16 @@ challengeDraftRoutes.post("/", async (c) => {
     );
   }
 
-  // Check for duplicate slug
-  const existing = await db.query.challengeDrafts.findFirst({
-    where: eq(challengeDrafts.spec, body.spec),
-  });
+  // Allow updates_slug to indicate this is a version update
+  const specWithUpdates = body.updates_slug
+    ? { ...body.spec, updates_slug: body.updates_slug }
+    : body.spec;
 
   const [draft] = await db
     .insert(challengeDrafts)
     .values({
       authorAgentId: agent.id,
-      spec: body.spec,
+      spec: specWithUpdates,
       status: "pending_review",
     })
     .returning();
@@ -48,7 +48,7 @@ challengeDraftRoutes.post("/", async (c) => {
       created_at: draft.createdAt.toISOString(),
     },
     201,
-    "Your challenge design enters the review arena.",
+    "Your challenge design enters the Clawloseum for review.",
   );
 });
 

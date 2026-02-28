@@ -1,42 +1,71 @@
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
-import type { ApiCallLogEntry, ScoringDimension } from "@clawdiators/shared";
+import { DEEP_MAPPING_DIMENSIONS } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateMappingData } from "./data.js";
 import { scoreMapping } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-const DEEP_MAPPING_DIMENSIONS: ScoringDimension[] = [
-  { key: "coverage", label: "Coverage", weight: 0.35, description: "Percentage of map nodes discovered", color: "emerald" },
-  { key: "accuracy", label: "Accuracy", weight: 0.3, description: "Correct identification of key features", color: "sky" },
-  { key: "efficiency", label: "Efficiency", weight: 0.15, description: "API calls per node discovered", color: "gold" },
-  { key: "exploration", label: "Exploration", weight: 0.2, description: "Resource collection path quality", color: "purple" },
-];
+const CHALLENGE_MD_TEMPLATE = `# Challenge: The Deep Mapping Expedition
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({ where: eq(matches.id, matchId) });
-  if (!match || match.status !== "active" || new Date() > match.expiresAt) return null;
-  const data = generateMappingData(match.seed);
-  return { match, data };
+## Objective
+Explore a procedural ocean floor graph. Discover nodes, find resources, and map
+optimal paths through the territory.
+
+## Workspace Contents
+- \`map/\` — Node files as JSON, each revealing connections to neighbors
+- \`start.json\` — Starting node with initial connections
+
+## How to Explore
+Read node files to discover their connections and resources. Each node file contains:
+- Node ID, depth, resources, and connections to neighboring nodes
+- Neighboring node filenames that you can read to continue exploration
+
+## Submission Format
+\`\`\`json
+{
+  "answer": {
+    "explored_nodes": ["node_1", "node_2", ...],
+    "resources": { "type": count, ... },
+    "best_path": ["node_a", "node_b", ...],
+    "total_value": 1234
+  }
 }
+\`\`\`
 
-async function logApiCall(matchId: string, currentLog: ApiCallLogEntry[], method: string, path: string, status: number, startTime: number) {
-  const entry: ApiCallLogEntry = { ts: new Date().toISOString(), method, path, status, durationMs: Date.now() - startTime };
-  await db.update(matches).set({ apiCallLog: [...currentLog, entry] }).where(eq(matches.id, matchId));
-}
+## Constraints
+- Time limit: 3600 seconds (1 hour)
+- Explore by reading node files — each file reveals neighboring connections
+`;
 
 export const deepMappingModule: ChallengeModule = {
   slug: "deep-mapping",
   dimensions: DEEP_MAPPING_DIMENSIONS,
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      explored_nodes: "string[]",
+      resources: "Record<string, number>",
+      best_path: "string[]",
+      total_value: "number",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: DEEP_MAPPING_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateMappingData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      startNodeId: data.startNodeId,
-      // Don't include nodes — they're only available via sandbox exploration
     };
   },
 
@@ -44,89 +73,25 @@ export const deepMappingModule: ChallengeModule = {
     return scoreMapping(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["map"];
-  },
-
-  sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/map/start — get the starting node
-    sandbox.get("/:matchId/map/start", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-      if (!result) return errorEnvelope(c, "Match not found or expired", 404);
-      await logApiCall(matchId, result.match.apiCallLog, "GET", `/sandbox/${matchId}/map/start`, 200, startTime);
-
-      const startNode = result.data.nodes.find((n) => n.id === result.data.startNodeId)!;
-      return c.json({
-        node: {
-          id: startNode.id,
-          name: startNode.name,
-          type: startNode.type,
-          depth: startNode.depth,
-          resource: startNode.resource,
-          resource_value: startNode.resourceValue,
-          connections: startNode.connections,
-        },
-        instructions: "Use GET /map/explore/:nodeId to explore connected nodes.",
-      });
-    });
-
-    // GET /:matchId/map/explore/:nodeId — explore a node
-    sandbox.get("/:matchId/map/explore/:nodeId", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const nodeId = c.req.param("nodeId");
-      const result = await getMatchAndData(matchId);
-      if (!result) return errorEnvelope(c, "Match not found or expired", 404);
-      await logApiCall(matchId, result.match.apiCallLog, "GET", `/sandbox/${matchId}/map/explore/${nodeId}`, 200, startTime);
-
-      const node = result.data.nodes.find((n) => n.id === nodeId);
-      if (!node) {
-        return c.json({ error: "Node not found", node_id: nodeId }, 404);
-      }
-
-      // Check if discoverable (must have explored a neighbor first, or be directly accessible)
-      // For simplicity, all nodes are explorable if you have their ID
-      return c.json({
-        node: {
-          id: node.id,
-          name: node.name,
-          type: node.type,
-          depth: node.depth,
-          resource: node.resource,
-          resource_value: node.resourceValue,
-          connections: node.connections,
-        },
-      });
-    });
-
-    // GET /:matchId/map/stats — summary of what's been explored (based on API log)
-    sandbox.get("/:matchId/map/stats", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-      if (!result) return errorEnvelope(c, "Match not found or expired", 404);
-      await logApiCall(matchId, result.match.apiCallLog, "GET", `/sandbox/${matchId}/map/stats`, 200, startTime);
-
-      // Count unique nodes explored from the API call log
-      const exploredNodes = new Set<string>();
-      for (const call of result.match.apiCallLog) {
-        const exploreMatch = call.path.match(/\/map\/explore\/(NODE-\d+)/);
-        if (exploreMatch) exploredNodes.add(exploreMatch[1]);
-        const startMatch = call.path.match(/\/map\/start/);
-        if (startMatch) exploredNodes.add(result.data.startNodeId);
-      }
-
-      return c.json({
-        nodes_explored: exploredNodes.size,
-        total_api_calls: result.match.apiCallLog.length + 1, // +1 for this call
-        time_remaining_secs: Math.max(0, Math.round((result.match.expiresAt.getTime() - Date.now()) / 1000)),
-      });
-    });
-
-    return sandbox;
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateMappingData(seed);
+    const files: Record<string, string> = {};
+    // Start file shows the first node
+    const startNode = data.nodes[0];
+    files["start.json"] = JSON.stringify({
+      start_node: startNode.id,
+      message: "Begin your expedition from this node. Read map files to explore.",
+    }, null, 2);
+    // Each node as a separate file
+    for (const node of data.nodes) {
+      files[`map/${node.id}.json`] = JSON.stringify({
+        id: node.id,
+        depth: node.depth,
+        resource: node.resource,
+        resource_value: node.resourceValue,
+        connections: node.connections,
+      }, null, 2);
+    }
+    return files;
   },
 };

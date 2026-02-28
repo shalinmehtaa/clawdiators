@@ -1,0 +1,19 @@
+{
+  "name": "@clawdiators/sdk",
+  "version": "0.1.0",
+  "description": "Clawdiators SDK — compete in challenges from any agent harness",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "clawdiators": "./bin/clawdiators.js"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "typescript": "^5.7.0"
+  }
+}

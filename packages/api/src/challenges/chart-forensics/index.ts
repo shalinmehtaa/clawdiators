@@ -1,63 +1,67 @@
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { CHART_FORENSICS_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateForensicsData } from "./data.js";
 import { scoreForensics } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateForensicsData } from "./data.js";
-export { scoreForensics } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: Chart Forensics
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+Five data tables and five SVG charts. Some charts misrepresent their data — wrong heights,
+swapped labels, misleading scales. Find the lies.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateForensicsData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`data/\` — 5 JSON files with source data tables
+- \`charts/\` — 5 SVG chart files with metadata
+- \`descriptions/\` — Text descriptions of each chart
+
+## Submission Format
+\`\`\`json
+{
+  "answer": {
+    "findings": [
+      {
+        "chart_id": "chart_1",
+        "discrepancy": "description of the misrepresentation",
+        "correct_value": "what the chart should show"
+      }
+    ]
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
-
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 180 seconds
+- Compare each chart against its source data
+`;
 
 export const chartForensicsModule: ChallengeModule = {
   slug: "chart-forensics",
   dimensions: CHART_FORENSICS_DIMENSIONS,
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      findings: "[{ chart_id: string, discrepancy: string, correct_value: string }]",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: CHART_FORENSICS_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateForensicsData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      tables: data.tables,
-      charts: data.charts,
     };
   },
 
@@ -65,143 +69,22 @@ export const chartForensicsModule: ChallengeModule = {
     return scoreForensics(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["data", "charts", "descriptions"];
-  },
-
-  sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/data — returns all tables (or ?tableId=X for specific)
-    sandbox.get("/:matchId/data", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The evidence has been washed away.");
-      }
-
-      const tableId = c.req.query("tableId");
-      if (tableId) {
-        const table = result.data.tables.find((t) => t.id === tableId);
-        if (!table) {
-          await logApiCall(matchId, result.match.apiCallLog, "GET",
-            `/sandbox/${matchId}/data?tableId=${tableId}`, 404, startTime);
-          return c.json({
-            error: "Table not found",
-            available_ids: result.data.tables.map((t) => t.id),
-          }, 404);
-        }
-        await logApiCall(matchId, result.match.apiCallLog, "GET",
-          `/sandbox/${matchId}/data?tableId=${tableId}`, 200, startTime);
-        return c.json({ table });
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/data`, 200, startTime);
-
-      return c.json({
-        tables: result.data.tables,
-        total: result.data.tables.length,
-      });
-    });
-
-    // GET /:matchId/data/:tableId — returns single table
-    sandbox.get("/:matchId/data/:tableId", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const tableId = c.req.param("tableId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The evidence has been washed away.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/data/${tableId}`, 200, startTime);
-
-      const table = result.data.tables.find((t) => t.id === tableId);
-      if (!table) {
-        return c.json({
-          error: "Table not found",
-          available_ids: result.data.tables.map((t) => t.id),
-        }, 404);
-      }
-
-      return c.json({ table });
-    });
-
-    // GET /:matchId/charts — returns all charts with SVGs
-    sandbox.get("/:matchId/charts", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The evidence has been washed away.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/charts`, 200, startTime);
-
-      return c.json({
-        charts: result.data.charts,
-        total: result.data.charts.length,
-      });
-    });
-
-    // GET /:matchId/charts/:chartId — returns single chart
-    sandbox.get("/:matchId/charts/:chartId", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const chartId = c.req.param("chartId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The evidence has been washed away.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/charts/${chartId}`, 200, startTime);
-
-      const chart = result.data.charts.find((ch) => ch.id === chartId);
-      if (!chart) {
-        return c.json({
-          error: "Chart not found",
-          available_ids: result.data.charts.map((ch) => ch.id),
-        }, 404);
-      }
-
-      return c.json({ chart });
-    });
-
-    // GET /:matchId/descriptions — returns text descriptions of all charts
-    sandbox.get("/:matchId/descriptions", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The evidence has been washed away.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/descriptions`, 200, startTime);
-
-      const descriptions = result.data.charts.map((ch) => ({
-        chart_id: ch.id,
-        table_id: ch.table_id,
-        chart_type: ch.chart_type,
-        description: ch.description,
-      }));
-
-      return c.json({
-        descriptions,
-        total: descriptions.length,
-      });
-    });
-
-    return sandbox;
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateForensicsData(seed);
+    const files: Record<string, string> = {};
+    for (const t of data.tables) {
+      files[`data/${t.id}.json`] = JSON.stringify(t, null, 2);
+    }
+    for (const ch of data.charts) {
+      files[`charts/${ch.id}.svg`] = ch.svg;
+      files[`charts/${ch.id}.meta.json`] = JSON.stringify(
+        { id: ch.id, table_id: ch.table_id, chart_type: ch.chart_type },
+        null, 2,
+      );
+    }
+    for (const ch of data.charts) {
+      files[`descriptions/${ch.id}.txt`] = ch.description;
+    }
+    return files;
   },
 };

@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 
 const DEFAULT_FLAVOURS = [
-  "The arena hums with energy.",
+  "The Clawloseum hums with energy.",
   "Claws at the ready.",
   "The tides of battle shift.",
   "Another day in the colosseum.",
@@ -25,7 +25,7 @@ export function errorEnvelope(
   status: number = 400,
   flavour?: string,
 ) {
-  const f = flavour ?? "The arena frowns upon this.";
+  const f = flavour ?? "The Clawloseum frowns upon this.";
   return c.json(
     { ok: false, data: { error: message }, flavour: f },
     status as any,

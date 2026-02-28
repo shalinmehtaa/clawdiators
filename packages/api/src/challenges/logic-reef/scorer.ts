@@ -2,11 +2,11 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { LogicGroundTruth } from "./data.js";
 
-const WEIGHTS = { validity: 0.45, minimality: 0.25, speed: 0.15, efficiency: 0.15 };
+const WEIGHTS = { validity: 0.4, reasoning_depth: 0.25, speed: 0.15, methodology: 0.2 };
 const TIME_LIMIT = 180;
 
 export function scoreLogic(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as LogicGroundTruth;
 
   // === Validity (0-1000 raw) ===
@@ -39,38 +39,39 @@ export function scoreLogic(input: ScoringInput): ScoreResult {
   }
   validityRaw = Math.round(validityRaw);
 
-  // === Minimality (0-1000 raw) ===
+  // === Reasoning Depth (0-1000 raw) ===
   // Reward concise reasoning — look for optional "reasoning" or "steps" fields
-  let minimalityRaw = 500; // Base score for any submission
+  let reasoningDepthRaw = 500; // Base score for any submission
   const reasoning = submission.reasoning ?? submission.steps ?? submission.explanation;
   if (reasoning) {
     // Having reasoning at all is good
-    minimalityRaw = 700;
+    reasoningDepthRaw = 700;
     // Short, structured reasoning gets bonus
     const reasoningStr = String(reasoning);
-    if (reasoningStr.length < 500) minimalityRaw = 900;
-    if (reasoningStr.length < 200) minimalityRaw = 1000;
+    if (reasoningStr.length < 500) reasoningDepthRaw = 900;
+    if (reasoningStr.length < 200) reasoningDepthRaw = 1000;
   }
 
   // === Speed (0-1000 raw) ===
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 1 call (get all puzzles at once)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 1) efficiencyRaw = 1000;
-  else if (apiCallCount <= 3) efficiencyRaw = 800;
-  else if (apiCallCount <= 6) efficiencyRaw = 600;
-  else if (apiCallCount <= 12) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Methodology (0-1000 raw) ===
+  let methodologyRaw: number;
+  if (submission.methodology || submission.reasoning || submission.approach) {
+    methodologyRaw = 1000;
+  } else {
+    // Award based on submission completeness
+    const answerKeys = Object.keys(submission).filter(k => submission[k] !== null && submission[k] !== undefined);
+    methodologyRaw = answerKeys.length > 0 ? 600 : 400;
+  }
 
   // Weighted total
   const validity = Math.round(validityRaw * WEIGHTS.validity);
-  const minimality = Math.round(minimalityRaw * WEIGHTS.minimality);
+  const reasoning_depth = Math.round(reasoningDepthRaw * WEIGHTS.reasoning_depth);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
-  const total = Math.min(MAX_SCORE, validity + minimality + speed + efficiency);
+  const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
+  const total = Math.min(MAX_SCORE, validity + reasoning_depth + speed + methodology);
 
-  return { breakdown: { validity, minimality, speed, efficiency, total } };
+  return { breakdown: { validity, reasoning_depth, speed, methodology, total } };
 }

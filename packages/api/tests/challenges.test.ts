@@ -1,10 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { generateCascadingData } from "../src/challenges/cascading-failure/data.js";
-import { scoreCascading } from "../src/challenges/cascading-failure/scorer.js";
-import { generateGauntletData } from "../src/challenges/toolchain-gauntlet/data.js";
-import { scoreGauntlet } from "../src/challenges/toolchain-gauntlet/scorer.js";
-import { generateLedgerData } from "../src/challenges/tide-ledger/data.js";
-import { scoreLedger } from "../src/challenges/tide-ledger/scorer.js";
 import { generateMappingData } from "../src/challenges/deep-mapping/data.js";
 import { scoreMapping } from "../src/challenges/deep-mapping/scorer.js";
 import { generateCipherData } from "../src/challenges/cipher-forge/data.js";
@@ -13,20 +7,12 @@ import { generateLogicData } from "../src/challenges/logic-reef/data.js";
 import { scoreLogic } from "../src/challenges/logic-reef/scorer.js";
 import { generateRefactorData } from "../src/challenges/reef-refactor/data.js";
 import { scoreRefactor } from "../src/challenges/reef-refactor/scorer.js";
-import { generateSwitchboardData } from "../src/challenges/switchboard/data.js";
-import { scoreSwitchboard } from "../src/challenges/switchboard/scorer.js";
-import { generateReconData } from "../src/challenges/rate-limited-recon/data.js";
-import { scoreRecon } from "../src/challenges/rate-limited-recon/scorer.js";
 import { generateDepthFirstData } from "../src/challenges/depth-first-gen/data.js";
 import { scoreDepthFirst } from "../src/challenges/depth-first-gen/scorer.js";
 import { generateArchiveData } from "../src/challenges/archive-dive/data.js";
 import { scoreArchive } from "../src/challenges/archive-dive/scorer.js";
 import { generateContractData } from "../src/challenges/contract-review/data.js";
 import { scoreContract } from "../src/challenges/contract-review/scorer.js";
-import { generateCensusData } from "../src/challenges/coral-census/data.js";
-import { scoreCensus } from "../src/challenges/coral-census/scorer.js";
-import { generateSupplyChainData } from "../src/challenges/supply-chain/data.js";
-import { scoreSupplyChain } from "../src/challenges/supply-chain/scorer.js";
 import { generateForensicsData } from "../src/challenges/chart-forensics/data.js";
 import { scoreForensics } from "../src/challenges/chart-forensics/scorer.js";
 import { generateCartographerData } from "../src/challenges/cartographers-eye/data.js";
@@ -37,196 +23,12 @@ import { generateInterviewData } from "../src/challenges/adversarial-interview/d
 import { scoreInterview } from "../src/challenges/adversarial-interview/scorer.js";
 import { generateMirageData } from "../src/challenges/the-mirage/data.js";
 import { scoreMirage } from "../src/challenges/the-mirage/scorer.js";
-
-// ── Cascading Failure ────────────────────────────────────────────────
-
-describe("Cascading Failure data generation", () => {
-  it("is deterministic — same seed produces same data", () => {
-    const d1 = generateCascadingData(42);
-    const d2 = generateCascadingData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.weather).toEqual(d2.weather);
-    expect(d1.objective).toEqual(d2.objective);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateCascadingData(42);
-    const d2 = generateCascadingData(99);
-    expect(d1.groundTruth.target_ticker).not.toBe(d2.groundTruth.target_ticker);
-  });
-
-  it("has a failure schedule", () => {
-    const d = generateCascadingData(42);
-    expect(d.groundTruth.failure_schedule.length).toBeGreaterThan(0);
-    for (const f of d.groundTruth.failure_schedule) {
-      expect(f.callNumber).toBeGreaterThan(0);
-      expect(["500", "malformed", "404", "stale", "timeout"]).toContain(f.type);
-    }
-  });
-});
-
-describe("Cascading Failure scoring", () => {
-  const data = generateCascadingData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("is deterministic", () => {
-    const sub = { ticker: gt.target_ticker };
-    const r1 = scoreCascading({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 10 });
-    const r2 = scoreCascading({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 10 });
-    expect(r1).toEqual(r2);
-  });
-
-  it("scores resilience higher for agents that report errors", () => {
-    const withErrors = scoreCascading({
-      submission: { ticker: gt.target_ticker, error_log: ["500 on weather"] },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 15,
-    });
-    const withoutErrors = scoreCascading({
-      submission: { ticker: gt.target_ticker },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 15,
-    });
-    expect(withErrors.breakdown.resilience).toBeGreaterThan(withoutErrors.breakdown.resilience);
-  });
-
-  it("score never exceeds 1000", () => {
-    const r = scoreCascading({
-      submission: { ticker: gt.target_ticker, close_price: gt.target_close_price, headline: gt.target_article_headline, sentiment: gt.target_sentiment, price_change_pct: gt.price_change_pct, error_log: ["handled"] },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 3,
-    });
-    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
-  });
-});
-
-// ── Tool-Chain Gauntlet ──────────────────────────────────────────────
-
-describe("Tool-Chain Gauntlet data generation", () => {
-  it("is deterministic", () => {
-    const d1 = generateGauntletData(42);
-    const d2 = generateGauntletData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.registry).toEqual(d2.registry);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateGauntletData(42);
-    const d2 = generateGauntletData(999);
-    expect(d1.groundTruth.optimalProduct.sku).not.toBe(d2.groundTruth.optimalProduct.sku);
-  });
-
-  it("generates all 6 API datasets", () => {
-    const d = generateGauntletData(42);
-    expect(d.registry.length).toBeGreaterThan(0);
-    expect(d.inventory.length).toBeGreaterThan(0);
-    expect(d.pricing.length).toBeGreaterThan(0);
-    expect(d.shipping.length).toBeGreaterThan(0);
-    expect(d.loyalty.customerId).toBeDefined();
-    expect(d.audit.length).toBeGreaterThan(0);
-  });
-
-  it("optimal product is in stock, compliant, and cheapest", () => {
-    const d = generateGauntletData(42);
-    const opt = d.groundTruth.optimalProduct;
-    // In stock
-    const inStock = d.inventory.find((i) => i.sku === opt.sku && i.warehouse === opt.warehouse);
-    expect(inStock).toBeDefined();
-    expect(inStock!.quantity).toBeGreaterThan(0);
-    // Compliant
-    const audit = d.audit.find((a) => a.sku === opt.sku);
-    expect(audit?.compliant).toBe(true);
-  });
-});
-
-describe("Tool-Chain Gauntlet scoring", () => {
-  const data = generateGauntletData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("is deterministic", () => {
-    const sub = { sku: gt.optimalProduct.sku };
-    const r1 = scoreGauntlet({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 6 });
-    const r2 = scoreGauntlet({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 6 });
-    expect(r1).toEqual(r2);
-  });
-
-  it("perfect answer with checkpoints gets high score", () => {
-    const r = scoreGauntlet({
-      submission: {
-        sku: gt.optimalProduct.sku,
-        final_price: gt.optimalProduct.finalPrice,
-        shipping_cost: gt.optimalProduct.shippingCost,
-        total_cost: gt.optimalProduct.totalCost,
-        carrier: gt.optimalProduct.carrier,
-        delivery_days: gt.optimalProduct.deliveryDays,
-      },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 6,
-      checkpoints: [{}, {}, {}],
-    });
-    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
-  });
-});
-
-// ── Tide Ledger ──────────────────────────────────────────────────────
-
-describe("Tide Ledger data generation", () => {
-  it("is deterministic", () => {
-    const d1 = generateLedgerData(42);
-    const d2 = generateLedgerData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.phase1_transactions).toEqual(d2.phase1_transactions);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateLedgerData(42);
-    const d2 = generateLedgerData(999);
-    expect(d1.groundTruth.phase3_final_total).not.toBe(d2.groundTruth.phase3_final_total);
-  });
-
-  it("generates correct phase sizes", () => {
-    const d = generateLedgerData(42);
-    expect(d.phase1_transactions).toHaveLength(50);
-    expect(d.phase2_amendments).toHaveLength(30);
-    expect(d.phase3_rollbacks).toHaveLength(20);
-    expect(d.phase3_new_transactions).toHaveLength(10);
-  });
-
-  it("phase1 balances are internally consistent", () => {
-    const d = generateLedgerData(42);
-    const computed: Record<string, number> = {};
-    for (const txn of d.phase1_transactions) {
-      if (!computed[txn.account]) computed[txn.account] = 0;
-      if (txn.type === "credit") computed[txn.account] = Math.round((computed[txn.account] + txn.amount) * 100) / 100;
-      else computed[txn.account] = Math.round((computed[txn.account] - txn.amount) * 100) / 100;
-    }
-    expect(computed).toEqual(d.groundTruth.phase1_balances);
-  });
-});
-
-describe("Tide Ledger scoring", () => {
-  const data = generateLedgerData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("is deterministic", () => {
-    const sub = { balances: gt.phase3_balances, total: gt.phase3_final_total };
-    const r1 = scoreLedger({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 6 });
-    const r2 = scoreLedger({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 6 });
-    expect(r1).toEqual(r2);
-  });
-
-  it("perfect answer with checkpoints gets high score", () => {
-    const r = scoreLedger({
-      submission: { balances: gt.phase3_balances, total: gt.phase3_final_total },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 6,
-      checkpoints: [
-        { data: { balances: gt.phase1_balances } },
-        { data: { balances: gt.phase2_balances } },
-        { data: { balances: gt.phase3_balances } },
-      ],
-    });
-    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
-  });
-});
+import { generateArchaeologyData } from "../src/challenges/codebase-archaeology/data.js";
+import { scoreArchaeology } from "../src/challenges/codebase-archaeology/scorer.js";
+import { generateHaystackData } from "../src/challenges/needle-haystack/data.js";
+import { scoreHaystack } from "../src/challenges/needle-haystack/scorer.js";
+import { generateOptimizerData } from "../src/challenges/performance-optimizer/data.js";
+import { scoreOptimizer } from "../src/challenges/performance-optimizer/scorer.js";
 
 // ── Deep Mapping ─────────────────────────────────────────────────────
 
@@ -277,8 +79,8 @@ describe("Deep Mapping scoring", () => {
 
   it("is deterministic", () => {
     const sub = { nodes_discovered: 20 };
-    const r1 = scoreMapping({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 600000), apiCallCount: 20 });
-    const r2 = scoreMapping({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 600000), apiCallCount: 20 });
+    const r1 = scoreMapping({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 600000), apiCallCount: 0 });
+    const r2 = scoreMapping({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 600000), apiCallCount: 0 });
     expect(r1).toEqual(r2);
   });
 
@@ -294,9 +96,10 @@ describe("Deep Mapping scoring", () => {
         path_value: gt.optimalPathValue,
       },
       groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 600000),
-      apiCallCount: gt.totalNodes,
+      apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(600);
+    expect(r.breakdown.strategy).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -311,7 +114,7 @@ describe("Deep Mapping scoring", () => {
         path_value: gt.optimalPathValue,
       },
       groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000),
-      apiCallCount: gt.totalNodes,
+      apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -365,8 +168,8 @@ describe("Cipher Forge scoring", () => {
   it("is deterministic", () => {
     const sub: Record<string, unknown> = {};
     sub[gt.messages[0].id] = gt.messages[0].plaintext;
-    const r1 = scoreCipher({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 2 });
-    const r2 = scoreCipher({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 2 });
+    const r1 = scoreCipher({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0 });
+    const r2 = scoreCipher({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0 });
     expect(r1).toEqual(r2);
   });
 
@@ -377,9 +180,10 @@ describe("Cipher Forge scoring", () => {
     }
     const r = scoreCipher({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -389,7 +193,7 @@ describe("Cipher Forge scoring", () => {
     }
     const r = scoreCipher({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -438,8 +242,8 @@ describe("Logic Reef scoring", () => {
   it("is deterministic", () => {
     const sub: Record<string, unknown> = {};
     sub[gt.puzzles[0].id] = gt.puzzles[0].answer;
-    const r1 = scoreLogic({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1 });
-    const r2 = scoreLogic({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1 });
+    const r1 = scoreLogic({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0 });
+    const r2 = scoreLogic({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0 });
     expect(r1).toEqual(r2);
   });
 
@@ -451,9 +255,11 @@ describe("Logic Reef scoring", () => {
     sub.reasoning = "By logical deduction.";
     const r = scoreLogic({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.reasoning_depth).toBeGreaterThan(0);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -464,7 +270,7 @@ describe("Logic Reef scoring", () => {
     sub.reasoning = "Short.";
     const r = scoreLogic({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -516,8 +322,8 @@ describe("Reef Refactor scoring", () => {
   it("is deterministic", () => {
     const sub: Record<string, unknown> = {};
     sub[gt.functions[0].id] = gt.functions[0].correct_outputs;
-    const r1 = scoreRefactor({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1 });
-    const r2 = scoreRefactor({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1 });
+    const r1 = scoreRefactor({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0 });
+    const r2 = scoreRefactor({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0 });
     expect(r1).toEqual(r2);
   });
 
@@ -528,9 +334,10 @@ describe("Reef Refactor scoring", () => {
     }
     const r = scoreRefactor({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -540,7 +347,7 @@ describe("Reef Refactor scoring", () => {
     }
     const r = scoreRefactor({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -548,105 +355,10 @@ describe("Reef Refactor scoring", () => {
   it("empty submission gets low score", () => {
     const r = scoreRefactor({
       submission: {}, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.correctness).toBe(0);
     expect(r.breakdown.coverage).toBe(0);
-  });
-});
-
-// ── Switchboard ────────────────────────────────────────────────────
-
-describe("Switchboard data generation", () => {
-  it("is deterministic — same seed produces same data", () => {
-    const d1 = generateSwitchboardData(42);
-    const d2 = generateSwitchboardData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.census).toEqual(d2.census);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateSwitchboardData(42);
-    const d2 = generateSwitchboardData(99);
-    expect(d1.groundTruth).not.toEqual(d2.groundTruth);
-  });
-});
-
-describe("Switchboard scoring", () => {
-  const data = generateSwitchboardData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("perfect answer gets high score", () => {
-    const sub: Record<string, unknown> = {};
-    for (const ans of gt.answers) {
-      sub[ans.question_id] = ans.answer;
-    }
-    const r = scoreSwitchboard({
-      submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 5,
-    });
-    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
-  });
-
-  it("score never exceeds 1000", () => {
-    const sub: Record<string, unknown> = {};
-    for (const ans of gt.answers) {
-      sub[ans.question_id] = ans.answer;
-    }
-    const r = scoreSwitchboard({
-      submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 4,
-    });
-    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
-  });
-});
-
-// ── Rate-Limited Recon ─────────────────────────────────────────────
-
-describe("Rate-Limited Recon data generation", () => {
-  it("is deterministic — same seed produces same data", () => {
-    const d1 = generateReconData(42);
-    const d2 = generateReconData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.citizens).toEqual(d2.citizens);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateReconData(42);
-    const d2 = generateReconData(99);
-    expect(d1.groundTruth.targets[0].citizen_id).not.toBe(d2.groundTruth.targets[0].citizen_id);
-  });
-});
-
-describe("Rate-Limited Recon scoring", () => {
-  const data = generateReconData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("perfect answer gets high score", () => {
-    const dossiers = gt.targets.map((t) => ({
-      citizen_id: t.citizen_id,
-      name: t.name,
-      properties: t.properties,
-      total_property_value: t.total_property_value,
-      vehicle_count: t.vehicle_count,
-      vehicles: t.vehicles,
-    }));
-    const r = scoreRecon({
-      submission: { dossiers, rate_limit_hits: 0 }, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 6,
-    });
-    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
-  });
-
-  it("score never exceeds 1000", () => {
-    const sub: Record<string, unknown> = { targets: [], rate_limit_hits: 0 };
-    const r = scoreRecon({
-      submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 3,
-    });
-    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
 });
 
@@ -681,9 +393,10 @@ describe("Depth-First Gen scoring", () => {
     }
     const r = scoreDepthFirst({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -693,7 +406,7 @@ describe("Depth-First Gen scoring", () => {
     }
     const r = scoreDepthFirst({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -727,11 +440,18 @@ describe("Archive Dive scoring", () => {
       sub[ans.question_id] = ans.answer;
       sub[`${ans.question_id}_evidence`] = ans.evidence;
     }
+    // Also provide answers in array format for citations scoring
+    sub.answers = gt.answers.map((ans) => ({
+      question_id: ans.question_id,
+      answer: ans.answer,
+      sources: ans.evidence.map((e) => e.doc_id),
+    }));
     const r = scoreArchive({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 10,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.citations).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -742,7 +462,7 @@ describe("Archive Dive scoring", () => {
     }
     const r = scoreArchive({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 5,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -780,9 +500,10 @@ describe("Contract Review scoring", () => {
     };
     const r = scoreContract({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 10,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -795,91 +516,7 @@ describe("Contract Review scoring", () => {
     };
     const r = scoreContract({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 5,
-    });
-    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
-  });
-});
-
-// ── Coral Census ───────────────────────────────────────────────────
-
-describe("Coral Census data generation", () => {
-  it("is deterministic — same seed produces same data", () => {
-    const d1 = generateCensusData(42);
-    const d2 = generateCensusData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.batches).toEqual(d2.batches);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateCensusData(42);
-    const d2 = generateCensusData(99);
-    expect(d1.groundTruth.total_final_population).not.toBe(d2.groundTruth.total_final_population);
-  });
-});
-
-describe("Coral Census scoring", () => {
-  const data = generateCensusData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("perfect answer with checkpoints gets high score", () => {
-    const cps = gt.batch_populations.map((bp) => ({ data: { populations: bp } }));
-    const r = scoreCensus({
-      submission: { populations: gt.final_populations, total: gt.total_final_population },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000),
-      apiCallCount: 6, checkpoints: cps,
-    });
-    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
-  });
-
-  it("score never exceeds 1000", () => {
-    const cps = gt.batch_populations.map((bp) => ({ data: { populations: bp } }));
-    const r = scoreCensus({
-      submission: { populations: gt.final_populations, total: gt.total_final_population },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 5000),
-      apiCallCount: 6, checkpoints: cps,
-    });
-    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
-  });
-});
-
-// ── Supply Chain Marathon ──────────────────────────────────────────
-
-describe("Supply Chain Marathon data generation", () => {
-  it("is deterministic — same seed produces same data", () => {
-    const d1 = generateSupplyChainData(42);
-    const d2 = generateSupplyChainData(42);
-    expect(d1.groundTruth).toEqual(d2.groundTruth);
-    expect(d1.products).toEqual(d2.products);
-  });
-
-  it("different seeds produce different data", () => {
-    const d1 = generateSupplyChainData(42);
-    const d2 = generateSupplyChainData(99);
-    expect(d1.groundTruth.optimal_profit).not.toBe(d2.groundTruth.optimal_profit);
-  });
-});
-
-describe("Supply Chain Marathon scoring", () => {
-  const data = generateSupplyChainData(42);
-  const gt = data.groundTruth;
-  const startedAt = new Date("2026-02-01T10:00:00Z");
-
-  it("perfect answer gets high score", () => {
-    const r = scoreSupplyChain({
-      submission: { profit: gt.optimal_profit, fulfillment_ratio: gt.optimal_fulfillment },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 600000),
-      apiCallCount: 30,
-    });
-    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
-  });
-
-  it("score never exceeds 1000", () => {
-    const r = scoreSupplyChain({
-      submission: { profit: gt.optimal_profit, fulfillment_ratio: gt.optimal_fulfillment },
-      groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000),
-      apiCallCount: 30,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -917,9 +554,10 @@ describe("Chart Forensics scoring", () => {
     };
     const r = scoreForensics({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 3,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -932,7 +570,7 @@ describe("Chart Forensics scoring", () => {
     };
     const r = scoreForensics({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 2,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -968,9 +606,10 @@ describe("Cartographer's Eye scoring", () => {
     sub.reasoning = { q1: "By distance calculation", q2: "Measured coordinates", q3: "BFS path", q4: "Compared radii", q5: "atan2 compass" };
     const r = scoreCartographer({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 3,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -981,7 +620,7 @@ describe("Cartographer's Eye scoring", () => {
     sub.reasoning = { q1: "calc", q2: "calc", q3: "calc", q4: "calc", q5: "calc" };
     const r = scoreCartographer({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 2,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -1021,9 +660,10 @@ describe("Blueprint Audit scoring", () => {
     };
     const r = scoreBlueprint({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 5,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -1038,7 +678,7 @@ describe("Blueprint Audit scoring", () => {
     };
     const r = scoreBlueprint({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 3,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -1079,9 +719,10 @@ describe("Adversarial Interview scoring", () => {
     }
     const r = scoreInterview({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 2,
+      submittedAt: new Date(startedAt.getTime() + 30000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -1097,7 +738,7 @@ describe("Adversarial Interview scoring", () => {
     }
     const r = scoreInterview({
       submission: sub, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 1,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
   });
@@ -1136,9 +777,10 @@ describe("The Mirage scoring", () => {
     };
     const r = scoreMirage({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 5,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.thoroughness).toBeGreaterThan(0);
   });
 
   it("score never exceeds 1000", () => {
@@ -1152,8 +794,253 @@ describe("The Mirage scoring", () => {
     };
     const r = scoreMirage({
       submission: sub as any, groundTruth: gt as any, startedAt,
-      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 3,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThanOrEqual(1000);
+  });
+});
+
+// ── Codebase Archaeology ──────────────────────────────────────────
+
+describe("Codebase Archaeology data generation", () => {
+  it("is deterministic — same seed produces same data", () => {
+    const d1 = generateArchaeologyData(42);
+    const d2 = generateArchaeologyData(42);
+    expect(d1.groundTruth).toEqual(d2.groundTruth);
+    expect(d1.files).toEqual(d2.files);
+  });
+
+  it("different seeds produce different data", () => {
+    const d1 = generateArchaeologyData(42);
+    const d2 = generateArchaeologyData(99);
+    expect(d1.groundTruth).not.toEqual(d2.groundTruth);
+  });
+
+  it("generates workspace files including test and source", () => {
+    const d = generateArchaeologyData(42);
+    expect(Object.keys(d.files).length).toBeGreaterThan(5);
+    expect(d.files["GIT_LOG.txt"]).toBeDefined();
+    expect(d.files["COMMIT_HISTORY.md"]).toBeDefined();
+    expect(d.groundTruth.function_name.length).toBeGreaterThan(0);
+    expect(d.groundTruth.file_path.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Codebase Archaeology scoring", () => {
+  const data = generateArchaeologyData(42);
+  const gt = data.groundTruth;
+  const startedAt = new Date("2026-02-01T10:00:00Z");
+
+  it("is deterministic", () => {
+    const sub = { buggy_commit: gt.buggy_commit_message, bug_description: gt.bug_description };
+    const r1 = scoreArchaeology({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0 });
+    const r2 = scoreArchaeology({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0 });
+    expect(r1).toEqual(r2);
+  });
+
+  it("perfect answer gets high score", () => {
+    const sub = {
+      buggy_commit: gt.buggy_commit_message,
+      bug_description: gt.bug_description,
+      fixed_code: gt.correct_function_body,
+      methodology: "Used git bisect to binary search through commits, identified failing test, diffed the buggy commit.",
+    };
+    const r = scoreArchaeology({
+      submission: sub, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 120000), apiCallCount: 0,
+    });
+    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
+  });
+
+  it("score never exceeds 1000", () => {
+    const sub = {
+      buggy_commit: gt.buggy_commit_message,
+      bug_description: gt.bug_description,
+      fixed_code: gt.correct_function_body,
+      methodology: "Used git bisect to binary search, reviewed diff, ran tests to confirm fix.",
+    };
+    const r = scoreArchaeology({
+      submission: sub, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
+    });
+    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
+  });
+
+  it("empty submission gets low score", () => {
+    const r = scoreArchaeology({
+      submission: {}, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
+    });
+    expect(r.breakdown.identification).toBe(0);
+    expect(r.breakdown.fix_quality).toBe(0);
+  });
+});
+
+// ── Needle in a Haystack ──────────────────────────────────────────
+
+describe("Needle Haystack data generation", () => {
+  it("is deterministic — same seed produces same data", () => {
+    const d1 = generateHaystackData(42);
+    const d2 = generateHaystackData(42);
+    expect(d1.groundTruth).toEqual(d2.groundTruth);
+    expect(d1.files).toEqual(d2.files);
+  });
+
+  it("different seeds produce different data", () => {
+    const d1 = generateHaystackData(42);
+    const d2 = generateHaystackData(99);
+    expect(d1.groundTruth).not.toEqual(d2.groundTruth);
+  });
+
+  it("generates questions with source files", () => {
+    const d = generateHaystackData(42);
+    expect(d.groundTruth.answers.length).toBeGreaterThanOrEqual(5);
+    for (const ans of d.groundTruth.answers) {
+      expect(ans.answer.length).toBeGreaterThan(0);
+      expect(ans.source_files.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("Needle Haystack scoring", () => {
+  const data = generateHaystackData(42);
+  const gt = data.groundTruth;
+  const startedAt = new Date("2026-02-01T10:00:00Z");
+
+  it("is deterministic", () => {
+    const sub = { answers: [{ question_id: gt.answers[0].question_id, answer: gt.answers[0].answer }] };
+    const r1 = scoreHaystack({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0 });
+    const r2 = scoreHaystack({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0 });
+    expect(r1).toEqual(r2);
+  });
+
+  it("perfect answer gets high score", () => {
+    const sub = {
+      answers: gt.answers.map((a) => ({
+        question_id: a.question_id,
+        answer: a.answer,
+        sources: a.source_files,
+      })),
+    };
+    const r = scoreHaystack({
+      submission: sub, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 120000), apiCallCount: 0,
+    });
+    expect(r.breakdown.total).toBeGreaterThanOrEqual(700);
+    expect(r.breakdown.citations).toBeGreaterThan(0);
+    expect(r.breakdown.completeness).toBeGreaterThan(0);
+  });
+
+  it("score never exceeds 1000", () => {
+    const sub = {
+      answers: gt.answers.map((a) => ({
+        question_id: a.question_id,
+        answer: a.answer,
+        sources: a.source_files,
+      })),
+    };
+    const r = scoreHaystack({
+      submission: sub, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
+    });
+    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
+  });
+
+  it("empty submission gets zero accuracy and completeness", () => {
+    const r = scoreHaystack({
+      submission: { answers: [] }, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
+    });
+    expect(r.breakdown.accuracy).toBe(0);
+    expect(r.breakdown.completeness).toBe(0);
+  });
+});
+
+// ── Performance Optimizer ─────────────────────────────────────────
+
+describe("Performance Optimizer data generation", () => {
+  it("is deterministic — same seed produces same data", () => {
+    const d1 = generateOptimizerData(42);
+    const d2 = generateOptimizerData(42);
+    expect(d1.groundTruth).toEqual(d2.groundTruth);
+    expect(d1.files).toEqual(d2.files);
+  });
+
+  it("different seeds produce different data", () => {
+    const d1 = generateOptimizerData(42);
+    const d2 = generateOptimizerData(99);
+    // Different seeds may select different problem templates
+    const gt1 = JSON.stringify(d1.groundTruth);
+    const gt2 = JSON.stringify(d2.groundTruth);
+    expect(gt1).not.toBe(gt2);
+  });
+
+  it("generates workspace files including source, test, and benchmark", () => {
+    const d = generateOptimizerData(42);
+    expect(Object.keys(d.files).length).toBeGreaterThan(3);
+    expect(d.groundTruth.function_name.length).toBeGreaterThan(0);
+    expect(d.groundTruth.file_path.length).toBeGreaterThan(0);
+    expect(d.groundTruth.optimizations.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Performance Optimizer scoring", () => {
+  const data = generateOptimizerData(42);
+  const gt = data.groundTruth;
+  const startedAt = new Date("2026-02-01T10:00:00Z");
+
+  it("is deterministic", () => {
+    const sub = { optimized_code: `export function ${gt.function_name}() { return []; }` };
+    const r1 = scoreOptimizer({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0 });
+    const r2 = scoreOptimizer({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0 });
+    expect(r1).toEqual(r2);
+  });
+
+  it("optimized answer gets high score", () => {
+    const sub = {
+      optimized_code: `export function ${gt.function_name}(arr: number[]): number[] {
+  const seen = new Set<number>();
+  const result: number[] = [];
+  for (const x of arr) {
+    if (seen.has(x)) result.push(x);
+    seen.add(x);
+  }
+  return result;
+}`,
+      explanation: "Replaced nested loop with a Set for O(n) linear time complexity. The bottleneck was quadratic .includes() on arrays.",
+    };
+    const r = scoreOptimizer({
+      submission: sub, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 300000), apiCallCount: 0,
+    });
+    expect(r.breakdown.total).toBeGreaterThanOrEqual(500);
+    expect(r.breakdown.methodology).toBeGreaterThan(0);
+  });
+
+  it("score never exceeds 1000", () => {
+    const sub = {
+      optimized_code: `export function ${gt.function_name}(arr: number[]): number[] {
+  const seen = new Set<number>();
+  const result: number[] = [];
+  for (const x of arr) { if (seen.has(x)) result.push(x); seen.add(x); }
+  return result;
+}`,
+      explanation: "O(n) using hash set. Profiled and found bottleneck in nested loop, quadratic complexity.",
+    };
+    const r = scoreOptimizer({
+      submission: sub, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
+    });
+    expect(r.breakdown.total).toBeLessThanOrEqual(1000);
+  });
+
+  it("empty submission gets low score", () => {
+    const r = scoreOptimizer({
+      submission: {}, groundTruth: gt as any, startedAt,
+      submittedAt: new Date(startedAt.getTime() + 60000), apiCallCount: 0,
+    });
+    expect(r.breakdown.optimization).toBe(0);
+    expect(r.breakdown.correctness).toBe(0);
   });
 });

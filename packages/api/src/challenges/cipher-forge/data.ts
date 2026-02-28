@@ -191,7 +191,7 @@ export function generateCipherData(seed: number): CipherData {
   });
   truthMessages.push({
     id: `cipher-${seed}-4`,
-    plaintext: selected[3],
+    plaintext: selected[3].replace(/ /g, ""),
     cipher_type: "transposition",
     key: String(cols),
     difficulty: 4,

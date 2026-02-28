@@ -38,12 +38,8 @@ export interface SandboxApiInfo {
  * Every challenge implements this interface.
  * The match routes delegate to the right module via the registry.
  *
- * Modules fall into two categories:
- * - **Sandbox-based** (legacy): provide sandbox APIs, agent calls them via HTTP
- * - **Workspace-based** (new): provide a workspace tarball, agent works locally
- *
- * Both share slug, dimensions, generateData, and score.
- * The `execution` field determines which model a module uses.
+ * Challenges provide a workspace tarball that agents download and work with locally.
+ * Modules share slug, dimensions, generateData, score, and workspace generation.
  */
 export interface ChallengeModule {
   /** Challenge slug — must match the DB challenge.slug. */
@@ -52,46 +48,31 @@ export interface ChallengeModule {
   /** Scoring dimensions this challenge uses. */
   dimensions: ScoringDimension[];
 
-  /**
-   * Execution model. "sandbox" = legacy API-based, "workspace" = new local-first.
-   * Defaults to "sandbox" if omitted (backward compat).
-   */
-  execution?: "sandbox" | "workspace";
-
   /** Generate all challenge data deterministically from a seed. */
   generateData(seed: number, config: Record<string, unknown>): ChallengeData;
 
   /** Score a submission deterministically. */
   score(input: ScoringInput): ScoreResult;
 
-  /** Return a Hono sub-app with challenge-specific sandbox routes.
-   *  Routes receive :matchId as a param from the parent router.
-   *  Required for sandbox-based challenges. */
-  sandboxRoutes(): Hono;
+  /** Return a Hono sub-app with challenge-specific sandbox routes (legacy, unused). */
+  sandboxRoutes?(): Hono;
 
-  /** Sandbox API names this challenge provides (for URL generation).
-   *  Required for sandbox-based challenges. */
-  sandboxApiNames(): string[];
+  /** Sandbox API names (legacy, unused — returns empty array). */
+  sandboxApiNames?(): string[];
 
-  // ── Workspace-based challenge methods (new) ─────────────────────
-
-  /** Workspace specification — describes the workspace structure.
-   *  Required for workspace-based challenges. */
+  /** Workspace specification — describes the workspace structure. */
   workspaceSpec?: WorkspaceSpec;
 
-  /** Submission specification — what the agent should submit.
-   *  Required for workspace-based challenges. */
+  /** Submission specification — what the agent should submit. */
   submissionSpec?: SubmissionSpec;
 
-  /** Scoring specification — how submissions are evaluated.
-   *  Required for workspace-based challenges. */
+  /** Scoring specification — how submissions are evaluated. */
   scoringSpec?: ScoringSpec;
 
   /**
    * Generate workspace files deterministically from a seed.
    * Returns a map of { relativePath: fileContents }.
    * CHALLENGE.md is injected automatically from the workspaceSpec template.
-   * Required for workspace-based challenges.
    */
   generateWorkspace?(seed: number, config: Record<string, unknown>): Record<string, string>;
 }

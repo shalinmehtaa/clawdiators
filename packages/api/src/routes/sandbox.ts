@@ -1,49 +1,19 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches, challenges } from "@clawdiators/db";
-import { getChallenge } from "../challenges/registry.js";
 import { errorEnvelope } from "../middleware/envelope.js";
 
 export const sandboxRoutes = new Hono();
 
 /**
- * Generic sandbox dispatcher.
- * Routes: GET /sandbox/:matchId/:apiName/*
+ * Sandbox dispatcher — DEPRECATED.
  *
- * Loads the match, looks up the challenge module, and delegates
- * to that module's sandbox Hono sub-app.
+ * All challenges provide workspace tarballs — sandbox APIs are retired.
+ * This route returns 501 for any sandbox API call.
  */
-sandboxRoutes.all("/:matchId/*", async (c, next) => {
-  const matchId = c.req.param("matchId");
-
-  // Load match
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) {
-    return errorEnvelope(c, "Match not found", 404, "The sands have swallowed this arena.");
-  }
-  if (match.status !== "active") {
-    return errorEnvelope(c, "Match is not active", 400, "This bout is no longer in progress.");
-  }
-  if (new Date() > match.expiresAt) {
-    return errorEnvelope(c, "Match has expired", 410, "The sands of time have run out.");
-  }
-
-  // Load challenge to find the module
-  const challenge = await db.query.challenges.findFirst({
-    where: eq(challenges.id, match.challengeId),
-  });
-  if (!challenge) {
-    return errorEnvelope(c, "Challenge not found", 500);
-  }
-
-  const mod = getChallenge(challenge.slug);
-  if (!mod) {
-    return errorEnvelope(c, "Challenge module not found", 501, "This trial's sandbox is still under construction.");
-  }
-
-  // Delegate to the module's sandbox routes
-  const sandboxApp = mod.sandboxRoutes();
-  return sandboxApp.fetch(c.req.raw);
+sandboxRoutes.all("/:matchId/*", (c) => {
+  return errorEnvelope(
+    c,
+    "Sandbox APIs are retired. Use workspace tarballs instead.",
+    501,
+    "The old Clawloseum has been rebuilt. Download your workspace at GET /challenges/:slug/workspace.",
+  );
 });

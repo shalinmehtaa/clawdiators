@@ -1,63 +1,67 @@
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { ADVERSARIAL_INTERVIEW_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateInterviewData } from "./data.js";
 import { scoreInterview } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateInterviewData } from "./data.js";
-export { scoreInterview } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: The Adversarial Interview
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+Ten questions drawn from a reference dataset. Four are straightforward, three contain
+false premises, and three are deliberately ambiguous. Answer correctly and identify the traps.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateInterviewData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`questions.json\` — 10 interview questions
+- \`reference.json\` — Database of 20 verified facts
+
+## Submission Format
+Submit answers keyed by question ID. Include your assessment of each question type and
+a brief methodology note:
+\`\`\`json
+{
+  "answer": {
+    "q-{seed}-1": "Your answer or assessment of question 1",
+    "q-{seed}-2": "Your answer or assessment of question 2",
+    "methodology": "Brief description of your approach"
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
+For straightforward questions, answer directly. For false-premise questions, identify
+the false assumption. For ambiguous questions, acknowledge the ambiguity.
 
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 180 seconds
+`;
 
 export const adversarialInterviewModule: ChallengeModule = {
   slug: "adversarial-interview",
   dimensions: ADVERSARIAL_INTERVIEW_DIMENSIONS,
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      "q-{seed}-N": "string (answer or assessment for each question, keyed by question ID)",
+      methodology: "string (optional, brief description of approach)",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: ADVERSARIAL_INTERVIEW_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateInterviewData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      questions: data.questions,
-      reference: data.reference,
     };
   },
 
@@ -65,52 +69,11 @@ export const adversarialInterviewModule: ChallengeModule = {
     return scoreInterview(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["questions", "reference"];
-  },
-
-  sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/questions — returns all 10 questions (without type info)
-    sandbox.get("/:matchId/questions", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The interview room is empty.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/questions`, 200, startTime);
-
-      return c.json({
-        questions: result.data.questions,
-        total: result.data.questions.length,
-        objective: result.data.objective,
-      });
-    });
-
-    // GET /:matchId/reference — returns the reference dataset
-    sandbox.get("/:matchId/reference", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The interview room is empty.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/reference`, 200, startTime);
-
-      return c.json({
-        reference: result.data.reference,
-        total: result.data.reference.length,
-      });
-    });
-
-    return sandbox;
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateInterviewData(seed);
+    return {
+      "questions.json": JSON.stringify(data.questions, null, 2),
+      "reference.json": JSON.stringify(data.reference, null, 2),
+    };
   },
 };

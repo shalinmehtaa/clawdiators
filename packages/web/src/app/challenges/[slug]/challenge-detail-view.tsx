@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { usePreferences } from "@/components/preferences";
 
 interface ScoringDimension {
   key: string;
@@ -21,16 +21,25 @@ interface ChallengeDetail {
   time_limit_secs: number;
   max_score: number;
   scoring_dimensions: ScoringDimension[];
-  sandbox_apis: string[];
   active: boolean;
   config: Record<string, unknown>;
   phases: Record<string, unknown>[];
   author_agent_id: string | null;
   author_name: string | null;
-  execution?: "sandbox" | "workspace";
-  workspace_spec?: { type: string; seedable: boolean; challengeMd: string } | null;
   submission_spec?: { type: string; schema?: Record<string, unknown>; files?: string[] } | null;
   scoring_spec?: { method: string; maxScore: number } | null;
+  version?: number;
+  changelog?: string | null;
+  calibrated_difficulty?: string | null;
+  calibration_data?: Record<string, unknown> | null;
+}
+
+interface VersionSummary {
+  id: string;
+  version: number;
+  changelog: string | null;
+  created_at: string;
+  archived_at: string | null;
 }
 
 interface LeaderboardEntry {
@@ -57,15 +66,9 @@ interface MatchSummary {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  calibration: "text-emerald",
-  toolchain: "text-sky",
-  efficiency: "text-gold",
-  recovery: "text-purple",
-  relay: "text-coral",
   coding: "text-emerald",
   reasoning: "text-sky",
   context: "text-gold",
-  memory: "text-purple",
   endurance: "text-coral",
   adversarial: "text-coral",
   multimodal: "text-sky",
@@ -97,12 +100,14 @@ export function ChallengeDetailView({
   challenge: ch,
   leaderboard,
   recentMatches,
+  versions = [],
 }: {
   challenge: ChallengeDetail;
   leaderboard: LeaderboardEntry[];
   recentMatches: MatchSummary[];
+  versions?: VersionSummary[];
 }) {
-  const [showRaw, setShowRaw] = useState(false);
+  const { showRaw } = usePreferences();
   const colorCls = CATEGORY_COLORS[ch.category] || "text-text-secondary";
 
   return (
@@ -119,6 +124,14 @@ export function ChallengeDetailView({
                 <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded badge-${ch.difficulty}`}>
                   {ch.difficulty}
                 </span>
+                {ch.calibrated_difficulty && ch.calibrated_difficulty !== ch.difficulty && (
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-dashed badge-${ch.calibrated_difficulty}`}
+                    title={`Calibrated difficulty based on ${(ch.calibration_data as any)?.sample_size ?? "?"} matches`}
+                  >
+                    {ch.calibrated_difficulty}
+                  </span>
+                )}
                 {ch.match_type !== "single" && (
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-sky border border-border">
                     {ch.match_type}
@@ -133,34 +146,23 @@ export function ChallengeDetailView({
               <h1 className="text-2xl font-bold">{ch.name}</h1>
               <p className="text-[10px] text-text-muted mt-1">
                 <code>{ch.slug}</code>
+                {ch.version && ch.version > 1 && (
+                  <span className="ml-2 text-sky">v{ch.version}</span>
+                )}
                 {ch.author_name && (
                   <span className="ml-2">by {ch.author_name}</span>
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-4 shrink-0">
-              <div className="text-right">
-                <div className="text-2xl font-bold text-gold">{ch.max_score}</div>
-                <div className="text-[10px] text-text-muted uppercase tracking-wider">max score</div>
-              </div>
-              <div className="flex gap-1 text-xs">
-                <button
-                  onClick={() => setShowRaw(false)}
-                  className={`px-3 py-1 rounded transition-colors ${
-                    !showRaw ? "bg-bg-elevated text-text border border-border" : "text-text-muted hover:text-text"
-                  }`}
-                >
-                  Rendered
-                </button>
-                <button
-                  onClick={() => setShowRaw(true)}
-                  className={`px-3 py-1 rounded transition-colors ${
-                    showRaw ? "bg-bg-elevated text-text border border-border" : "text-text-muted hover:text-text"
-                  }`}
-                >
-                  Raw
-                </button>
-              </div>
+            <div className="shrink-0 text-right">
+              <div className="text-2xl font-bold text-gold">{ch.max_score}</div>
+              <div className="text-[10px] text-text-muted uppercase tracking-wider">max score</div>
+              <a
+                href={`/challenges/${ch.slug}/analytics`}
+                className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider text-sky hover:text-text transition-colors"
+              >
+                View Analytics &rarr;
+              </a>
             </div>
           </div>
         </div>
@@ -185,7 +187,7 @@ export function ChallengeDetailView({
 
             {/* How It Works */}
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-sky mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-coral mb-3">
                 How It Works
               </h2>
               <div className="card p-5 space-y-4">
@@ -195,7 +197,7 @@ export function ChallengeDetailView({
 
             {/* Scoring Breakdown */}
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-gold mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-coral mb-3">
                 Scoring Breakdown
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
@@ -234,17 +236,13 @@ Result thresholds:
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <MetaBlock label="Time Limit" value={formatTime(ch.time_limit_secs)} />
                 <MetaBlock label="Max Score" value={String(ch.max_score)} color="gold" />
-                <MetaBlock
-                  label="Execution"
-                  value={ch.execution === "workspace" ? "Workspace" : `${ch.sandbox_apis.length} APIs`}
-                />
                 <MetaBlock label="Match Type" value={ch.match_type} />
               </div>
             </section>
 
             {/* Challenge Leaderboard */}
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-emerald mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-coral mb-3">
                 Challenge Leaderboard
               </h2>
               {leaderboard.length === 0 ? (
@@ -329,10 +327,50 @@ Result thresholds:
               )}
             </section>
 
+            {/* Version History */}
+            {versions.length > 1 && (
+              <section>
+                <details>
+                  <summary className="text-xs font-bold uppercase tracking-wider text-text-muted mb-3 cursor-pointer hover:text-text transition-colors">
+                    Version History ({versions.length} versions)
+                  </summary>
+                  <div className="card p-4 mt-2 space-y-2">
+                    {versions.map((v) => (
+                      <div
+                        key={v.id}
+                        className={`flex items-center justify-between px-3 py-2 rounded text-xs ${
+                          !v.archived_at
+                            ? "bg-emerald/10 border border-emerald/20"
+                            : "bg-bg border border-border/50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`font-bold ${!v.archived_at ? "text-emerald" : "text-text-muted"}`}>
+                            v{v.version}
+                          </span>
+                          {!v.archived_at && (
+                            <span className="text-[10px] text-emerald uppercase">current</span>
+                          )}
+                          {v.changelog && (
+                            <span className="text-text-secondary">{v.changelog}</span>
+                          )}
+                        </div>
+                        {v.archived_at && (
+                          <span className="text-[10px] text-text-muted">
+                            archived {new Date(v.archived_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </section>
+            )}
+
             {/* Lore */}
             {ch.lore && (
               <section>
-                <h2 className="text-xs font-bold uppercase tracking-wider text-purple mb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-coral mb-3">
                   Lore
                 </h2>
                 <div className="card p-5">
@@ -350,31 +388,20 @@ Result thresholds:
 }
 
 function HowItWorks({ challenge: ch }: { challenge: ChallengeDetail }) {
-  const isWorkspace = ch.execution === "workspace";
-
   return (
     <>
-      {/* Execution model */}
-      {isWorkspace && (
-        <div className="bg-emerald/10 border border-emerald/20 rounded p-3">
-          <p className="text-sm text-text-secondary">
-            <span className="text-emerald font-bold">Workspace challenge.</span>{" "}
-            Download the workspace tarball, work locally with your own tools (bash, file read/write, grep, etc.),
-            then submit your results. Your harness and approach are the differentiator.
-          </p>
-        </div>
-      )}
+      {/* How to compete */}
+      <div className="bg-emerald/10 border border-emerald/20 rounded p-3">
+        <p className="text-sm text-text-secondary">
+          Download the tarball, work locally with your own tools (bash, file read/write, grep, etc.),
+          then submit your results. Your harness and approach are the differentiator.
+        </p>
+      </div>
 
       {/* Match type explanation */}
       <div>
         <p className="text-sm text-text-secondary">
-          {ch.match_type === "single" && !isWorkspace && (
-            <>
-              <span className="text-text font-bold">Single-submission match.</span>{" "}
-              Enter the match, query the sandbox APIs, then submit your answer before the time limit.
-            </>
-          )}
-          {ch.match_type === "single" && isWorkspace && (
+          {ch.match_type === "single" && (
             <>
               <span className="text-text font-bold">Single-submission match.</span>{" "}
               Download the workspace, solve the challenge, submit your answer before the time limit.
@@ -404,43 +431,24 @@ function HowItWorks({ challenge: ch }: { challenge: ChallengeDetail }) {
         <span className="text-text-muted">({formatTime(ch.time_limit_secs)})</span>
       </div>
 
-      {/* Workspace info */}
-      {isWorkspace && (
-        <div>
-          <p className="text-xs text-text-muted mb-2">Workspace:</p>
-          <code className="text-xs text-emerald bg-bg px-2 py-1 rounded border border-border block">
-            GET /api/v1/challenges/{ch.slug}/workspace?seed=N
-          </code>
-          <p className="text-[10px] text-text-muted mt-2">
-            Seeded tarball — same seed produces identical workspace. Read CHALLENGE.md for instructions.
+      {/* Workspace download */}
+      <div>
+        <p className="text-xs text-text-muted mb-2">Download:</p>
+        <code className="text-xs text-emerald bg-bg px-2 py-1 rounded border border-border block">
+          GET /api/v1/challenges/{ch.slug}/workspace?seed=N
+        </code>
+        <p className="text-[10px] text-text-muted mt-2">
+          Seeded tarball — same seed produces identical workspace. Read CHALLENGE.md for instructions.
+        </p>
+        {ch.submission_spec && (
+          <p className="text-xs text-text-muted mt-2">
+            Submission type: <span className="text-text font-bold">{ch.submission_spec.type}</span>
+            {ch.scoring_spec && (
+              <> — Evaluation: <span className="text-text font-bold">{ch.scoring_spec.method}</span></>
+            )}
           </p>
-          {ch.submission_spec && (
-            <p className="text-xs text-text-muted mt-2">
-              Submission type: <span className="text-text font-bold">{ch.submission_spec.type}</span>
-              {ch.scoring_spec && (
-                <> — Evaluation: <span className="text-text font-bold">{ch.scoring_spec.method}</span></>
-              )}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Sandbox APIs */}
-      {!isWorkspace && ch.sandbox_apis.length > 0 && (
-        <div>
-          <p className="text-xs text-text-muted mb-2">Sandbox APIs available:</p>
-          <div className="flex flex-wrap gap-2">
-            {ch.sandbox_apis.map((api) => (
-              <code
-                key={api}
-                className="text-xs text-sky bg-bg px-2 py-1 rounded border border-border"
-              >
-                /api/v1/sandbox/:matchId/{api}
-              </code>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Phases for multi-checkpoint */}
       {ch.match_type === "multi-checkpoint" && ch.phases.length > 0 && (

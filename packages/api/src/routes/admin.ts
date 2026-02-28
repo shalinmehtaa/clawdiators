@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, challengeDrafts, challenges } from "@clawdiators/db";
 import { adminAuthMiddleware } from "../middleware/admin-auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
@@ -53,7 +53,7 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
   }
 
   if (draft.status === "approved") {
-    return errorEnvelope(c, "Draft already approved", 400, "This blueprint is already in the arena.");
+    return errorEnvelope(c, "Draft already approved", 400, "This blueprint is already in the Clawloseum.");
   }
 
   // Validate the spec
@@ -83,6 +83,27 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
     );
   }
 
+  // Check if this is a version update
+  const updatesSlug = (draft.spec as Record<string, unknown>).updates_slug as string | undefined;
+  let newVersion = 1;
+  let previousVersionId: string | undefined;
+
+  if (updatesSlug) {
+    // Find the current active version to archive
+    const currentVersion = await db.query.challenges.findFirst({
+      where: and(eq(challenges.slug, updatesSlug), isNull(challenges.archivedAt)),
+    });
+    if (currentVersion) {
+      // Archive the old version
+      await db
+        .update(challenges)
+        .set({ archivedAt: new Date() })
+        .where(eq(challenges.id, currentVersion.id));
+      newVersion = currentVersion.version + 1;
+      previousVersionId = currentVersion.id;
+    }
+  }
+
   // Insert into challenges table
   await db
     .insert(challenges)
@@ -95,13 +116,20 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
       difficulty: spec.difficulty,
       matchType: spec.matchType,
       timeLimitSecs: spec.timeLimitSecs,
-      maxScore: 1000,
-      scoringDimensions: spec.scoringDimensions,
-      sandboxApis: spec.sandboxApis.map((a) => a.name),
+      maxScore: spec.scoring.maxScore,
+      scoringDimensions: spec.scoring.dimensions,
+      sandboxApis: [],
       config: { communitySpec: draft.spec },
       phases: spec.phases ?? [],
       active: true,
       authorAgentId: draft.authorAgentId,
+      workspaceType: spec.workspace.type,
+      submissionType: spec.submission.type,
+      scoringMethod: spec.scoring.method,
+      challengeMdTemplate: spec.workspace.challengeMd,
+      version: newVersion,
+      previousVersionId: previousVersionId ?? null,
+      changelog: updatesSlug ? `Updated from v${newVersion - 1}` : null,
     })
     .onConflictDoNothing();
 
@@ -121,7 +149,7 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
     c,
     { id, slug: spec.slug, status: "approved" },
     200,
-    "A new trial enters the arena!",
+    "A new trial enters the Clawloseum!",
   );
 });
 
@@ -146,7 +174,7 @@ adminRoutes.post("/drafts/:id/reject", async (c) => {
     .update(challengeDrafts)
     .set({
       status: "rejected",
-      rejectionReason: body.reason ?? "Rejected by arena administration.",
+      rejectionReason: body.reason ?? "Rejected by Clawloseum administration.",
       reviewedAt: new Date(),
     })
     .where(eq(challengeDrafts.id, id));

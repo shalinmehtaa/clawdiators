@@ -128,7 +128,7 @@ export const TITLES: TitleDef[] = [
 
 // Flavour text templates
 export const FLAVOUR_WIN = [
-  "{agentName} crushes {boutName} with a score of {score}! The arena trembles. ({eloChange})",
+  "{agentName} crushes {boutName} with a score of {score}! The Clawloseum trembles. ({eloChange})",
   "Victory tastes like sea salt. {agentName} claims {boutName} — {score} points of pure dominance. ({eloChange})",
   "The crowd roars as {agentName} conquers {boutName}! Score: {score}. ({eloChange})",
   "{agentName} scuttles triumphantly from {boutName}. {score} points — the shell stands strong. ({eloChange})",
@@ -139,7 +139,7 @@ export const FLAVOUR_LOSS = [
   "{agentName} falls in {boutName}. Score: {score}. The ocean remembers. ({eloChange})",
   "The tides turn against {agentName} in {boutName}. {score} points — a lesson in humility. ({eloChange})",
   "{boutName} proves too much for {agentName}. Score: {score}. But every molt makes you stronger. ({eloChange})",
-  "A tough day at the arena. {agentName} scores {score} in {boutName}. ({eloChange})",
+  "A tough day at the Clawloseum. {agentName} scores {score} in {boutName}. ({eloChange})",
   "{agentName} retreats from {boutName} with {score}. The shell is cracked, but not broken. ({eloChange})",
 ];
 
@@ -150,22 +150,22 @@ export const FLAVOUR_DRAW = [
 ];
 
 export const FLAVOUR_REGISTER = [
-  "A new challenger approaches! {agentName} enters the arena. The waters ripple.",
-  "{agentName} has been spotted near the arena gates. Fresh shell, sharp claws.",
-  "The arena welcomes {agentName}. May your pincers be swift and your shell unyielding.",
+  "A new challenger approaches! {agentName} enters the Clawloseum. The waters ripple.",
+  "{agentName} has been spotted near the Clawloseum gates. Fresh shell, sharp claws.",
+  "The Clawloseum welcomes {agentName}. May your pincers be swift and your shell unyielding.",
   "Another contender joins the fray! {agentName} scuttles into the colosseum.",
 ];
 
 export const FLAVOUR_TITLE = [
-  "{agentName} has earned the title of {title}! The arena acknowledges their prowess.",
+  "{agentName} has earned the title of {title}! The Clawloseum acknowledges their prowess.",
   "Hear ye! {agentName} is now known as {title}! A shell worthy of legend.",
   "The title of {title} has been bestowed upon {agentName}. The depths echo with respect.",
 ];
 
 export const FLAVOUR_HEALTH = [
-  "The arena stirs...",
+  "The Clawloseum stirs...",
   "Claws sharpened, shell polished. Ready.",
-  "The tides are favorable. The arena awaits.",
+  "The tides are favorable. The Clawloseum awaits.",
   "Deep beneath the waves, the colosseum hums with anticipation.",
 ];
 
@@ -225,7 +225,7 @@ export const WEATHER_CONDITIONS = [
 export const NEWS_TOPICS = [
   "Maritime Commerce",
   "Deep Sea Technology",
-  "Arena Sports",
+  "Clawloseum Sports",
   "Tidal Politics",
   "Reef Conservation",
 ];

@@ -4,7 +4,7 @@ import { mulberry32 } from "../../services/whimsy.js";
  * Deep Mapping Expedition: Explore a procedural graph (ocean floor).
  * Agent discovers nodes via GET /map/explore/:nodeId.
  * Must map territory, find resources, and report findings.
- * Long-running: 1 hour, heartbeat every 5 minutes.
+ * Workspace-based: 1 hour, agent explores locally.
  */
 
 export interface MapNode {
@@ -142,7 +142,7 @@ export function generateMappingData(seed: number): MappingData {
     optimalPathValue += current.resourceValue;
   }
 
-  const objective = `Explore an underwater cave system starting from "${startNode.name}" (${startNode.id}). Discover nodes via the map API, map the territory, and find resources. You have 1 hour. Send heartbeats every 5 minutes. Report: total nodes discovered, resources found by type, deepest node, most connected node, and your best path for resource collection.`;
+  const objective = `Explore an underwater cave system starting from "${startNode.name}" (${startNode.id}). Read node files to discover connections, map the territory, and find resources. You have 1 hour. Report: total nodes discovered, resources found by type, deepest node, most connected node, and your best path for resource collection.`;
 
   return {
     nodes,

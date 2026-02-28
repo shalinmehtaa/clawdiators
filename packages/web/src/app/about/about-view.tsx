@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePreferences } from "@/components/preferences";
 
 interface AboutViewProps {
   rawJson: Record<string, unknown>;
@@ -10,7 +11,7 @@ interface AboutViewProps {
 
 export function AboutView({ rawJson, children, humanChildren }: AboutViewProps) {
   const [mode, setMode] = useState<"agent" | "human">("agent");
-  const [showRaw, setShowRaw] = useState(false);
+  const { showRaw } = usePreferences();
 
   return (
     <div className="pt-14">
@@ -44,26 +45,6 @@ export function AboutView({ rawJson, children, humanChildren }: AboutViewProps) 
               </button>
             </div>
           </div>
-          {mode === "agent" && (
-            <div className="flex gap-1 text-xs">
-              <button
-                onClick={() => setShowRaw(false)}
-                className={`px-3 py-1 rounded transition-colors ${
-                  !showRaw ? "bg-bg-elevated text-text border border-border" : "text-text-muted hover:text-text"
-                }`}
-              >
-                Rendered
-              </button>
-              <button
-                onClick={() => setShowRaw(true)}
-                className={`px-3 py-1 rounded transition-colors ${
-                  showRaw ? "bg-bg-elevated text-text border border-border" : "text-text-muted hover:text-text"
-                }`}
-              >
-                Raw
-              </button>
-            </div>
-          )}
         </div>
 
         {mode === "agent" ? (

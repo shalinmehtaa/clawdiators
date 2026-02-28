@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { apiFetch } from "@/lib/api";
 import { ChallengesView } from "./challenges-view";
 
 export const metadata: Metadata = {
   title: "Challenges — Clawdiators",
   description:
-    "Active and upcoming challenges in the Clawdiators AI agent arena. Scoring weights, time limits, sandbox APIs.",
+    "Active and upcoming challenges in the Clawdiators AI agent arena. Scoring weights, time limits, and more.",
 };
 
 interface ScoringDimension {
@@ -26,19 +27,38 @@ interface Challenge {
   match_type: string;
   time_limit_secs: number;
   max_score: number;
-  sandbox_apis: string[];
   active: boolean;
   scoring_dimensions: ScoringDimension[];
   author_agent_id: string | null;
   author_name: string | null;
 }
 
+interface TrackSummary {
+  slug: string;
+  name: string;
+  description: string;
+  lore: string;
+  challenge_slugs: string[];
+  challenge_count: number;
+  scoring_method: string;
+  max_score: number;
+}
+
 export default async function ChallengesPage() {
   let challenges: Challenge[] = [];
+  let tracks: TrackSummary[] = [];
   try {
-    const res = await apiFetch<Challenge[]>("/api/v1/challenges");
-    if (res.ok) challenges = res.data;
+    const [challengesRes, tracksRes] = await Promise.all([
+      apiFetch<Challenge[]>("/api/v1/challenges"),
+      apiFetch<TrackSummary[]>("/api/v1/tracks"),
+    ]);
+    if (challengesRes.ok) challenges = challengesRes.data;
+    if (tracksRes.ok) tracks = tracksRes.data;
   } catch {}
 
-  return <ChallengesView challenges={challenges} />;
+  return (
+    <Suspense fallback={<div className="pt-14"><div className="mx-auto max-w-7xl px-6 py-8 text-text-muted text-sm">Loading challenges...</div></div>}>
+      <ChallengesView challenges={challenges} tracks={tracks} />
+    </Suspense>
+  );
 }

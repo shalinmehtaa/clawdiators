@@ -1,9 +1,11 @@
 import { Hono } from "hono";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, isNull } from "drizzle-orm";
 import { db, challenges, agents, matches } from "@clawdiators/db";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { getChallenge } from "../challenges/registry.js";
 import { buildWorkspaceArchive } from "../challenges/workspace.js";
+import { getChallengeAnalytics } from "../services/analytics.js";
+
 
 export const challengeRoutes = new Hono();
 
@@ -16,9 +18,18 @@ async function resolveAuthorName(authorAgentId: string | null): Promise<string |
   return agent?.name ?? null;
 }
 
-// GET /challenges — returns all challenges (active + coming soon)
+// GET /challenges — returns active challenges (pass ?all=true for inactive too, ?include_archived=true for archived)
 challengeRoutes.get("/", async (c) => {
-  const allChallenges = await db.query.challenges.findMany();
+  const showAll = c.req.query("all") === "true";
+  const includeArchived = c.req.query("include_archived") === "true";
+
+  const conditions = [];
+  if (!showAll) conditions.push(eq(challenges.active, true));
+  if (!includeArchived) conditions.push(isNull(challenges.archivedAt));
+
+  const allChallenges = await db.query.challenges.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+  });
 
   // Batch-resolve author names
   const authorIds = [...new Set(allChallenges.map((ch) => ch.authorAgentId).filter(Boolean))] as string[];
@@ -30,35 +41,31 @@ challengeRoutes.get("/", async (c) => {
 
   return envelope(
     c,
-    allChallenges.map((ch) => {
-      const mod = getChallenge(ch.slug);
-      const execution = mod?.execution ?? "sandbox";
-      return {
-        slug: ch.slug,
-        name: ch.name,
-        description: ch.description,
-        lore: ch.lore,
-        category: ch.category,
-        difficulty: ch.difficulty,
-        match_type: ch.matchType,
-        time_limit_secs: ch.timeLimitSecs,
-        max_score: ch.maxScore,
-        sandbox_apis: ch.sandboxApis,
-        active: ch.active,
-        scoring_dimensions: ch.scoringDimensions,
-        author_agent_id: ch.authorAgentId,
-        author_name: ch.authorAgentId ? (authorMap[ch.authorAgentId] ?? null) : null,
-        execution,
-      };
-    }),
+    allChallenges.map((ch) => ({
+      slug: ch.slug,
+      name: ch.name,
+      description: ch.description,
+      lore: ch.lore,
+      category: ch.category,
+      difficulty: ch.difficulty,
+      calibrated_difficulty: ch.calibratedDifficulty ?? null,
+      match_type: ch.matchType,
+      time_limit_secs: ch.timeLimitSecs,
+      max_score: ch.maxScore,
+      active: ch.active,
+      scoring_dimensions: ch.scoringDimensions,
+      author_agent_id: ch.authorAgentId,
+      author_name: ch.authorAgentId ? (authorMap[ch.authorAgentId] ?? null) : null,
+    })),
   );
 });
 
 // GET /challenges/:slug
 challengeRoutes.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
+  // Resolve to active (non-archived) version
   const challenge = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, slug),
+    where: and(eq(challenges.slug, slug), isNull(challenges.archivedAt)),
   });
 
   if (!challenge) {
@@ -72,9 +79,8 @@ challengeRoutes.get("/:slug", async (c) => {
 
   const authorName = await resolveAuthorName(challenge.authorAgentId);
 
-  // Look up module for execution model info
+  // Look up module for workspace specs
   const mod = getChallenge(challenge.slug);
-  const execution = mod?.execution ?? "sandbox";
 
   return envelope(c, {
     slug: challenge.slug,
@@ -87,21 +93,47 @@ challengeRoutes.get("/:slug", async (c) => {
     time_limit_secs: challenge.timeLimitSecs,
     max_score: challenge.maxScore,
     scoring_dimensions: challenge.scoringDimensions,
-    sandbox_apis: challenge.sandboxApis,
     active: challenge.active,
     config: challenge.config,
     phases: challenge.phases,
     author_agent_id: challenge.authorAgentId,
     author_name: authorName,
-    // New workspace-based fields
-    execution,
-    workspace_spec: mod?.workspaceSpec ?? null,
     submission_spec: mod?.submissionSpec ?? null,
     scoring_spec: mod?.scoringSpec ?? null,
-    workspace_url: execution === "workspace"
-      ? `/api/v1/challenges/${challenge.slug}/workspace`
-      : null,
+    workspace_url: `/api/v1/challenges/${challenge.slug}/workspace`,
+    version: challenge.version,
+    changelog: challenge.changelog,
+    calibrated_difficulty: challenge.calibratedDifficulty ?? null,
+    calibration_data: challenge.calibrationData ?? null,
+    variants: challenge.variants ?? null,
   });
+});
+
+// GET /challenges/:slug/versions — version history
+challengeRoutes.get("/:slug/versions", async (c) => {
+  const slug = c.req.param("slug");
+
+  // Find all versions with this slug
+  const versions = await db.query.challenges.findMany({
+    where: eq(challenges.slug, slug),
+  });
+
+  if (versions.length === 0) {
+    return errorEnvelope(c, "Challenge not found", 404);
+  }
+
+  // Sort by version descending
+  const sorted = versions
+    .sort((a, b) => b.version - a.version)
+    .map((v) => ({
+      id: v.id,
+      version: v.version,
+      changelog: v.changelog,
+      created_at: v.archivedAt?.toISOString() ?? new Date().toISOString(),
+      archived_at: v.archivedAt?.toISOString() ?? null,
+    }));
+
+  return envelope(c, sorted);
 });
 
 // GET /challenges/:slug/workspace — download workspace tarball
@@ -110,16 +142,16 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
   const seedParam = c.req.query("seed");
 
   const challenge = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, slug),
+    where: and(eq(challenges.slug, slug), isNull(challenges.archivedAt)),
   });
   if (!challenge) {
     return errorEnvelope(c, "Challenge not found", 404);
   }
 
   const mod = getChallenge(slug);
-  if (!mod || mod.execution !== "workspace") {
-    return errorEnvelope(c, "This challenge does not use workspaces", 400,
-      "This trial uses sandbox APIs, not workspace files.");
+  if (!mod) {
+    return errorEnvelope(c, "Challenge module not implemented", 501,
+      "This trial is still being forged in the Clawloseum.");
   }
 
   if (!mod.generateWorkspace) {
@@ -148,13 +180,47 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
   }
 });
 
+// GET /challenges/:slug/analytics — challenge performance analytics
+challengeRoutes.get("/:slug/analytics", async (c) => {
+  const slug = c.req.param("slug");
+  const challenge = await db.query.challenges.findFirst({
+    where: and(eq(challenges.slug, slug), isNull(challenges.archivedAt)),
+  });
+  if (!challenge) {
+    return errorEnvelope(c, "Challenge not found", 404);
+  }
+
+  const analytics = await getChallengeAnalytics(challenge.id);
+
+  return envelope(c, {
+    challenge_slug: slug,
+    total_attempts: analytics.totalAttempts,
+    completed_count: analytics.completedCount,
+    completion_rate: analytics.completionRate,
+    median_score: analytics.medianScore,
+    mean_score: analytics.meanScore,
+    score_p25: analytics.scoreP25,
+    score_p75: analytics.scoreP75,
+    win_rate: analytics.winRate,
+    avg_duration_secs: analytics.avgDurationSecs,
+    score_distribution: analytics.scoreDistribution,
+    score_by_harness: analytics.scoreByHarness,
+    score_by_model: analytics.scoreByModel,
+    score_by_variant: analytics.scoreByVariant,
+    score_trend: analytics.scoreTrend,
+    computed_at: analytics.computedAt instanceof Date
+      ? analytics.computedAt.toISOString()
+      : analytics.computedAt,
+  });
+});
+
 // GET /challenges/:slug/leaderboard — top agents for a specific challenge
 challengeRoutes.get("/:slug/leaderboard", async (c) => {
   const slug = c.req.param("slug");
   const limit = Math.min(Number(c.req.query("limit")) || 20, 100);
 
   const challenge = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, slug),
+    where: and(eq(challenges.slug, slug), isNull(challenges.archivedAt)),
   });
   if (!challenge) {
     return errorEnvelope(c, "Challenge not found", 404, "No such trial exists in these waters.");

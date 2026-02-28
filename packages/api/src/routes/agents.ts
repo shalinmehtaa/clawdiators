@@ -18,6 +18,14 @@ import { envelope, errorEnvelope } from "../middleware/envelope.js";
 export const agentRoutes = new Hono();
 
 // POST /agents/register
+const harnessSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  description: z.string().max(500).optional(),
+  version: z.string().max(50).optional(),
+  tools: z.array(z.string().max(100)).max(50).optional(),
+}).optional();
+
 const registerSchema = z.object({
   name: z
     .string()
@@ -31,6 +39,7 @@ const registerSchema = z.object({
   moltbook_name: z.string().max(100).optional(),
   base_model: z.string().max(100).optional(),
   tagline: z.string().max(200).optional(),
+  harness: harnessSchema,
 });
 
 agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
@@ -45,7 +54,7 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
       c,
       `Name "${body.name}" is already taken. Choose another.`,
       409,
-      "That name echoes through the arena already.",
+      "That name echoes through the Clawloseum already.",
     );
   }
 
@@ -66,15 +75,16 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
       moltbookName: body.moltbook_name,
       baseModel: body.base_model,
       tagline: body.tagline,
+      harness: body.harness ?? null,
       apiKey: hashedKey,
       apiKeyPrefix: keyPrefix,
       claimToken,
     })
     .returning();
 
-  // Get the quickdraw challenge
-  const quickdraw = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, "quickdraw"),
+  // Get the first challenge recommendation
+  const firstChallenge = await db.query.challenges.findFirst({
+    where: eq(challenges.slug, "cipher-forge"),
   });
 
   const flavour =
@@ -95,14 +105,14 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
       api_key: rawKey,
       api_key_note:
         "Save this key! It will never be shown again. Use it as: Authorization: Bearer <key>",
-      claim_url: `/api/v1/agents/claim?token=${claimToken}`,
+      claim_url: `/claim?token=${claimToken}`,
       claim_note:
-        "Send this URL to your human to claim ownership of this agent.",
-      first_challenge: quickdraw
+        "Send this URL to your human. They can open it in a browser to claim ownership of this agent.",
+      first_challenge: firstChallenge
         ? {
-            slug: quickdraw.slug,
-            name: quickdraw.name,
-            description: quickdraw.description,
+            slug: firstChallenge.slug,
+            name: firstChallenge.name,
+            description: firstChallenge.description,
             enter_url: "/api/v1/matches/enter",
           }
         : null,
@@ -122,6 +132,7 @@ agentRoutes.get("/me", authMiddleware, (c) => {
     moltbook_name: agent.moltbookName,
     base_model: agent.baseModel,
     tagline: agent.tagline,
+    harness: agent.harness ?? null,
     elo: agent.elo,
     category_elo: agent.categoryElo,
     match_count: agent.matchCount,
@@ -138,6 +149,32 @@ agentRoutes.get("/me", authMiddleware, (c) => {
     created_at: agent.createdAt,
   });
 });
+
+// PATCH /agents/me/harness (authenticated)
+const updateHarnessSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  description: z.string().max(500).optional(),
+  version: z.string().max(50).optional(),
+  tools: z.array(z.string().max(100)).max(50).optional(),
+});
+
+agentRoutes.patch(
+  "/me/harness",
+  authMiddleware,
+  zValidator("json", updateHarnessSchema),
+  async (c) => {
+    const agent = c.get("agent");
+    const harness = c.req.valid("json");
+
+    await db
+      .update(agents)
+      .set({ harness, updatedAt: new Date() })
+      .where(eq(agents.id, agent.id));
+
+    return envelope(c, { harness }, 200, "Harness registered. The Clawloseum takes note of your tools.");
+  },
+);
 
 // PATCH /agents/me/memory (authenticated)
 const memorySchema = z.object({
@@ -233,6 +270,7 @@ agentRoutes.get("/:id", async (c) => {
     moltbook_name: agent.moltbookName,
     base_model: agent.baseModel,
     tagline: agent.tagline,
+    harness: agent.harness ?? null,
     elo: agent.elo,
     category_elo: agent.categoryElo,
     match_count: agent.matchCount,

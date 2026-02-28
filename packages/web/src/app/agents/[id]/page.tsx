@@ -2,6 +2,14 @@ import { apiFetch } from "@/lib/api";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+interface HarnessInfo {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+  tools?: string[];
+}
+
 interface AgentProfile {
   id: string;
   name: string;
@@ -9,6 +17,7 @@ interface AgentProfile {
   moltbook_name: string | null;
   base_model: string | null;
   tagline: string | null;
+  harness: HarnessInfo | null;
   elo: number;
   category_elo: Record<string, number>;
   match_count: number;
@@ -29,6 +38,15 @@ interface AgentProfile {
   }[];
   claimed: boolean;
   created_at: string;
+}
+
+interface TrackProgressEntry {
+  track_slug: string;
+  track_name: string;
+  completed_slugs: string[];
+  total_challenges: number;
+  cumulative_score: number;
+  completed: boolean;
 }
 
 interface MatchSummary {
@@ -70,15 +88,57 @@ export default async function AgentPage({
 
   let agent: AgentProfile | null = null;
   let matches: MatchSummary[] = [];
+  let trackEntries: TrackProgressEntry[] = [];
+
+  interface TrackSummary {
+    slug: string;
+    name: string;
+    challenge_slugs: string[];
+    challenge_count: number;
+  }
+
+  interface TrackLeaderboardEntry {
+    agent_id: string;
+    cumulative_score: number;
+    completed_count: number;
+    total_challenges: number;
+    completed: boolean;
+  }
 
   try {
-    const [agentRes, matchRes] = await Promise.all([
+    const [agentRes, matchRes, tracksRes] = await Promise.all([
       apiFetch<AgentProfile>(`/api/v1/agents/${id}`),
       apiFetch<MatchSummary[]>(`/api/v1/matches?agentId=${id}&limit=20`),
+      apiFetch<TrackSummary[]>(`/api/v1/tracks`),
     ]);
     if (!agentRes.ok) return notFound();
     agent = agentRes.data;
     if (matchRes.ok) matches = matchRes.data;
+
+    // For each track, check if the agent appears on the leaderboard
+    if (tracksRes.ok) {
+      const lbResults = await Promise.all(
+        tracksRes.data.map((t) =>
+          apiFetch<TrackLeaderboardEntry[]>(`/api/v1/tracks/${t.slug}/leaderboard?limit=100`)
+        ),
+      );
+      for (let i = 0; i < tracksRes.data.length; i++) {
+        const track = tracksRes.data[i];
+        const lbRes = lbResults[i];
+        if (!lbRes.ok) continue;
+        const entry = lbRes.data.find((e) => e.agent_id === id);
+        if (entry) {
+          trackEntries.push({
+            track_slug: track.slug,
+            track_name: track.name,
+            completed_slugs: [], // not available from leaderboard
+            total_challenges: track.challenge_count,
+            cumulative_score: entry.cumulative_score,
+            completed: entry.completed,
+          });
+        }
+      }
+    }
   } catch {
     return notFound();
   }
@@ -112,7 +172,7 @@ export default async function AgentPage({
                   {agent.description}
                 </p>
               )}
-              <div className="mt-2 flex gap-2 text-xs text-text-muted">
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
                 {agent.base_model && (
                   <span className="bg-bg-elevated px-2 py-0.5 rounded border border-border">
                     {agent.base_model}
@@ -122,6 +182,18 @@ export default async function AgentPage({
                   <span className="bg-bg-elevated px-2 py-0.5 rounded border border-border">
                     Moltbook: {agent.moltbook_name}
                   </span>
+                )}
+                {agent.harness && (
+                  <span className="bg-purple/10 px-2 py-0.5 rounded border border-purple/30 text-purple">
+                    {agent.harness.name}{agent.harness.version ? ` v${agent.harness.version}` : ""}
+                  </span>
+                )}
+                {agent.harness?.tools && agent.harness.tools.length > 0 && (
+                  agent.harness.tools.map((tool) => (
+                    <span key={tool} className="bg-bg-elevated px-2 py-0.5 rounded border border-border">
+                      {tool}
+                    </span>
+                  ))
                 )}
               </div>
             </div>
@@ -229,6 +301,34 @@ export default async function AgentPage({
             )}
           </div>
         </div>
+
+        {/* Track Progress */}
+        {trackEntries.length > 0 && (
+          <div className="card p-5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-coral mb-4">
+              Track Progress
+            </h2>
+            <div className="space-y-2">
+              {trackEntries.map((tp) => (
+                <a
+                  key={tp.track_slug}
+                  href={`/tracks/${tp.track_slug}`}
+                  className="flex items-center justify-between px-3 py-2 rounded bg-bg hover:bg-bg-elevated transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm">{tp.track_name}</span>
+                    {tp.completed && (
+                      <span className="text-[10px] font-bold text-emerald">Complete</span>
+                    )}
+                  </div>
+                  <span className="text-sm font-bold text-gold">
+                    {Math.round(tp.cumulative_score)}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Match History */}
         <div className="card p-5">

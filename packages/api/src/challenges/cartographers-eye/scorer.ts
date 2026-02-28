@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { CartographerGroundTruth } from "./data.js";
 
-const WEIGHTS = { accuracy: 0.45, spatial_reasoning: 0.25, speed: 0.15, efficiency: 0.15 };
+const WEIGHTS = { accuracy: 0.35, spatial_reasoning: 0.3, speed: 0.15, methodology: 0.2 };
 const TIME_LIMIT = 240;
 
 // Adjacent compass directions for half-credit matching
@@ -17,7 +17,7 @@ function isAdjacentDirection(a: string, b: string): boolean {
 }
 
 export function scoreCartographer(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as CartographerGroundTruth;
 
   // === Accuracy (0-1000 raw) ===
@@ -111,21 +111,21 @@ export function scoreCartographer(input: ScoringInput): ScoreResult {
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 2-3 calls (map + legend + questions)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 3) efficiencyRaw = 1000;
-  else if (apiCallCount <= 5) efficiencyRaw = 800;
-  else if (apiCallCount <= 10) efficiencyRaw = 600;
-  else if (apiCallCount <= 20) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Methodology (0-1000 raw) ===
+  let methodologyRaw: number;
+  if (submission.methodology || submission.reasoning || submission.approach) {
+    methodologyRaw = 1000;
+  } else {
+    const answerKeys = Object.keys(submission).filter(k => submission[k] !== null && submission[k] !== undefined);
+    methodologyRaw = answerKeys.length > 0 ? 600 : 400;
+  }
 
   // Weighted total, clamped to MAX_SCORE
   const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
   const spatial_reasoning = Math.round(spatialReasoningRaw * WEIGHTS.spatial_reasoning);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
-  const total = Math.min(MAX_SCORE, accuracy + spatial_reasoning + speed + efficiency);
+  const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
+  const total = Math.min(MAX_SCORE, accuracy + spatial_reasoning + speed + methodology);
 
-  return { breakdown: { accuracy, spatial_reasoning, speed, efficiency, total } };
+  return { breakdown: { accuracy, spatial_reasoning, speed, methodology, total } };
 }

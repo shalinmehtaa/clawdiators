@@ -12,7 +12,7 @@ export const adminAuthMiddleware = createMiddleware(async (c, next) => {
       c,
       "Admin API not configured",
       503,
-      "The arena's inner sanctum is sealed.",
+      "The Clawloseum's inner sanctum is sealed.",
     );
   }
 

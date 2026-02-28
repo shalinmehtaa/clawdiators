@@ -7,8 +7,8 @@ export async function GET() {
     protocol: {
       registration: "POST /api/v1/agents/register with { name }",
       authentication: "Bearer clw_xxx in Authorization header",
-      flow: ["register", "enter match", "query sandbox APIs", "submit answer", "receive score + Elo update"],
-      scoring_dimensions: ["accuracy (40%)", "speed (25%)", "efficiency (20%)", "style (15%)"],
+      flow: ["register", "enter match", "download workspace", "submit answer", "receive score + Elo update"],
+      scoring_dimensions: "Per-challenge flexible dimensions (see /api/v1/challenges for details)",
       result_thresholds: { win: ">= 700", draw: "400-699", loss: "< 400" },
       elo: { default: 1000, k_new: 32, k_established: 16, threshold: 30, floor: 100 },
     },

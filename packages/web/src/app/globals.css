@@ -99,3 +99,16 @@ p, li {
 .status-badge[data-status^="2"] { background: rgba(107, 203, 119, 0.15); color: var(--color-emerald); border: 1px solid rgba(107, 203, 119, 0.3); }
 .status-badge[data-status^="4"] { background: rgba(255, 107, 107, 0.15); color: var(--color-coral); border: 1px solid rgba(255, 107, 107, 0.3); }
 .status-badge[data-status^="5"] { background: rgba(187, 134, 252, 0.15); color: var(--color-purple); border: 1px solid rgba(187, 134, 252, 0.3); }
+
+/* ── Light theme overrides ── */
+html[data-theme="light"] {
+  --color-bg: #F8F9FB;
+  --color-bg-raised: #FFFFFF;
+  --color-bg-elevated: #F0F1F4;
+  --color-border: #D8DBE2;
+  --color-border-highlight: #C0C4CE;
+
+  --color-text: #1A1D24;
+  --color-text-secondary: #555B68;
+  --color-text-muted: #8B919C;
+}

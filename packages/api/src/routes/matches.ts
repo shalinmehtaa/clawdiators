@@ -2,19 +2,21 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, desc, and } from "drizzle-orm";
-import { db, matches, agents, challenges } from "@clawdiators/db";
+import { db, matches, agents, challenges, challengeTracks, trackProgress } from "@clawdiators/db";
 import { ELO_DEFAULT, HEARTBEAT_GRACE_PERIOD_MS } from "@clawdiators/shared";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { generateBoutName, generateFlavourText, computeTitle, computeAllTitles } from "../services/whimsy.js";
 import { calculateElo, scoreToResult } from "../services/elo.js";
 import { getChallenge } from "../challenges/registry.js";
+import { evaluate } from "../challenges/evaluator.js";
+import { recalibrateChallenge } from "../services/calibration.js";
 
 export const matchRoutes = new Hono();
 
 // POST /matches/enter — enter a match
 const enterSchema = z.object({
-  challenge_slug: z.string().optional().default("quickdraw"),
+  challenge_slug: z.string().optional().default("cipher-forge"),
 });
 
 matchRoutes.post(
@@ -39,10 +41,8 @@ matchRoutes.post(
     // Look up the challenge module
     const mod = getChallenge(challenge_slug);
     if (!mod) {
-      return errorEnvelope(c, "Challenge module not implemented", 501, "This trial's arena is still under construction.");
+      return errorEnvelope(c, "Challenge module not implemented", 501, "This trial is still being forged in the Clawloseum.");
     }
-
-    const isWorkspace = mod.execution === "workspace";
 
     // Check for existing active match
     const existingActive = await db.query.matches.findFirst({
@@ -59,29 +59,6 @@ matchRoutes.post(
           .set({ status: "expired" })
           .where(eq(matches.id, existingActive.id));
       } else {
-        // Return existing match info
-        if (isWorkspace) {
-          return envelope(c, {
-            match_id: existingActive.id,
-            bout_name: existingActive.boutName,
-            status: "active",
-            objective: existingActive.objective,
-            time_limit_secs: challenge.timeLimitSecs,
-            expires_at: existingActive.expiresAt,
-            match_type: challenge.matchType,
-            execution: "workspace",
-            workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${existingActive.seed}`,
-            challenge_md: mod.workspaceSpec?.challengeMd ?? null,
-            submission_spec: mod.submissionSpec ?? null,
-            submit_url: `/api/v1/matches/${existingActive.id}/submit`,
-            note: "You already have an active match. Complete or wait for it to expire.",
-          }, 200, "Your current bout awaits, gladiator. Do not keep the crowd waiting.");
-        }
-
-        const sandboxUrls: Record<string, string> = {};
-        for (const api of mod.sandboxApiNames()) {
-          sandboxUrls[api] = `/api/v1/sandbox/${existingActive.id}/${api}`;
-        }
         return envelope(c, {
           match_id: existingActive.id,
           bout_name: existingActive.boutName,
@@ -90,8 +67,9 @@ matchRoutes.post(
           time_limit_secs: challenge.timeLimitSecs,
           expires_at: existingActive.expiresAt,
           match_type: challenge.matchType,
-          execution: "sandbox",
-          sandbox_urls: sandboxUrls,
+          workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${existingActive.seed}`,
+          challenge_md: mod.workspaceSpec?.challengeMd ?? null,
+          submission_spec: mod.submissionSpec ?? null,
           submit_url: `/api/v1/matches/${existingActive.id}/submit`,
           note: "You already have an active match. Complete or wait for it to expire.",
         }, 200, "Your current bout awaits, gladiator. Do not keep the crowd waiting.");
@@ -101,7 +79,24 @@ matchRoutes.post(
     // Generate match
     const seed = Math.floor(Math.random() * 2147483647);
     const boutName = generateBoutName(seed);
-    const data = mod.generateData(seed, challenge.config);
+
+    // Select variant if challenge has A/B variants
+    let variantId: string | null = null;
+    let effectiveConfig = challenge.config;
+    if (challenge.variants && challenge.variants.length > 0) {
+      const variants = challenge.variants;
+      const totalWeight = variants.reduce((sum, v) => sum + (v.weight ?? 1), 0);
+      let roll = (seed % 10000) / 10000 * totalWeight;
+      let selected = variants[0];
+      for (const v of variants) {
+        roll -= v.weight ?? 1;
+        if (roll <= 0) { selected = v; break; }
+      }
+      variantId = selected.id;
+      effectiveConfig = { ...challenge.config, ...selected.config_overrides };
+    }
+
+    const data = mod.generateData(seed, effectiveConfig);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + challenge.timeLimitSecs * 1000);
 
@@ -116,6 +111,7 @@ matchRoutes.post(
         objective: data.objective,
         startedAt: now,
         expiresAt,
+        variantId,
       })
       .returning();
 
@@ -125,40 +121,6 @@ matchRoutes.post(
     }
     if (challenge.matchType === "long-running") {
       extraUrls.heartbeat_url = `/api/v1/matches/${match.id}/heartbeat`;
-    }
-
-    if (isWorkspace) {
-      return envelope(
-        c,
-        {
-          match_id: match.id,
-          bout_name: boutName,
-          challenge: {
-            slug: challenge.slug,
-            name: challenge.name,
-            category: challenge.category,
-            match_type: challenge.matchType,
-          },
-          execution: "workspace",
-          objective: data.objective,
-          time_limit_secs: challenge.timeLimitSecs,
-          started_at: match.startedAt,
-          expires_at: match.expiresAt,
-          workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}`,
-          challenge_md: mod.workspaceSpec?.challengeMd ?? null,
-          submission_spec: mod.submissionSpec ?? null,
-          submit_url: `/api/v1/matches/${match.id}/submit`,
-          ...extraUrls,
-        },
-        201,
-        `${boutName} begins! Download your workspace and get to work. You have ${challenge.timeLimitSecs} seconds.`,
-      );
-    }
-
-    // Sandbox-based challenge (legacy)
-    const sandboxUrls: Record<string, string> = {};
-    for (const api of mod.sandboxApiNames()) {
-      sandboxUrls[api] = `/api/v1/sandbox/${match.id}/${api}`;
     }
 
     return envelope(
@@ -172,22 +134,33 @@ matchRoutes.post(
           category: challenge.category,
           match_type: challenge.matchType,
         },
-        execution: "sandbox",
         objective: data.objective,
         time_limit_secs: challenge.timeLimitSecs,
         started_at: match.startedAt,
         expires_at: match.expiresAt,
-        sandbox_urls: sandboxUrls,
+        workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}`,
+        challenge_md: mod.workspaceSpec?.challengeMd ?? null,
+        submission_spec: mod.submissionSpec ?? null,
         submit_url: `/api/v1/matches/${match.id}/submit`,
         ...extraUrls,
       },
       201,
-      `${boutName} begins! The crowd roars. You have ${challenge.timeLimitSecs} seconds.`,
+      `${boutName} begins! Download your workspace and get to work. You have ${challenge.timeLimitSecs} seconds.`,
     );
   },
 );
 
 // POST /matches/:matchId/submit — submit answer
+const replayStepSchema = z.object({
+  ts: z.string(),
+  tool: z.string(),
+  input: z.string().max(5000),
+  output: z.string().max(5000).optional(),
+  duration_ms: z.number(),
+  error: z.boolean().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
 const submitSchema = z.object({
   answer: z.record(z.unknown()),
   metadata: z.object({
@@ -196,6 +169,7 @@ const submitSchema = z.object({
     model_id: z.string().optional(),
     harness_id: z.string().optional(),
     wall_clock_secs: z.number().optional(),
+    replay_log: z.array(replayStepSchema).max(1000).optional(),
   }).optional(),
 });
 
@@ -206,7 +180,7 @@ matchRoutes.post(
   async (c) => {
     const agent = c.get("agent");
     const matchId = c.req.param("matchId");
-    const { answer } = c.req.valid("json");
+    const { answer, metadata } = c.req.valid("json");
 
     // Get match
     const match = await db.query.matches.findFirst({
@@ -216,7 +190,7 @@ matchRoutes.post(
       return errorEnvelope(c, "Match not found", 404);
     }
     if (match.agentId !== agent.id) {
-      return errorEnvelope(c, "This is not your match", 403, "Impersonation is not tolerated in the arena.");
+      return errorEnvelope(c, "This is not your match", 403, "Impersonation is not tolerated in the Clawloseum.");
     }
     if (match.status === "completed") {
       return errorEnvelope(c, "Match already completed", 409, "The bout has already concluded.");
@@ -242,18 +216,29 @@ matchRoutes.post(
 
     const now = new Date();
 
-    // Generate ground truth from seed via module
-    const data = mod.generateData(match.seed, challenge.config);
+    // Build effective config (merge variant overrides if applicable)
+    let submitConfig = challenge.config;
+    if (match.variantId && challenge.variants) {
+      const variant = challenge.variants.find((v) => v.id === match.variantId);
+      if (variant) {
+        submitConfig = { ...challenge.config, ...variant.config_overrides };
+      }
+    }
 
-    // Score via module
-    const { breakdown } = mod.score({
+    // Generate ground truth from seed via module
+    const data = mod.generateData(match.seed, submitConfig);
+
+    // Evaluate via dispatcher (deterministic, test-suite, or custom-script)
+    const scoringInput = {
       submission: answer,
       groundTruth: data.groundTruth,
       startedAt: match.startedAt,
       submittedAt: now,
       apiCallCount: match.apiCallLog.length,
       checkpoints: match.checkpoints,
-    });
+    };
+    const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput);
+    const { breakdown } = evalResult;
 
     // Determine result (solo calibration)
     const result = scoreToResult(breakdown.total);
@@ -291,6 +276,9 @@ matchRoutes.post(
         eloChange: eloResult.change,
         flavourText,
         completedAt: now,
+        evaluationLog,
+        submissionMetadata: metadata ?? null,
+        harnessId: metadata?.harness_id ?? null,
       })
       .where(eq(matches.id, matchId));
 
@@ -348,6 +336,91 @@ matchRoutes.post(
       })
       .where(eq(agents.id, agent.id));
 
+    // Increment calibration sample size and recalibrate every 20 submissions
+    const newSampleSize = (challenge.calibrationSampleSize ?? 0) + 1;
+    await db
+      .update(challenges)
+      .set({ calibrationSampleSize: newSampleSize })
+      .where(eq(challenges.id, challenge.id));
+
+    if (newSampleSize % 20 === 0) {
+      recalibrateChallenge(challenge.id).catch(() => {
+        // Best-effort calibration
+      });
+    }
+
+    // Update track progress (best-effort)
+    try {
+      const allTracks = await db.query.challengeTracks.findMany({
+        where: eq(challengeTracks.active, true),
+      });
+      for (const track of allTracks) {
+        if (!track.challengeSlugs.includes(challenge.slug)) continue;
+
+        // Upsert track progress
+        const existing = await db.query.trackProgress.findFirst({
+          where: and(
+            eq(trackProgress.trackId, track.id),
+            eq(trackProgress.agentId, agent.id),
+          ),
+        });
+
+        const bestScores = existing?.bestScores ?? {};
+        const prevBest = bestScores[challenge.slug] ?? 0;
+        if (breakdown.total > prevBest) {
+          bestScores[challenge.slug] = breakdown.total;
+        }
+
+        const completedSlugs = [...new Set([
+          ...(existing?.completedSlugs ?? []),
+          challenge.slug,
+        ])];
+
+        // Compute cumulative score based on scoring method
+        let cumulativeScore = 0;
+        const scoreValues = Object.values(bestScores) as number[];
+        if (track.scoringMethod === "sum") {
+          cumulativeScore = scoreValues.reduce((a, b) => a + b, 0);
+        } else if (track.scoringMethod === "average") {
+          cumulativeScore = scoreValues.length > 0
+            ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
+            : 0;
+        } else if (track.scoringMethod === "min") {
+          cumulativeScore = scoreValues.length > 0
+            ? Math.min(...scoreValues)
+            : 0;
+        }
+
+        const isCompleted = completedSlugs.length >= track.challengeSlugs.length;
+
+        if (existing) {
+          await db
+            .update(trackProgress)
+            .set({
+              completedSlugs,
+              bestScores,
+              cumulativeScore,
+              completed: isCompleted,
+              completedAt: isCompleted && !existing.completed ? now : existing.completedAt,
+            })
+            .where(eq(trackProgress.id, existing.id));
+        } else {
+          await db.insert(trackProgress).values({
+            trackId: track.id,
+            agentId: agent.id,
+            completedSlugs,
+            bestScores,
+            cumulativeScore,
+            completed: isCompleted,
+            startedAt: now,
+            completedAt: isCompleted ? now : null,
+          });
+        }
+      }
+    } catch {
+      // Track progress update is best-effort
+    }
+
     return envelope(
       c,
       {
@@ -361,6 +434,7 @@ matchRoutes.post(
         elo_change: eloResult.change,
         title: newTitle,
         flavour_text: flavourText,
+        evaluation_log: evaluationLog,
         reflect_url: `/api/v1/matches/${match.id}/reflect`,
       },
       200,
@@ -403,6 +477,8 @@ matchRoutes.post(
       return errorEnvelope(c, "This challenge does not support checkpoints", 400);
     }
 
+    const mod = getChallenge(challenge.slug);
+
     const checkpoint = {
       phase: body.phase ?? match.checkpoints.length,
       data: body.data,
@@ -415,10 +491,33 @@ matchRoutes.post(
       .set({ checkpoints: newCheckpoints })
       .where(eq(matches.id, matchId));
 
+    // Partial evaluation for deterministic challenges
+    let partialScore: number | undefined;
+    let feedback: string | undefined;
+    if (mod && mod.scoringSpec?.method === "deterministic") {
+      try {
+        const data = mod.generateData(match.seed, challenge.config);
+        const partial = mod.score({
+          submission: body.data,
+          groundTruth: data.groundTruth,
+          startedAt: match.startedAt,
+          submittedAt: new Date(),
+          apiCallCount: match.apiCallLog.length,
+          checkpoints: newCheckpoints,
+        });
+        partialScore = partial.breakdown.total;
+        feedback = `Partial score: ${partialScore}`;
+      } catch {
+        // Partial eval is best-effort
+      }
+    }
+
     return envelope(c, {
       match_id: matchId,
       checkpoint_number: newCheckpoints.length,
       phase: checkpoint.phase,
+      partial_score: partialScore ?? null,
+      feedback: feedback ?? null,
     }, 200, "Checkpoint recorded. The next phase awaits.");
   },
 );
@@ -453,7 +552,7 @@ matchRoutes.post(
       const deadline = new Date(match.lastHeartbeatAt.getTime() + heartbeatInterval * 1000 + HEARTBEAT_GRACE_PERIOD_MS);
       if (new Date() > deadline) {
         await db.update(matches).set({ status: "expired" }).where(eq(matches.id, matchId));
-        return errorEnvelope(c, "Heartbeat missed — match expired", 410, "Silence from the deep. The arena moves on.");
+        return errorEnvelope(c, "Heartbeat missed — match expired", 410, "Silence from the deep. The Clawloseum moves on.");
       }
     }
 
@@ -470,7 +569,7 @@ matchRoutes.post(
       status: "active",
       remaining_secs: remainingSecs,
       heartbeat_at: now.toISOString(),
-    }, 200, "Heartbeat received. The arena acknowledges your presence.");
+    }, 200, "Heartbeat received. The Clawloseum acknowledges your presence.");
   },
 );
 
@@ -523,7 +622,7 @@ matchRoutes.post(
       .set({ memory, updatedAt: new Date() })
       .where(eq(agents.id, agent.id));
 
-    return envelope(c, { reflections_count: memory.reflections.length }, 200, "Wisdom gained in the arena is never lost.");
+    return envelope(c, { reflections_count: memory.reflections.length }, 200, "Wisdom gained in the Clawloseum is never lost.");
   },
 );
 
@@ -545,17 +644,13 @@ matchRoutes.get("/:matchId", async (c) => {
     where: eq(challenges.id, match.challengeId),
   });
 
-  // Look up module for execution model
-  const mod = challenge ? (await import("../challenges/registry.js")).getChallenge(challenge.slug) : null;
-  const execution = mod?.execution ?? "sandbox";
-
   return envelope(c, {
     id: match.id,
     bout_name: match.boutName,
     challenge_id: match.challengeId,
     challenge_slug: challenge?.slug ?? null,
     match_type: challenge?.matchType ?? "single",
-    execution,
+    variant_id: match.variantId ?? null,
     agent: agent
       ? { id: agent.id, name: agent.name, title: agent.title }
       : null,
@@ -572,6 +667,8 @@ matchRoutes.get("/:matchId", async (c) => {
     api_call_log: match.apiCallLog,
     checkpoints: match.checkpoints,
     flavour_text: match.flavourText,
+    evaluation_log: match.evaluationLog ?? null,
+    submission_metadata: match.submissionMetadata ?? null,
     started_at: match.startedAt,
     submitted_at: match.submittedAt,
     completed_at: match.completedAt,

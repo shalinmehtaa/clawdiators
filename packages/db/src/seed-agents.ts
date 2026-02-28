@@ -68,11 +68,11 @@ function computeAllTitles(agent: { matchCount: number; winCount: number; elo: nu
 async function main() {
   console.log("Seeding test agents and match histories...");
 
-  const quickdraw = await db.query.challenges.findFirst({
-    where: eq(challenges.slug, "quickdraw"),
+  const defaultChallenge = await db.query.challenges.findFirst({
+    where: eq(challenges.slug, "cipher-forge"),
   });
-  if (!quickdraw) {
-    console.error("Quickdraw challenge not found. Run seed first.");
+  if (!defaultChallenge) {
+    console.error("Default challenge (cipher-forge) not found. Run seed first.");
     process.exit(1);
   }
 
@@ -171,20 +171,20 @@ async function main() {
         .insert(matches)
         .values({
           boutName,
-          challengeId: quickdraw.id,
+          challengeId: defaultChallenge.id,
           agentId: agent.id,
           seed,
           status: "completed",
           result,
           objective: "Seeded match objective",
-          submission: { ticker: "TEST", close_price: 100 },
+          submission: { answer: "seeded-match" },
           submittedAt,
           score,
           scoreBreakdown: {
-            accuracy: Math.round(score * 0.4),
-            speed: Math.round(score * 0.25),
-            efficiency: Math.round(score * 0.2),
-            style: Math.round(score * 0.15),
+            decryption_accuracy: Math.round(score * 0.5),
+            speed: Math.round(score * 0.2),
+            methodology: Math.round(score * 0.15),
+            difficulty_bonus: Math.round(score * 0.15),
             total: score,
           },
           eloBefore: elo,

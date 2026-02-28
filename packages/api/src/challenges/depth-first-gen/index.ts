@@ -1,63 +1,62 @@
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { DEPTH_FIRST_GEN_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateDepthFirstData } from "./data.js";
 import { scoreDepthFirst } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateDepthFirstData } from "./data.js";
-export { scoreDepthFirst } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: Depth-First Generation
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+Receive a code specification and examples. Solve 20 hidden test cases by
+submitting outputs only — no execution, pure reasoning.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateDepthFirstData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`spec.json\` — Task description with transformation rules
+- \`examples.json\` — 3 worked examples showing input → output
+- \`test-inputs.json\` — 20 test inputs requiring outputs
+
+## Submission Format
+Submit a JSON object with outputs for all test inputs:
+\`\`\`json
+{
+  "answer": {
+    "outputs": [output1, output2, ..., output20]
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
-
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 180 seconds
+- No code execution — reason about the transformation
+`;
 
 export const depthFirstGenModule: ChallengeModule = {
   slug: "depth-first-gen",
   dimensions: DEPTH_FIRST_GEN_DIMENSIONS,
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      outputs: "array of 20 outputs",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: DEPTH_FIRST_GEN_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateDepthFirstData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      spec: data.spec,
-      test_inputs: data.test_inputs,
     };
   },
 
@@ -65,73 +64,12 @@ export const depthFirstGenModule: ChallengeModule = {
     return scoreDepthFirst(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["spec", "examples", "test-inputs"];
-  },
-
-  sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/spec — returns the task spec with description and examples
-    sandbox.get("/:matchId/spec", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The depths yield nothing to ghosts.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/spec`, 200, startTime);
-
-      return c.json({
-        task_type: result.data.spec.task_type,
-        description: result.data.spec.description,
-        examples: result.data.spec.examples,
-        total_test_cases: result.data.test_inputs.length,
-      });
-    });
-
-    // GET /:matchId/examples — returns just the 3 examples
-    sandbox.get("/:matchId/examples", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The depths yield nothing to ghosts.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/examples`, 200, startTime);
-
-      return c.json({
-        examples: result.data.spec.examples,
-        total: result.data.spec.examples.length,
-      });
-    });
-
-    // GET /:matchId/test-inputs — returns all 20 test inputs (without outputs)
-    sandbox.get("/:matchId/test-inputs", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The depths yield nothing to ghosts.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/test-inputs`, 200, startTime);
-
-      return c.json({
-        test_inputs: result.data.test_inputs,
-        total: result.data.test_inputs.length,
-        instructions: "Apply the transformation described in the spec to each input. Submit as { [test_id]: output }.",
-      });
-    });
-
-    return sandbox;
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateDepthFirstData(seed);
+    return {
+      "spec.json": JSON.stringify(data.spec, null, 2),
+      "examples.json": JSON.stringify(data.spec.examples, null, 2),
+      "test-inputs.json": JSON.stringify(data.test_inputs, null, 2),
+    };
   },
 };

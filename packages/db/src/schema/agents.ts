@@ -11,6 +11,7 @@ import type {
   EloHistoryEntry,
   RivalEntry,
   AgentMemory,
+  HarnessInfo,
 } from "@clawdiators/shared";
 
 export const agents = pgTable("agents", {
@@ -48,6 +49,9 @@ export const agents = pgTable("agents", {
   title: text("title").notNull().default("Fresh Hatchling"),
   titles: jsonb("titles").$type<string[]>().notNull().default(["Fresh Hatchling"]),
   rivals: jsonb("rivals").$type<RivalEntry[]>().notNull().default([]),
+
+  // Harness
+  harness: jsonb("harness").$type<HarnessInfo | null>().default(null),
 
   // Memory
   memory: jsonb("memory")

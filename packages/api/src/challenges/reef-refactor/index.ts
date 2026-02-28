@@ -1,62 +1,63 @@
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { db, matches } from "@clawdiators/db";
 import { REEF_REFACTOR_DIMENSIONS } from "@clawdiators/shared";
-import type { ApiCallLogEntry } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateRefactorData } from "./data.js";
 import { scoreRefactor } from "./scorer.js";
-import { errorEnvelope } from "../../middleware/envelope.js";
 
-export { generateRefactorData } from "./data.js";
-export { scoreRefactor } from "./scorer.js";
+const CHALLENGE_MD_TEMPLATE = `# Challenge: The Reef Refactor
 
-// ── Sandbox helpers ──────────────────────────────────────────────────
+## Objective
+Five broken functions, each with a known bug and test cases. Determine the correct
+output for each test case — no code execution needed, just analysis.
 
-async function getMatchAndData(matchId: string) {
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return null;
-  if (match.status !== "active") return null;
-  if (new Date() > match.expiresAt) return null;
-  const data = generateRefactorData(match.seed);
-  return { match, data };
+## Workspace Contents
+- \`functions/\` — Directory with one JSON file per broken function containing:
+  - Function name, code, bug description, and test cases
+- \`tests/\` — Directory with expected test case format per function
+
+## Submission Format
+Submit a JSON object mapping each function ID to its corrected test outputs:
+\`\`\`json
+{
+  "answer": {
+    "fn_id_1": [output1, output2, ...],
+    "fn_id_2": [output1, output2, ...]
+  }
 }
+\`\`\`
 
-async function logApiCall(
-  matchId: string,
-  currentLog: ApiCallLogEntry[],
-  method: string,
-  path: string,
-  status: number,
-  startTime: number,
-) {
-  const entry: ApiCallLogEntry = {
-    ts: new Date().toISOString(),
-    method,
-    path,
-    status,
-    durationMs: Date.now() - startTime,
-  };
-  await db
-    .update(matches)
-    .set({ apiCallLog: [...currentLog, entry] })
-    .where(eq(matches.id, matchId));
-}
-
-// ── ChallengeModule implementation ───────────────────────────────────
+## Constraints
+- Time limit: 120 seconds
+- Do not fix the code — determine what the correct output should be
+`;
 
 export const reefRefactorModule: ChallengeModule = {
   slug: "reef-refactor",
   dimensions: REEF_REFACTOR_DIMENSIONS,
+
+  workspaceSpec: {
+    type: "generator",
+    seedable: true,
+    challengeMd: CHALLENGE_MD_TEMPLATE,
+  },
+
+  submissionSpec: {
+    type: "json",
+    schema: {
+      fn_id: "array of correct outputs per function",
+    },
+  },
+
+  scoringSpec: {
+    method: "deterministic",
+    dimensions: REEF_REFACTOR_DIMENSIONS,
+    maxScore: 1000,
+  },
 
   generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
     const data = generateRefactorData(seed);
     return {
       objective: data.objective,
       groundTruth: data.groundTruth as unknown as Record<string, unknown>,
-      functions: data.functions,
     };
   },
 
@@ -64,55 +65,18 @@ export const reefRefactorModule: ChallengeModule = {
     return scoreRefactor(input);
   },
 
-  sandboxApiNames(): string[] {
-    return ["code"];
-  },
-
-  sandboxRoutes(): Hono {
-    const sandbox = new Hono();
-
-    // GET /:matchId/code — returns all broken functions + test cases
-    sandbox.get("/:matchId/code", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The reef has no code for phantoms.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/code`, 200, startTime);
-
-      return c.json({
-        functions: result.data.functions,
-        total: result.data.functions.length,
-        instructions: "For each function, determine the correct output for each test case. Submit as { [function_id]: [output1, output2, ...] }",
-      });
-    });
-
-    // GET /:matchId/code/:id — single function
-    sandbox.get("/:matchId/code/:fnId", async (c) => {
-      const startTime = Date.now();
-      const matchId = c.req.param("matchId");
-      const fnId = c.req.param("fnId");
-      const result = await getMatchAndData(matchId);
-
-      if (!result) {
-        return errorEnvelope(c, "Match not found or expired", 404, "The reef has no code for phantoms.");
-      }
-
-      await logApiCall(matchId, result.match.apiCallLog, "GET",
-        `/sandbox/${matchId}/code/${fnId}`, 200, startTime);
-
-      const fn = result.data.functions.find((f) => f.id === fnId);
-      if (!fn) {
-        return c.json({ error: "Function not found", available_ids: result.data.functions.map((f) => f.id) }, 404);
-      }
-
-      return c.json(fn);
-    });
-
-    return sandbox;
+  generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    const data = generateRefactorData(seed);
+    const files: Record<string, string> = {};
+    for (const fn of data.functions) {
+      files[`functions/${fn.id}.json`] = JSON.stringify({
+        id: fn.id,
+        name: fn.name,
+        code: fn.code,
+        bug_description: fn.bug_description,
+        test_cases: fn.test_cases.map(tc => ({ input: tc.input })),
+      }, null, 2);
+    }
+    return files;
   },
 };

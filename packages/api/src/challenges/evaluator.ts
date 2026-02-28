@@ -1,90 +1,142 @@
-import type { ScoreBreakdown, ScoringSpec } from "@clawdiators/shared";
+import type { ScoreBreakdown, EvaluationLog, EvalRuntime } from "@clawdiators/shared";
 import type { ChallengeModule, ScoringInput, ScoreResult } from "./types.js";
-
-/**
- * Evaluation audit trail — records how a submission was scored.
- */
-export interface EvaluationLog {
-  method: string;
-  startedAt: string;
-  completedAt: string;
-  rawScores: Record<string, number>;
-  finalScores: Record<string, number>;
-  total: number;
-  errors: string[];
-}
+import {
+  isDockerAvailable,
+  evaluateInDocker,
+  evaluateInSubprocess,
+} from "./docker-evaluator.js";
 
 /**
  * Evaluate a submission for a workspace-based challenge.
  *
- * Dispatches to the appropriate evaluation method based on the challenge's scoring spec.
- * For Phase 1, "deterministic" is fully implemented; others are stubbed.
+ * Dispatches to the appropriate evaluation method based on the challenge's scoring spec:
+ * - "deterministic": uses the module's score() function directly
+ * - "test-suite": runs tests in Docker (or subprocess fallback)
+ * - "custom-script": runs evaluator script in Docker (or subprocess fallback)
  */
-export function evaluate(
+export async function evaluate(
   mod: ChallengeModule,
   input: ScoringInput,
-): { result: ScoreResult; log: EvaluationLog } {
+): Promise<{ result: ScoreResult; log: EvaluationLog }> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
 
   const scoringSpec = mod.scoringSpec;
   const method = scoringSpec?.method ?? "deterministic";
+  const runtime: EvalRuntime | undefined = scoringSpec?.runtime;
 
   let result: ScoreResult;
+  let containerExitCode: number | undefined;
+  let stdout: string | undefined;
+  let rawScores: Record<string, number> = {};
 
   switch (method) {
     case "deterministic":
       // Use the module's existing score function
       result = mod.score(input);
+      // Extract raw scores from breakdown
+      for (const [key, value] of Object.entries(result.breakdown)) {
+        if (key !== "total") rawScores[key] = value;
+      }
       break;
 
     case "test-suite":
-      // Phase 3: run tests in Docker container
-      // For now, fall back to module's score function if available
-      errors.push("test-suite evaluation not yet implemented; using module scorer");
-      result = mod.score(input);
-      break;
+    case "custom-script": {
+      const evaluator = scoringSpec?.evaluator;
+      if (!evaluator) {
+        errors.push(`${method} requires an evaluator script; falling back to module scorer`);
+        result = mod.score(input);
+        for (const [key, value] of Object.entries(result.breakdown)) {
+          if (key !== "total") rawScores[key] = value;
+        }
+        break;
+      }
 
-    case "custom-script":
-      // Phase 3: run evaluator script in sandbox
-      errors.push("custom-script evaluation not yet implemented; using module scorer");
-      result = mod.score(input);
-      break;
+      const evalRuntime = runtime ?? "node";
+      const timeoutSecs = 60;
 
-    case "llm-judge":
-      // Phase 3: call LLM API with rubric
-      errors.push("llm-judge evaluation not yet implemented; using module scorer");
-      result = mod.score(input);
+      // Build submission files from input
+      const submissionFiles: Record<string, string> =
+        typeof input.submission === "object" && input.submission !== null
+          ? Object.fromEntries(
+              Object.entries(input.submission).map(([k, v]) => [
+                k,
+                typeof v === "string" ? v : JSON.stringify(v, null, 2),
+              ]),
+            )
+          : { "submission.json": JSON.stringify(input.submission, null, 2) };
+
+      const dockerOk = await isDockerAvailable();
+      const evalFn = dockerOk ? evaluateInDocker : evaluateInSubprocess;
+      if (!dockerOk) {
+        errors.push("Docker unavailable; using subprocess fallback");
+      }
+
+      const evalResult = await evalFn(
+        submissionFiles,
+        evaluator,
+        evalRuntime,
+        timeoutSecs,
+      );
+
+      containerExitCode = evalResult.exitCode;
+      stdout = evalResult.stdout;
+
+      if (evalResult.error) {
+        errors.push(evalResult.error);
+      }
+
+      rawScores = evalResult.scores;
+
+      // If Docker/subprocess returned scores, compute weighted total
+      if (Object.keys(rawScores).length > 0 && scoringSpec?.dimensions) {
+        const breakdown = computeWeightedTotal(rawScores, scoringSpec.dimensions);
+        result = { breakdown };
+      } else if (Object.keys(rawScores).length > 0) {
+        // No dimensions defined — sum raw scores
+        const total = Object.values(rawScores).reduce((a, b) => a + b, 0);
+        result = { breakdown: { ...rawScores, total: Math.round(total) } };
+      } else {
+        // Evaluator returned no scores — fall back to module scorer
+        errors.push("Evaluator returned no scores; falling back to module scorer");
+        result = mod.score(input);
+        for (const [key, value] of Object.entries(result.breakdown)) {
+          if (key !== "total") rawScores[key] = value;
+        }
+      }
       break;
+    }
 
     default:
       errors.push(`Unknown scoring method: ${method}; using module scorer`);
       result = mod.score(input);
+      for (const [key, value] of Object.entries(result.breakdown)) {
+        if (key !== "total") rawScores[key] = value;
+      }
   }
 
   const completedAt = new Date().toISOString();
 
-  // Separate raw vs weighted scores for audit trail
-  const rawScores: Record<string, number> = {};
+  // Build final scores (from breakdown, excluding total)
   const finalScores: Record<string, number> = {};
   for (const [key, value] of Object.entries(result.breakdown)) {
-    if (key === "total") continue;
-    rawScores[key] = value;
-    finalScores[key] = value;
+    if (key !== "total") finalScores[key] = value;
   }
 
-  return {
-    result,
-    log: {
-      method,
-      startedAt,
-      completedAt,
-      rawScores,
-      finalScores,
-      total: result.breakdown.total,
-      errors,
-    },
+  const log: EvaluationLog = {
+    method,
+    runtime,
+    startedAt,
+    completedAt,
+    containerExitCode,
+    stdout,
+    rawScores,
+    finalScores,
+    total: result.breakdown.total,
+    errors,
   };
+
+  return { result, log };
 }
 
 /**

@@ -14,25 +14,29 @@ const validSpec: CommunitySpec = {
   difficulty: "newcomer",
   matchType: "single",
   timeLimitSecs: 60,
-  scoringDimensions: [
-    { key: "accuracy", label: "Accuracy", weight: 0.6, description: "Correctness of answers", color: "emerald" },
-    { key: "speed", label: "Speed", weight: 0.4, description: "Time to submission", color: "sky" },
-  ],
+  workspace: {
+    type: "generator",
+    seedable: true,
+    challengeMd: "# Test Challenge\n\nSolve the test puzzle.\n\n## Submission\nSubmit JSON with your answer.",
+  },
+  submission: {
+    type: "json",
+    schema: { answer: "string" },
+  },
+  scoring: {
+    method: "deterministic",
+    dimensions: [
+      { key: "accuracy", label: "Accuracy", weight: 0.6, description: "Correctness of answers", color: "emerald" },
+      { key: "speed", label: "Speed", weight: 0.4, description: "Time to submission", color: "sky" },
+    ],
+    maxScore: 1000,
+  },
   scorer: {
     fields: [
       { key: "answer", primitive: "exact_match" },
     ],
     timeDimension: "speed",
   },
-  sandboxApis: [
-    {
-      name: "test-api",
-      description: "Test sandbox API",
-      endpoints: [
-        { method: "GET", path: "/", description: "Get test data" },
-      ],
-    },
-  ],
 };
 
 // ── Spec Validation ────────────────────────────────────────────────
@@ -51,10 +55,13 @@ describe("Community spec validation", () => {
   it("rejects spec with weights not summing to 1.0", () => {
     const result = validateSpec({
       ...validSpec,
-      scoringDimensions: [
-        { key: "accuracy", label: "Accuracy", weight: 0.5, description: "Test", color: "emerald" },
-        { key: "speed", label: "Speed", weight: 0.3, description: "Test", color: "sky" },
-      ],
+      scoring: {
+        ...validSpec.scoring,
+        dimensions: [
+          { key: "accuracy", label: "Accuracy", weight: 0.5, description: "Test", color: "emerald" },
+          { key: "speed", label: "Speed", weight: 0.3, description: "Test", color: "sky" },
+        ],
+      },
     });
     expect(result.valid).toBe(false);
     if (!result.valid) {
@@ -92,9 +99,12 @@ describe("Community spec validation", () => {
   it("rejects spec with too few scoring dimensions", () => {
     const result = validateSpec({
       ...validSpec,
-      scoringDimensions: [
-        { key: "accuracy", label: "Accuracy", weight: 1.0, description: "Test", color: "emerald" },
-      ],
+      scoring: {
+        ...validSpec.scoring,
+        dimensions: [
+          { key: "accuracy", label: "Accuracy", weight: 1.0, description: "Test", color: "emerald" },
+        ],
+      },
     });
     expect(result.valid).toBe(false);
   });
@@ -116,7 +126,17 @@ describe("Declarative module creation", () => {
   it("creates a module with correct slug and dimensions", () => {
     const mod = createDeclarativeModule(validSpec);
     expect(mod.slug).toBe("test-challenge");
-    expect(mod.dimensions).toEqual(validSpec.scoringDimensions);
+    expect(mod.dimensions).toEqual(validSpec.scoring.dimensions);
+  });
+
+  it("creates a module with workspace specs", () => {
+    const mod = createDeclarativeModule(validSpec);
+    expect(mod.workspaceSpec).toBeDefined();
+    expect(mod.workspaceSpec!.type).toBe("generator");
+    expect(mod.submissionSpec).toBeDefined();
+    expect(mod.submissionSpec!.type).toBe("json");
+    expect(mod.scoringSpec).toBeDefined();
+    expect(mod.scoringSpec!.method).toBe("deterministic");
   });
 
   it("generates data deterministically", () => {
@@ -149,6 +169,27 @@ describe("Declarative module creation", () => {
     expect(json1).not.toBe(json2);
   });
 
+  it("generates workspace files", () => {
+    const specWithData: CommunitySpec = {
+      ...validSpec,
+      dataTemplate: {
+        pools: [
+          { name: "colors", items: ["red", "blue", "green", "gold", "silver"] },
+        ],
+        fields: {
+          target_color: { type: "pick_one", pool: "colors" },
+          value: { type: "rand_int", min: 1, max: 100 },
+        },
+      },
+    };
+    const mod = createDeclarativeModule(specWithData);
+    const files = mod.generateWorkspace!(42, {});
+    expect(files).toBeDefined();
+    expect(typeof files).toBe("object");
+    // Should have at least one file
+    expect(Object.keys(files).length).toBeGreaterThan(0);
+  });
+
   it("scores a submission", () => {
     const mod = createDeclarativeModule(validSpec);
     const result = mod.score({
@@ -156,23 +197,12 @@ describe("Declarative module creation", () => {
       groundTruth: { answer: "test" },
       startedAt: new Date("2026-02-01T10:00:00Z"),
       submittedAt: new Date("2026-02-01T10:00:30Z"),
-      apiCallCount: 1,
+      apiCallCount: 0,
     });
     expect(result.breakdown.total).toBeGreaterThan(0);
     expect(result.breakdown.total).toBeLessThanOrEqual(1000);
   });
 
-  it("returns correct sandbox API names", () => {
-    const mod = createDeclarativeModule(validSpec);
-    expect(mod.sandboxApiNames()).toEqual(["test-api"]);
-  });
-
-  it("returns a Hono instance from sandboxRoutes", () => {
-    const mod = createDeclarativeModule(validSpec);
-    const routes = mod.sandboxRoutes();
-    expect(routes).toBeDefined();
-    expect(typeof routes.fetch).toBe("function");
-  });
 });
 
 // ── Determinism Verification ───────────────────────────────────────

@@ -12,6 +12,7 @@ import { skillFile } from "./routes/skill.js";
 import { wellKnownRoute } from "./routes/well-known.js";
 import { challengeDraftRoutes } from "./routes/challenge-drafts.js";
 import { adminRoutes } from "./routes/admin.js";
+import { trackRoutes } from "./routes/tracks.js";
 import { loadCommunityModules } from "./startup.js";
 
 const app = new Hono();
@@ -42,6 +43,7 @@ api.route("/leaderboard", leaderboardRoutes);
 api.route("/feed", feedRoutes);
 api.route("/sandbox", sandboxRoutes);
 api.route("/admin", adminRoutes);
+api.route("/tracks", trackRoutes);
 
 app.route("/api/v1", api);
 

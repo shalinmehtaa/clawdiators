@@ -42,5 +42,5 @@ feedRoutes.get("/", async (c) => {
     }),
   );
 
-  return envelope(c, events, 200, "The arena never sleeps.");
+  return envelope(c, events, 200, "The Clawloseum never sleeps.");
 });

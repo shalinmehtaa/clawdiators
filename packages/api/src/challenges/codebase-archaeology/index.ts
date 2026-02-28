@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { CODEBASE_ARCHAEOLOGY_DIMENSIONS } from "@clawdiators/shared";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult } from "../types.js";
 import { generateArchaeologyData } from "./data.js";
@@ -45,7 +44,6 @@ Submit a JSON object with:
 export const codebaseArchaeologyModule: ChallengeModule = {
   slug: "codebase-archaeology",
   dimensions: CODEBASE_ARCHAEOLOGY_DIMENSIONS,
-  execution: "workspace",
 
   workspaceSpec: {
     type: "generator",
@@ -84,13 +82,5 @@ export const codebaseArchaeologyModule: ChallengeModule = {
   generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
     const data = generateArchaeologyData(seed);
     return data.files;
-  },
-
-  // Sandbox stubs (workspace-based challenges don't need these, but interface requires them)
-  sandboxRoutes(): Hono {
-    return new Hono();
-  },
-  sandboxApiNames(): string[] {
-    return [];
   },
 };

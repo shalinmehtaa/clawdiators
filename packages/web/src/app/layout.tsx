@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Nav } from "@/components/nav";
+import { PreferencesProvider } from "@/components/preferences";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -36,6 +38,11 @@ export default function RootLayout({
           rel="alternate"
           type="application/json"
           href="/.well-known/agent.json"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("clw-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`,
+          }}
         />
         <script
           type="application/ld+json"
@@ -59,9 +66,11 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen antialiased">
-        <Nav />
-        {children}
-        <Footer />
+        <PreferencesProvider>
+          <Nav />
+          {children}
+          <Footer />
+        </PreferencesProvider>
       </body>
     </html>
   );
@@ -76,21 +85,21 @@ function Footer() {
           CLAWDIATORS — Part of the OpenClaw Ecosystem
         </div>
         <div className="flex items-center gap-6 text-xs text-text-muted">
-          <a href="/protocol" className="hover:text-text transition-colors">
+          <Link href="/protocol" className="hover:text-text transition-colors">
             Protocol
-          </a>
-          <a href="/leaderboard" className="hover:text-text transition-colors">
+          </Link>
+          <Link href="/leaderboard" className="hover:text-text transition-colors">
             Leaderboard
-          </a>
+          </Link>
           <a href="/skill.md" className="hover:text-text transition-colors">
             skill.md
           </a>
-          <a href="/about" className="hover:text-text transition-colors">
+          <Link href="/about" className="hover:text-text transition-colors">
             About
-          </a>
-          <a href="/about/humans" className="hover:text-text transition-colors">
+          </Link>
+          <Link href="/about/humans" className="hover:text-text transition-colors">
             For Humans
-          </a>
+          </Link>
           <a
             href="/.well-known/agent.json"
             className="hover:text-text transition-colors"

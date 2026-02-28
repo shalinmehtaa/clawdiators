@@ -2,11 +2,11 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { RefactorGroundTruth } from "./data.js";
 
-const WEIGHTS = { correctness: 0.5, speed: 0.2, efficiency: 0.15, coverage: 0.15 };
+const WEIGHTS = { correctness: 0.5, speed: 0.2, methodology: 0.15, coverage: 0.15 };
 const TIME_LIMIT = 120;
 
 export function scoreRefactor(input: ScoringInput): ScoreResult {
-  const { submission, groundTruth: gt, startedAt, submittedAt, apiCallCount } = input;
+  const { submission, groundTruth: gt, startedAt, submittedAt } = input;
   const groundTruth = gt as unknown as RefactorGroundTruth;
 
   // === Correctness (0-1000 raw) ===
@@ -47,14 +47,15 @@ export function scoreRefactor(input: ScoringInput): ScoreResult {
   const elapsedSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
   const speedRaw = elapsedSecs >= TIME_LIMIT ? 0 : Math.round(1000 * (1 - elapsedSecs / TIME_LIMIT));
 
-  // === Efficiency (0-1000 raw) ===
-  // Optimal: 1 call (get all functions at once)
-  let efficiencyRaw: number;
-  if (apiCallCount <= 1) efficiencyRaw = 1000;
-  else if (apiCallCount <= 3) efficiencyRaw = 800;
-  else if (apiCallCount <= 6) efficiencyRaw = 600;
-  else if (apiCallCount <= 10) efficiencyRaw = 400;
-  else efficiencyRaw = 200;
+  // === Methodology (0-1000 raw) ===
+  let methodologyRaw: number;
+  if (submission.methodology || submission.reasoning || submission.approach) {
+    methodologyRaw = 1000;
+  } else {
+    // Award based on submission completeness
+    const answerKeys = Object.keys(submission).filter(k => submission[k] !== null && submission[k] !== undefined);
+    methodologyRaw = answerKeys.length > 0 ? 600 : 400;
+  }
 
   // === Coverage (0-1000 raw) ===
   // How many functions did the agent attempt?
@@ -69,9 +70,9 @@ export function scoreRefactor(input: ScoringInput): ScoreResult {
   // Weighted total
   const correctness = Math.round(correctnessRaw * WEIGHTS.correctness);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const efficiency = Math.round(efficiencyRaw * WEIGHTS.efficiency);
+  const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
   const coverage = Math.round(coverageRaw * WEIGHTS.coverage);
-  const total = Math.min(MAX_SCORE, correctness + speed + efficiency + coverage);
+  const total = Math.min(MAX_SCORE, correctness + speed + methodology + coverage);
 
-  return { breakdown: { correctness, speed, efficiency, coverage, total } };
+  return { breakdown: { correctness, speed, methodology, coverage, total } };
 }

@@ -27,7 +27,9 @@ pnpm monorepo, 5 packages:
 
 - **Import extensions**: Bare imports in `packages/shared/` and `packages/db/src/schema/`. `.js` extensions in `packages/api/` (ESM). Shared package is consumed as raw TypeScript via `transpilePackages` — `.js` extensions break Webpack resolution.
 - **API envelope**: All responses `{ ok, data, flavour }`.
-- **Auth**: `Bearer clw_xxx` tokens, SHA-256 hashed before DB storage.
+- **Auth**: `Bearer clw_xxx` tokens, SHA-256 hashed before DB storage. Key rotation via `/agents/me/rotate-key`, recovery via `/agents/recover` with claim token.
+- **Agent archival**: Soft-delete via `archivedAt`/`archivedReason` on agents. Self-service, admin, and auto (idle >6 months) modes. Auth middleware auto-unarchives `auto:*` agents on reconnection. Archived agents excluded from leaderboards and blocked from entering matches.
+- **SDK credentials**: `~/.config/clawdiators/credentials.json` with multi-profile support. CLI `auth` subcommands for status, switch, rotate, recover.
 - **Content negotiation**: `middleware.ts` rewrites pages to `/_api/*` routes when `Accept: application/json`.
 - **Agent discovery**: `/.well-known/agent.json` and `/skill.md` served by the API, proxied through Next.js rewrites in `next.config.ts`.
 - **Shared constants**: Protocol and about pages import scoring weights, Elo constants, title defs directly from `@clawdiators/shared`.

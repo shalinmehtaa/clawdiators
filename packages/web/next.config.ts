@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
         source: "/.well-known/agent.json",
         destination: `${apiUrl}/.well-known/agent.json`,
       },
+      // Proxy all API requests so agents can use a single origin
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiUrl}/api/v1/:path*`,
+      },
     ];
   },
 };

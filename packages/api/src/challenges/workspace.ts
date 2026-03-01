@@ -50,7 +50,7 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
     result = result.replace(/\{\{constraints\}\}/g, lines.length ? lines.join("\n") : "(none)");
   }
 
-  if (result.includes("{{verification}}")) {
+  const buildVerificationBlock = (ctx: ChallengeMdContext): string => {
     const policy = ctx.verificationPolicy;
     let note: string;
     if (policy?.mode === "required") {
@@ -64,28 +64,48 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
       note += " Memoryless mode is recommended for benchmark-grade results.";
     }
     if (ctx.verified) {
-      const apiUrl = ctx.apiBaseUrl ?? "<api_base_url>";
-      const dockerNote = ctx.apiBaseUrl?.includes("localhost")
-        ? `\n> **Note:** If running Docker, replace \`localhost\` with \`host.docker.internal\` in CLAWDIATORS_API_URL so the container can reach the host.`
-        : "";
-      note += `\n\n> **This match is running in verified mode.**\n` +
-        `> The workspace is **locked** until the arena-runner proxy registers.\n\n` +
-        `> **Important:** Use a fresh, empty directory for the attestation volume mount.\n` +
-        `> Reusing a directory from a prior run may cause the proxy to finalize immediately.\n\n` +
-        `> **Start the proxy:**\n> \`\`\`bash\n` +
-        `> docker run --rm -d \\\\\n` +
-        `>   -p 8080:8080 \\\\\n` +
-        `>   -v /tmp/attestation:/attestation \\\\\n` +
-        `>   -e PROXY_NONCE=${ctx.nonce ?? "<nonce>"} \\\\\n` +
-        `>   -e PROXY_START_TOKEN=${ctx.proxyStartToken ?? "<proxy_start_token>"} \\\\\n` +
-        `>   -e PROXY_MATCH_ID=${ctx.matchId ?? "<match_id>"} \\\\\n` +
-        `>   -e IMAGE_DIGEST=${ctx.imageDigest ?? "<image_digest>"} \\\\\n` +
-        `>   -e CLAWDIATORS_API_URL=${apiUrl} \\\\\n` +
-        `>   ghcr.io/clawdiators-ai/arena-runner:latest\n> \`\`\`\n` +
-        `> Once the proxy is running and has registered, download the workspace.${dockerNote}`;
+      const hasFullCtx = !!(ctx.nonce && ctx.proxyStartToken);
+      if (hasFullCtx) {
+        // Full pre-proxy context: show setup instructions with pre-filled docker command
+        const apiUrl = ctx.apiBaseUrl ?? "<api_base_url>";
+        const dockerApiUrl = ctx.apiBaseUrl?.includes("localhost")
+          ? ctx.apiBaseUrl.replace(/localhost/g, "host.docker.internal")
+          : apiUrl;
+        const dockerNote = ctx.apiBaseUrl?.includes("localhost")
+          ? `\n> **Note:** \`localhost\` was replaced with \`host.docker.internal\` in CLAWDIATORS_API_URL so the container can reach the host.`
+          : "";
+        note += `\n\n> **This match is running in verified mode.**\n` +
+          `> The workspace is **locked** until the arena-runner proxy registers.\n\n` +
+          `> **Important:** Use a fresh, empty directory for the attestation volume mount.\n` +
+          `> Reusing a directory from a prior run may cause the proxy to finalize immediately.\n\n` +
+          `> **Start the proxy:**\n> \`\`\`bash\n` +
+          `> docker run --rm -d \\\\\n` +
+          `>   -p 8080:8080 \\\\\n` +
+          `>   -v /tmp/attestation:/attestation \\\\\n` +
+          `>   -e PROXY_NONCE=${ctx.nonce} \\\\\n` +
+          `>   -e PROXY_START_TOKEN=${ctx.proxyStartToken} \\\\\n` +
+          `>   -e PROXY_MATCH_ID=${ctx.matchId ?? "<match_id>"} \\\\\n` +
+          `>   -e IMAGE_DIGEST=${ctx.imageDigest ?? "<image_digest>"} \\\\\n` +
+          `>   -e CLAWDIATORS_API_URL=${dockerApiUrl} \\\\\n` +
+          `>   ghcr.io/clawdiators-ai/arena-runner:latest\n> \`\`\`\n` +
+          `> Once the proxy is running and has registered, download the workspace.${dockerNote}`;
+      } else {
+        // Proxy-active workspace context: confirm proxy is live, remind about sentinel
+        note += `\n\n> **This match is running in verified mode. The arena-runner proxy is active.**\n` +
+          `> All LLM calls made through the proxy (HTTPS_PROXY=http://localhost:8080) are being recorded.\n` +
+          `> When you are done solving, write \`/tmp/attestation/done\` to finalize the attestation log,\n` +
+          `> then include the contents of \`/tmp/attestation/attestation.json\` in your submission under \`metadata.attestation\`.`;
+      }
     }
     if (ctx.memoryless) note += "\n\n> This match is running in **memoryless mode**. Arena memory is not accessible.";
-    result = result.replace(/\{\{verification\}\}/g, note);
+    return note;
+  };
+
+  if (result.includes("{{verification}}")) {
+    result = result.replace(/\{\{verification\}\}/g, buildVerificationBlock(ctx));
+  } else if (ctx.verified) {
+    // Template has no {{verification}} placeholder — append the verified match setup block
+    result = result.trimEnd() + "\n\n## Verified Match Setup\n\n" + buildVerificationBlock(ctx) + "\n";
   }
 
   return result;
@@ -100,6 +120,7 @@ export function generateWorkspaceFiles(
   mod: ChallengeModule,
   seed: number,
   config: Record<string, unknown>,
+  ctx?: ChallengeMdContext,
 ): Record<string, string> {
   if (!mod.generateWorkspace) {
     throw new Error(`Module ${mod.slug} does not support workspace generation`);
@@ -109,7 +130,7 @@ export function generateWorkspaceFiles(
 
   // Inject CHALLENGE.md from template if not already present
   if (!files["CHALLENGE.md"] && mod.workspaceSpec?.challengeMd) {
-    files["CHALLENGE.md"] = injectChallengeMdContext(mod.workspaceSpec.challengeMd, { seed });
+    files["CHALLENGE.md"] = injectChallengeMdContext(mod.workspaceSpec.challengeMd, { seed, ...ctx });
   }
 
   return files;
@@ -154,8 +175,9 @@ export function buildWorkspaceArchive(
   mod: ChallengeModule,
   seed: number,
   config: Record<string, unknown>,
+  ctx?: ChallengeMdContext,
 ): Buffer {
-  const files = generateWorkspaceFiles(mod, seed, config);
+  const files = generateWorkspaceFiles(mod, seed, config, ctx);
   const dir = writeWorkspaceToDir(files);
 
   try {

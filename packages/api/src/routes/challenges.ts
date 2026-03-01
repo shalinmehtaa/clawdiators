@@ -3,7 +3,7 @@ import { eq, desc, and, sql, isNull } from "drizzle-orm";
 import { db, challenges, agents, matches } from "@clawdiators/db";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { getChallenge } from "../challenges/registry.js";
-import { buildWorkspaceArchive } from "../challenges/workspace.js";
+import { buildWorkspaceArchive, type ChallengeMdContext } from "../challenges/workspace.js";
 import { getChallengeAnalytics } from "../services/analytics.js";
 import { getDesignGuideHash } from "../startup.js";
 
@@ -176,6 +176,7 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
   // Proxy-gated workspace: if a match_id is provided and the match is verified but
   // the proxy hasn't registered yet, block the download with 423 Locked.
   const matchIdParam = c.req.query("match_id");
+  let workspaceCtx: ChallengeMdContext = { seed };
   if (matchIdParam) {
     const match = await db.query.matches.findFirst({ where: eq(matches.id, matchIdParam) });
     if (match?.verified && !match.proxyActiveAt) {
@@ -186,10 +187,13 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
         "The arena gate is sealed. Deploy the proxy to unlock the workspace.",
       );
     }
+    if (match?.verified && match.proxyActiveAt) {
+      workspaceCtx = { seed, verified: true, matchId: match.id };
+    }
   }
 
   try {
-    const archive = buildWorkspaceArchive(mod, seed, challenge.config);
+    const archive = buildWorkspaceArchive(mod, seed, challenge.config, workspaceCtx);
 
     return new Response(new Uint8Array(archive), {
       status: 200,

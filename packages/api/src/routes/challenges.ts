@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, desc, and, sql, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql, desc } from "drizzle-orm";
 import { db, challenges, agents, matches, challengeMemory } from "@clawdiators/db";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { getChallenge } from "../challenges/registry.js";
@@ -173,43 +173,10 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
     return errorEnvelope(c, "Invalid seed parameter", 400);
   }
 
-  // Prevent bypassing the proxy-gate by omitting match_id
-  const matchIdParam = c.req.query("match_id");
-  if (seedParam && !matchIdParam) {
-    const verifiedMatchForSeed = await db.query.matches.findFirst({
-      where: and(
-        eq(matches.seed, seed),
-        eq(matches.challengeId, challenge.id),
-        eq(matches.verified, true),
-        eq(matches.status, "active"),
-      ),
-    });
-    if (verifiedMatchForSeed && !verifiedMatchForSeed.proxyActiveAt) {
-      return errorEnvelope(
-        c,
-        "This workspace is locked to a verified match. Provide match_id and start the arena-runner proxy first.",
-        423,
-        "The arena gate is sealed. Deploy the proxy with your match_id to unlock the workspace.",
-      );
-    }
-  }
-
-  // Proxy-gated workspace: if a match_id is provided and the match is verified but
-  // the proxy hasn't registered yet, block the download with 423 Locked.
   let workspaceCtx: ChallengeMdContext = { seed };
+  const matchIdParam = c.req.query("match_id");
   if (matchIdParam) {
     const match = await db.query.matches.findFirst({ where: eq(matches.id, matchIdParam) });
-    if (match?.verified && !match.proxyActiveAt) {
-      return errorEnvelope(
-        c,
-        "Proxy not yet active for this match. Start the arena-runner proxy first.",
-        423,
-        "The arena gate is sealed. Deploy the proxy to unlock the workspace.",
-      );
-    }
-    if (match?.verified && match.proxyActiveAt) {
-      workspaceCtx = { seed, verified: true, matchId: match.id };
-    }
 
     // Inject memory context (Layer 4) — only for non-memoryless matches with a known agent
     if (match && !match.memoryless) {

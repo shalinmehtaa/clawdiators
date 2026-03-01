@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, desc, and, sql, isNull, inArray } from "drizzle-orm";
-import { db, matches, agents, challenges, challengeTracks, trackProgress, verificationImages, harnessRegistry } from "@clawdiators/db";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { db, matches, agents, challenges, challengeTracks, trackProgress } from "@clawdiators/db";
 import { ELO_DEFAULT, DIFFICULTY_ELO, HEARTBEAT_GRACE_PERIOD_MS, VERIFIED_ELO_BONUS, BENCHMARK_ELO_BONUS } from "@clawdiators/shared";
 import type { TrackScoringMethod } from "@clawdiators/shared";
 import { authMiddleware } from "../middleware/auth.js";
@@ -13,11 +13,11 @@ import { getChallenge } from "../challenges/registry.js";
 import { evaluate } from "../challenges/evaluator.js";
 import { injectChallengeMdContext } from "../challenges/workspace.js";
 import { recalibrateChallenge } from "../services/calibration.js";
-import { generateNonce, verifyAttestation } from "../services/verification.js";
 import { selectVariant, mergeVariantConfig } from "../services/variants.js";
 import { computeTrackScore } from "../services/tracks.js";
 import { replayStepSchema } from "../schemas/replay.js";
-import { upsertChallengeMemory, upsertHarnessLineage } from "../services/memory.js";
+import { upsertChallengeMemory } from "../services/memory.js";
+import { validateTrajectory } from "../services/trajectory-validation.js";
 
 export const matchRoutes = new Hono();
 
@@ -25,7 +25,6 @@ export const matchRoutes = new Hono();
 const enterSchema = z.object({
   challenge_slug: z.string().optional().default("cipher-forge"),
   memoryless: z.boolean().optional().default(false),
-  verified: z.boolean().optional().default(false),
 });
 
 matchRoutes.post(
@@ -34,7 +33,7 @@ matchRoutes.post(
   zValidator("json", enterSchema),
   async (c) => {
     const agent = c.get("agent");
-    const { challenge_slug, memoryless, verified } = c.req.valid("json");
+    const { challenge_slug, memoryless } = c.req.valid("json");
 
     // Reject archived agents
     if (agent.archivedAt) {
@@ -57,31 +56,10 @@ matchRoutes.post(
       return errorEnvelope(c, "Challenge is not active yet", 400, "Patience, gladiator. This trial is not yet open.");
     }
 
-    // Enforce verification policy
-    if (challenge.verificationPolicy?.mode === "required" && !verified) {
-      return errorEnvelope(c, "This challenge requires verified execution.", 403,
-        "The arena demands proof. Run this challenge in the verified arena-runner.");
-    }
-
     // Look up the challenge module
     const mod = getChallenge(challenge_slug);
     if (!mod) {
       return errorEnvelope(c, "Challenge module not implemented", 501, "This trial is still being forged in the arena.");
-    }
-
-    // Derive API base URL from request headers (used in CHALLENGE.md template + verification response)
-    const proto = c.req.header("x-forwarded-proto") ?? "http";
-    const host = c.req.header("host") ?? "localhost:3001";
-    const apiBaseUrl = `${proto}://${host}`;
-
-    // Look up the latest known-good arena-runner image digest (needed for both re-enter and new match)
-    let knownImageDigest: string | null = null;
-    if (verified) {
-      const latestImage = await db.query.verificationImages.findFirst({
-        where: isNull(verificationImages.deprecatedAt),
-        orderBy: desc(verificationImages.publishedAt),
-      });
-      knownImageDigest = latestImage?.digest ?? null;
     }
 
     // Check for existing active match
@@ -124,17 +102,10 @@ matchRoutes.post(
               verified: existingActive.verified,
               memoryless: existingActive.memoryless,
               constraints: existingChallenge?.constraints as Record<string, unknown> | null ?? null,
-              verificationPolicy: existingChallenge?.verificationPolicy as { mode?: string; memorylessRecommended?: boolean } | null ?? null,
-              nonce: existingActive.verificationNonce ?? undefined,
-              proxyStartToken: existingActive.proxyStartToken ?? undefined,
               matchId: existingActive.id,
-              imageDigest: knownImageDigest ?? undefined,
-              apiBaseUrl,
             })
           : null;
-        const existingWorkspaceUrl = existingActive.verified
-          ? `/api/v1/challenges/${existingChallenge?.slug ?? challenge.slug}/workspace?seed=${existingActive.seed}&match_id=${existingActive.id}`
-          : `/api/v1/challenges/${existingChallenge?.slug ?? challenge.slug}/workspace?seed=${existingActive.seed}`;
+        const existingWorkspaceUrl = `/api/v1/challenges/${existingChallenge?.slug ?? challenge.slug}/workspace?seed=${existingActive.seed}`;
         return envelope(c, {
           match_id: existingActive.id,
           bout_name: existingActive.boutName,
@@ -150,15 +121,6 @@ matchRoutes.post(
           attempt_number: existingActive.attemptNumber,
           memoryless: existingActive.memoryless,
           verified: existingActive.verified,
-          verification: existingActive.verified ? {
-            nonce: existingActive.verificationNonce,
-            proxy_start_token: existingActive.proxyStartToken ?? undefined,
-            image_digest: knownImageDigest ?? undefined,
-            image: "arena-runner:latest",
-            runner_url: "ghcr.io/clawdiators-ai/arena-runner:latest",
-            api_base_url: apiBaseUrl,
-            proxy_active: !!existingActive.proxyActiveAt,
-          } : undefined,
           challenge: existingChallenge ? {
             slug: existingChallenge.slug,
             name: existingChallenge.name,
@@ -184,8 +146,6 @@ matchRoutes.post(
     const data = mod.generateData(seed, effectiveConfig);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + challenge.timeLimitSecs * 1000);
-    const verificationNonce = verified ? generateNonce() : null;
-    const proxyStartToken = verified ? generateNonce() : null;
 
     // Compute attempt number (count previous completed matches for this agent+challenge)
     const [{ count: previousCompleted }] = await db
@@ -214,10 +174,7 @@ matchRoutes.post(
         variantId,
         attemptNumber,
         memoryless,
-        verified,
-        verificationNonce,
-        proxyStartToken,
-        verificationStatus: verified ? "pending" : "unverified",
+        verified: false,
       })
       .returning();
 
@@ -244,40 +201,25 @@ matchRoutes.post(
         time_limit_secs: challenge.timeLimitSecs,
         started_at: match.startedAt,
         expires_at: match.expiresAt,
-        workspace_url: verified
-          ? `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}&match_id=${match.id}`
-          : `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}`,
+        workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}&match_id=${match.id}`,
         challenge_md: mod.workspaceSpec?.challengeMd
           ? injectChallengeMdContext(mod.workspaceSpec.challengeMd, {
               seed,
               attemptNumber,
-              verified,
+              verified: false,
               memoryless,
               constraints: challenge.constraints as Record<string, unknown> | null ?? null,
-              verificationPolicy: challenge.verificationPolicy as { mode?: string; memorylessRecommended?: boolean } | null ?? null,
-              nonce: verificationNonce ?? undefined,
-              proxyStartToken: proxyStartToken ?? undefined,
               matchId: match.id,
-              imageDigest: knownImageDigest ?? undefined,
-              apiBaseUrl,
             })
           : null,
         submission_spec: mod.submissionSpec ?? null,
         submit_url: `/api/v1/matches/${match.id}/submit`,
         attempt_number: attemptNumber,
         memoryless,
-        verified,
-        verification: verified ? {
-          nonce: verificationNonce,
-          proxy_start_token: proxyStartToken,
-          image_digest: knownImageDigest ?? "sha256:unknown",
-          image: "arena-runner:latest",
-          runner_url: "ghcr.io/clawdiators-ai/arena-runner:latest",
-          api_base_url: apiBaseUrl,
-        } : undefined,
+        verified: false,
         constraints: challenge.constraints ? {
           ...challenge.constraints,
-          advisory: !verified,
+          advisory: true,
         } : undefined,
         ...extraUrls,
       },
@@ -286,41 +228,6 @@ matchRoutes.post(
     );
   },
 );
-
-// POST /matches/:matchId/proxy-ready — arena-runner proxy calls this on startup to unlock the workspace
-matchRoutes.post("/:matchId/proxy-ready", async (c) => {
-  const matchId = c.req.param("matchId");
-
-  let body: { nonce?: string; proxy_start_token?: string };
-  try {
-    body = await c.req.json();
-  } catch {
-    return errorEnvelope(c, "Invalid JSON body", 400);
-  }
-
-  const { nonce, proxy_start_token } = body;
-  if (!nonce || !proxy_start_token) {
-    return errorEnvelope(c, "nonce and proxy_start_token are required", 400);
-  }
-
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return errorEnvelope(c, "Match not found", 404);
-  if (!match.verified) return errorEnvelope(c, "Match is not a verified match", 400);
-  if (match.status !== "active") return errorEnvelope(c, "Match is not active", 400);
-  if (match.proxyActiveAt) return errorEnvelope(c, "Proxy already registered for this match", 409);
-
-  if (nonce !== match.verificationNonce) return errorEnvelope(c, "Invalid nonce", 403, "The nonce does not match. Access denied.");
-  if (proxy_start_token !== match.proxyStartToken) return errorEnvelope(c, "Invalid proxy_start_token", 403, "The proxy start token does not match. Access denied.");
-
-  await db
-    .update(matches)
-    .set({ proxyActiveAt: new Date(), proxyStartToken: null })
-    .where(eq(matches.id, matchId));
-
-  return envelope(c, { ok: true }, 200, "Proxy registered. The arena watches.");
-});
 
 // POST /matches/:matchId/submit — submit answer
 const submitSchema = z.object({
@@ -332,7 +239,6 @@ const submitSchema = z.object({
     harness_id: z.string().optional(),
     wall_clock_secs: z.number().optional(),
     replay_log: z.array(replayStepSchema).max(1000).optional(),
-    attestation: z.record(z.unknown()).optional(),
   }).optional(),
 });
 
@@ -391,52 +297,17 @@ matchRoutes.post(
     // Generate ground truth from seed via module
     const data = mod.generateData(match.seed, submitConfig);
 
-    // Verification: run attestation checks BEFORE scoring so efficiency dimensions
-    // only apply to genuinely verified attestations.
-    let verificationStatus: string = match.verified ? "failed" : "unverified";
-    let verificationFields: Record<string, unknown> = {};
-    let verifiedAttestation: Record<string, unknown> | null = null;
-    let verificationChecks: Record<string, boolean> | null = null;
-    let verificationErrors: string[] | null = null;
+    // Trajectory validation: check replay_log if submitted
+    let isVerified = false;
+    let trajectoryValidation: import("@clawdiators/shared").TrajectoryValidationResult | null = null;
 
-    if (match.verified) {
-      const attestationPayload = metadata?.attestation;
-      if (attestationPayload && match.verificationNonce) {
-        // Load known digests from DB
-        const knownImages = await db.query.verificationImages.findMany({
-          where: isNull(verificationImages.deprecatedAt),
-        });
-        const knownDigests = knownImages.map((img) => img.digest);
-        const vResult = verifyAttestation(
-          attestationPayload as unknown as import("@clawdiators/shared").VerifiedAttestation,
-          match.verificationNonce,
-          match.startedAt,
-          match.expiresAt,
-          knownDigests,
-        );
-        verificationStatus = vResult.status;
-        verificationChecks = vResult.checks;
-        verificationErrors = vResult.errors;
-        const att = attestationPayload as Record<string, unknown>;
-        const llmCalls = att.llm_calls as Array<{ model?: string }> | undefined;
-        // Extract harness snapshot fields if present
-        const harnessSnapshot = att.harness_snapshot as Record<string, unknown> | undefined;
-        verificationFields = {
-          attestation: attestationPayload,
-          verifiedAt: new Date(),
-          verifiedModel: llmCalls?.[0]?.model ?? null,
-          verifiedInputTokens: typeof att.total_input_tokens === "number" ? att.total_input_tokens : null,
-          verifiedOutputTokens: typeof att.total_output_tokens === "number" ? att.total_output_tokens : null,
-          verifiedLlmCalls: typeof att.total_llm_calls === "number" ? att.total_llm_calls : null,
-          systemPromptHash: typeof harnessSnapshot?.system_prompt_hash === "string" ? harnessSnapshot.system_prompt_hash : null,
-          toolDefinitionsHash: typeof harnessSnapshot?.tool_definitions_hash === "string" ? harnessSnapshot.tool_definitions_hash : null,
-        };
-        // Only pass attestation to evaluator if it passed verification
-        if (vResult.status === "verified") {
-          verifiedAttestation = attestationPayload as Record<string, unknown>;
-        }
-      }
-      // No attestation submitted → verification failed (already default)
+    if (metadata?.replay_log && metadata.replay_log.length > 0) {
+      trajectoryValidation = validateTrajectory(
+        metadata.replay_log,
+        match.startedAt,
+        now,
+      );
+      isVerified = trajectoryValidation.valid;
     }
 
     // Evaluate via dispatcher (deterministic, test-suite, or custom-script)
@@ -453,10 +324,26 @@ matchRoutes.post(
       ? mod.validateSubmission(answer, data.groundTruth)
       : [];
 
+    // Build trajectory summary for efficiency scoring
+    let trajectorySummary: { total_input_tokens: number; total_output_tokens: number; total_llm_calls: number } | null = null;
+    if (isVerified && metadata?.replay_log) {
+      let totalInput = 0;
+      let totalOutput = 0;
+      let totalCalls = 0;
+      for (const step of metadata.replay_log) {
+        if (step.type === "llm_call") {
+          totalInput += step.input_tokens;
+          totalOutput += step.output_tokens;
+          totalCalls += 1;
+        }
+      }
+      trajectorySummary = { total_input_tokens: totalInput, total_output_tokens: totalOutput, total_llm_calls: totalCalls };
+    }
+
     const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
-      verified: verificationStatus === "verified",
+      verified: isVerified,
       constraints: challenge.constraints as import("@clawdiators/shared").ChallengeConstraints | null,
-      attestation: verifiedAttestation,
+      trajectory: trajectorySummary,
     });
     const { breakdown } = evalResult;
 
@@ -464,7 +351,6 @@ matchRoutes.post(
     const result = scoreToResult(breakdown.total);
 
     // IRT-Elo: use challenge difficulty as opponent rating
-    // See docs/scoring-methodology.md for rationale
     const challengeDifficulty = (challenge.calibratedDifficulty ?? challenge.difficulty) as string;
     const opponentElo = DIFFICULTY_ELO[challengeDifficulty] ?? ELO_DEFAULT;
     const eloResult = calculateElo(
@@ -474,11 +360,11 @@ matchRoutes.post(
       agent.matchCount,
     );
 
-    // Apply Elo bonus for verified wins
+    // Apply Elo bonus for verified wins (trajectory submitted and valid)
     // Benchmark grade (verified + memoryless + first attempt): 1.2x
     // Verified only: 1.1x
     let eloChange = eloResult.change;
-    if (verificationStatus === "verified" && eloResult.change > 0) {
+    if (isVerified && eloResult.change > 0) {
       const isBenchmark = match.memoryless && match.attemptNumber === 1;
       const bonus = isBenchmark ? BENCHMARK_ELO_BONUS : VERIFIED_ELO_BONUS;
       eloChange = Math.round(eloResult.change * bonus);
@@ -517,8 +403,7 @@ matchRoutes.post(
         evaluationLog,
         submissionMetadata: metadata ?? null,
         harnessId: metadata?.harness_id ?? null,
-        verificationStatus,
-        ...verificationFields,
+        verified: isVerified,
       })
       .where(eq(matches.id, matchId));
 
@@ -659,21 +544,6 @@ matchRoutes.post(
       // Best-effort — do not fail the submit if memory update fails
     });
 
-    // Auto-update harness lineage (Layer 3 — verified matches only, best-effort)
-    if (
-      match.verified &&
-      verificationStatus === "verified" &&
-      verificationFields.systemPromptHash &&
-      typeof verificationFields.systemPromptHash === "string"
-    ) {
-      upsertHarnessLineage(agent.id, verificationFields.systemPromptHash, {
-        score: breakdown.total,
-        now,
-      }).catch(() => {
-        // Best-effort
-      });
-    }
-
     return envelope(
       c,
       {
@@ -688,14 +558,8 @@ matchRoutes.post(
         opponent_elo: opponentElo,
         attempt_number: match.attemptNumber,
         memoryless: match.memoryless,
-        verified: match.verified,
-        verification_status: verificationStatus,
-        verification_checks: verificationChecks ?? undefined,
-        verification_errors: verificationErrors?.length ? verificationErrors : undefined,
-        verified_model: (verificationFields.verifiedModel as string | null) ?? null,
-        verified_input_tokens: (verificationFields.verifiedInputTokens as number | null) ?? null,
-        verified_output_tokens: (verificationFields.verifiedOutputTokens as number | null) ?? null,
-        verified_llm_calls: (verificationFields.verifiedLlmCalls as number | null) ?? null,
+        verified: isVerified,
+        trajectory_validation: trajectoryValidation ?? undefined,
         title: newTitle,
         flavour_text: flavourText,
         evaluation_log: evaluationLog,
@@ -913,14 +777,6 @@ matchRoutes.get("/:matchId", async (c) => {
     where: eq(challenges.id, match.challengeId),
   });
 
-  let harnessRegistryName: string | null = null;
-  if (match.systemPromptHash) {
-    const registryEntry = await db.query.harnessRegistry.findFirst({
-      where: eq(harnessRegistry.systemPromptHash, match.systemPromptHash),
-    });
-    harnessRegistryName = registryEntry?.harnessName ?? null;
-  }
-
   return envelope(c, {
     id: match.id,
     bout_name: match.boutName,
@@ -931,14 +787,6 @@ matchRoutes.get("/:matchId", async (c) => {
     attempt_number: match.attemptNumber,
     memoryless: match.memoryless,
     verified: match.verified,
-    verification_status: match.verificationStatus,
-    verified_model: match.verifiedModel ?? null,
-    verified_input_tokens: match.verifiedInputTokens ?? null,
-    verified_output_tokens: match.verifiedOutputTokens ?? null,
-    verified_llm_calls: match.verifiedLlmCalls ?? null,
-    system_prompt_hash: match.systemPromptHash ?? null,
-    harness_registry_name: harnessRegistryName,
-    attestation: match.attestation ?? null,
     agent: agent
       ? { id: agent.id, name: agent.name, title: agent.title }
       : null,
@@ -960,22 +808,6 @@ matchRoutes.get("/:matchId", async (c) => {
     started_at: match.startedAt,
     submitted_at: match.submittedAt,
     completed_at: match.completedAt,
-  });
-});
-
-// GET /matches/:matchId/attestation — get attestation data
-matchRoutes.get("/:matchId/attestation", async (c) => {
-  const matchId = c.req.param("matchId");
-  const match = await db.query.matches.findFirst({
-    where: eq(matches.id, matchId),
-  });
-  if (!match) return errorEnvelope(c, "Match not found", 404);
-  if (!match.attestation) return errorEnvelope(c, "No attestation for this match", 404);
-  return envelope(c, {
-    match_id: match.id,
-    verification_status: match.verificationStatus,
-    verified_at: match.verifiedAt?.toISOString() ?? null,
-    attestation: match.attestation,
   });
 });
 
@@ -1038,7 +870,6 @@ matchRoutes.get("/", async (c) => {
       attempt_number: m.attemptNumber,
       memoryless: m.memoryless,
       verified: m.verified,
-      verification_status: m.verificationStatus,
       flavour_text: m.flavourText,
       started_at: m.startedAt,
       completed_at: m.completedAt,

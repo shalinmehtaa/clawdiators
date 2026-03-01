@@ -129,99 +129,28 @@ export interface TitleDef {
   }) => boolean;
 }
 
-// ── Verification Types ──────────────────────────────────────────────
-
-export interface LLMCallRecord {
-  seq: number;
-  ts: string;
-  provider: string;
-  model: string;
-  input_tokens: number;
-  output_tokens: number;
-  duration_ms: number;
-  status_code: number;
-  request_hash: string;
-  response_hash: string;
-  token_extraction: "exact" | "fallback" | "unknown";
-}
-
-export interface ConstraintViolation {
-  type: "token_budget" | "call_limit" | "model_violation" | "network_blocked";
-  detail: string;
-  seq: number;
-  ts: string;
-}
-
-export interface ActivitySummary {
-  files_read: number;
-  files_written: number;
-  commands_run: number;
-  unique_tools: string[];
-}
-
-export interface CostEstimate {
-  total_usd: number;
-  by_model: Record<string, number>;
-  pricing_version: string;
-}
-
-/** Proxy-observable harness fingerprint included in every attestation. */
-export interface AttestationHarnessSnapshot {
-  system_prompt_hash: string | null;
-  tool_definitions_hash: string | null;
-  tools_observed: string[];
-  models_used: string[];
-}
-
-export interface VerifiedAttestation {
-  image_digest: string;
-  nonce: string;
-  chain_head_hash: string;
-  chain_length: number;
-  llm_calls: LLMCallRecord[];
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-  total_tool_calls: number;
-  wall_clock_secs: number;
-  harness_snapshot?: AttestationHarnessSnapshot;
-  estimated_cost?: CostEstimate;
-  activity_summary?: ActivitySummary;
-  constraint_violations?: ConstraintViolation[];
-}
-
-export interface MatchHarnessSnapshot {
-  claimed_id: string;
-  claimed_version: string | null;
-  system_prompt_hash: string | null;
-  tool_definitions_hash: string | null;
-  tools_observed: string[];
-  models_used: string[];
-}
-
-export interface VerificationResult {
-  status: "verified" | "failed";
-  checks: {
-    nonce_match: boolean;
-    chain_integrity: boolean;
-    image_digest_known: boolean;
-    timing_consistent: boolean;
-    token_count_consistent: boolean;
-  };
-  errors: string[];
-  verified_at: string;
-}
+// ── Trajectory Types ────────────────────────────────────────────────
 
 export interface ChallengeVerificationPolicy {
   mode: "optional" | "recommended" | "required";
   memorylessRecommended?: boolean;
-  verifiedConstraints?: ChallengeConstraints;
 }
 
 export interface ChallengeDisclosurePolicy {
   replayVisibility: "private" | "delayed_public" | "public_opt_in";
   redactSubmissionUntil: "never" | "version_rotated" | "challenge_archived";
   benchmarkSeedExposure: "normal" | "restricted";
+}
+
+/** Result of server-side trajectory validation. */
+export interface TrajectoryValidationResult {
+  valid: boolean;
+  checks: {
+    non_empty: boolean;
+    timestamps_in_bounds: boolean;
+    tool_replay_consistent: boolean;
+  };
+  warnings: string[];
 }
 
 // ── Benchmark Metrics ───────────────────────────────────────────────
@@ -269,14 +198,29 @@ export interface SubmissionSpec {
 /** Runtime environment for evaluator containers. */
 export type EvalRuntime = "node" | "python" | "multi";
 
-/** A single step in an agent's replay log. */
-export interface ReplayStep {
+/** A single step in an agent's replay log (tool call or LLM call). */
+export type ReplayStep = ToolCallStep | LLMCallStep;
+
+export interface ToolCallStep {
+  type: "tool_call";
   ts: string;
-  tool: string;           // "bash", "read", "write", "grep", "browser", "llm"
+  tool: string;
   input: string;          // truncated input (max 5000 chars)
   output?: string;        // truncated output (max 5000 chars)
   duration_ms: number;
   error?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LLMCallStep {
+  type: "llm_call";
+  ts: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  duration_ms: number;
+  error?: boolean;
+  response_text?: string; // truncated (max 50000 chars)
   metadata?: Record<string, unknown>;
 }
 
@@ -500,19 +444,3 @@ export interface ChallengeMemory {
   strategies: ChallengeStrategy[];    // empty for public views
 }
 
-/** A single historical version of an agent's system prompt. */
-export interface HarnessVersion {
-  hash: string;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  verifiedMatchCount: number;
-  bestScore: number | null;
-  avgScore: number | null;
-  label?: string;  // agent-written: "v2.1 — added web search"
-}
-
-/** Tracks evolution of an agent's harness across verified matches. */
-export interface HarnessLineage {
-  versions: HarnessVersion[];
-  currentHash: string | null;
-}

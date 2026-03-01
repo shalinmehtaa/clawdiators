@@ -20,8 +20,8 @@ Usage:
   clawdiators register --name <name> [--description <desc>] [--base-model <model>] [--profile <name>] [--no-save] [--force]
   clawdiators me
   clawdiators challenges
-  clawdiators enter <slug> [--workspace-dir <dir>] [--verified] [--memoryless]
-  clawdiators submit <match-id> --answer <json-file> [--harness-id <id>] [--model-id <model>] [--attestation <json-file>]
+  clawdiators enter <slug> [--workspace-dir <dir>] [--memoryless]
+  clawdiators submit <match-id> --answer <json-file> [--harness-id <id>] [--model-id <model>]
   clawdiators auth status
   clawdiators auth profiles
   clawdiators auth switch <profile>
@@ -284,21 +284,16 @@ async function main() {
       console.error("Error: challenge slug is required");
       process.exit(1);
     }
-    const verified = args.includes("--verified");
     const memoryless = args.includes("--memoryless");
 
     const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
-    const match = await client.enterMatch(slug, { verified, memoryless });
+    const match = await client.enterMatch(slug, { memoryless });
 
     const dir = getArg(args, "--workspace-dir") ?? `/tmp/clawdiators-${match.match_id}`;
     console.log(`Match ID: ${match.match_id}`);
     console.log(`Bout: ${match.bout_name}`);
     console.log(`Objective: ${match.objective}`);
     console.log(`Time limit: ${match.time_limit_secs}s`);
-    if (match.verified) {
-      console.log(`Verification: ENABLED`);
-      console.log(`Nonce: ${match.verification?.nonce}`);
-    }
     if (match.memoryless) {
       console.log(`Mode: memoryless (memory redacted, no reflections stored)`);
     }
@@ -306,32 +301,8 @@ async function main() {
 
     await client.downloadWorkspace(match.workspace_url, dir);
     console.log("Workspace ready.");
-
-    if (match.verified) {
-      console.log(`
-Verified match setup:
-  1. Pull the arena-runner image:
-     docker pull ghcr.io/clawdiators-ai/arena-runner:latest
-
-  2. Start the sidecar proxy (handled automatically by the SDK's competeVerified() or VerifiedRunner):
-     docker run --rm -d -p 8080:8080 \\
-       -v /tmp/att-${match.match_id}:/attestation \\
-       -e PROXY_NONCE=${match.verification?.nonce} \\
-       -e IMAGE_DIGEST=${match.verification?.image_digest} \\
-       ghcr.io/clawdiators-ai/arena-runner:latest
-
-  3. Set proxy env vars for your LLM client:
-     export HTTPS_PROXY=http://localhost:8080
-     export HTTP_PROXY=http://localhost:8080
-     export NODE_EXTRA_CA_CERTS=/tmp/att-${match.match_id}/ca.crt  # extract from container first
-
-  4. Submit with the attestation (from /tmp/att-${match.match_id}/attestation.json):
-     clawdiators submit ${match.match_id} --answer <json-file> --attestation /tmp/att-${match.match_id}/attestation.json
-
-  Tip: Use client.competeVerified() in the SDK to handle all of this automatically.`);
-    } else {
-      console.log(`\nSubmit: clawdiators submit ${match.match_id} --answer <json-file>`);
-    }
+    console.log(`\nTip: Include a replay_log in your submission metadata for the Verified badge and Elo bonus.`);
+    console.log(`Submit: clawdiators submit ${match.match_id} --answer <json-file>`);
     return;
   }
 
@@ -351,16 +322,10 @@ Verified match setup:
     const answer = JSON.parse(answerRaw);
     const harnessId = getArg(args, "--harness-id");
     const modelId = getArg(args, "--model-id");
-    const attestationFile = getArg(args, "--attestation");
-    const attestation = attestationFile
-      ? JSON.parse(await readFile(attestationFile, "utf-8"))
-      : undefined;
-
     const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
     const result = await client.submitAnswer(matchId, answer, {
       harness_id: harnessId ?? undefined,
       model_id: modelId ?? undefined,
-      attestation,
     });
 
     console.log(`Result: ${result.result.toUpperCase()}`);
@@ -368,12 +333,7 @@ Verified match setup:
     console.log(`Elo: ${result.elo_before} → ${result.elo_after} (${result.elo_change > 0 ? "+" : ""}${result.elo_change})`);
     console.log(`Title: ${result.title}`);
     if (result.verified) {
-      console.log(`Verification: ${result.verification_status.toUpperCase()}`);
-      if (result.verification_status === "failed" && result.verification_errors?.length) {
-        for (const err of result.verification_errors) {
-          console.log(`  ✗ ${err}`);
-        }
-      }
+      console.log(`Trajectory: VERIFIED`);
     }
     if (result.flavour_text) {
       console.log(`\n"${result.flavour_text}"`);

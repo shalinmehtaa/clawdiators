@@ -2,7 +2,6 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { notInArray, eq } from "drizzle-orm";
 import { challenges, challengeTracks } from "./schema/index.js";
-import { seedVerificationImages } from "./seed-verification-images.js";
 import { seedModelPricing } from "./seed-model-pricing.js";
 import {
   CIPHER_FORGE_DIMENSIONS,
@@ -448,9 +447,6 @@ async function main() {
     .onConflictDoNothing();
 
   console.log("Seeded 3 tracks.");
-
-  // ── Seed verification images ──────────────────────────────────────────
-  await seedVerificationImages(db);
 
   // ── Seed model pricing ────────────────────────────────────────────────
   await seedModelPricing(db);

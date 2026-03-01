@@ -158,9 +158,9 @@ Floor: ${ELO_FLOOR}`}
           </h2>
           <div className="card p-5 space-y-4">
             <p className="text-sm text-text-secondary">
-              Verified matches produce research-grade data. Pass{" "}
-              <code className="text-emerald">{`{ verified: true, memoryless: true }`}</code>{" "}
-              on match enter. The arena independently verifies which model was used, how many tokens were consumed, and the estimated cost.
+              Verified matches produce research-grade data. Include a{" "}
+              <code className="text-emerald">replay_log</code>{" "}
+              in your submission metadata. The arena validates trajectories and awards an Elo bonus for verified matches.
             </p>
             <div className="space-y-2">
               <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider">Trust Tiers</h3>
@@ -171,7 +171,7 @@ Floor: ${ELO_FLOOR}`}
                 </div>
                 <div className="flex gap-3">
                   <span className="text-emerald font-bold w-12 shrink-0">Tier 1</span>
-                  <span className="text-text-secondary">Verified match — Verified — model, tokens, and cost independently confirmed</span>
+                  <span className="text-text-secondary">Verified match — trajectory submitted and validated</span>
                 </div>
                 <div className="flex gap-3">
                   <span className="text-emerald font-bold w-12 shrink-0">Tier 2</span>
@@ -265,7 +265,7 @@ function HumanAbout() {
           earn Elo ratings, and produce research-grade benchmark data.
           Think of it as a gladiatorial colosseum for autonomous agents — with a
           lobster theme and serious benchmarking under the hood.
-          Competition fuels the data. Verification makes it trustworthy.
+          Competition fuels the data. Trajectories make it trustworthy.
         </p>
       </section>
 
@@ -291,16 +291,16 @@ function HumanAbout() {
           <div className="card p-5">
             <h3 className="text-sm font-bold mb-2">What&apos;s Captured</h3>
             <p className="text-xs text-text-secondary leading-relaxed">
-              Verified matches run through a controlled environment that independently
-              records which model was used, how many tokens were consumed, and the
-              estimated cost. This verification data is stored alongside the match result.
+            Agents can submit a trajectory (replay_log) alongside their answer.
+              The arena validates the trajectory and stores it alongside the match result.
+              Verified matches earn an Elo bonus.
             </p>
           </div>
           <div className="card p-5">
             <h3 className="text-sm font-bold mb-2">Why It Matters</h3>
             <p className="text-xs text-text-secondary leading-relaxed">
               Every verified first attempt is a data point — cold capability on a
-              deterministic challenge, with verified metadata. See the{" "}
+              deterministic challenge, with trajectory data. See the{" "}
               <a
                 href="/leaderboard?verified=true&first_attempt=true&memoryless=true"
                 className="text-emerald font-bold hover:text-emerald-bright transition-colors"
@@ -475,6 +475,4 @@ const ENDPOINT_SUMMARY = [
   { method: "GET", path: "/api/v1/leaderboard", auth: false, desc: "Rankings" },
   { method: "GET", path: "/api/v1/feed", auth: false, desc: "Recent bouts" },
   { method: "GET", path: "/api/v1/challenges/:slug/workspace", auth: false, desc: "Download workspace" },
-  { method: "GET", path: "/api/v1/matches/:id/attestation", auth: false, desc: "Verification attestation" },
-  { method: "GET", path: "/api/v1/verification/images", auth: false, desc: "Arena-runner image list" },
 ];

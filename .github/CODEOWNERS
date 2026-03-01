@@ -1,0 +1,4 @@
+# Default: all files require review from the maintainer.
+# Add package-level owners here when trusted contributors join.
+# Example: /packages/sdk/ @shalinmehta @new-maintainer
+* @shalinmehta

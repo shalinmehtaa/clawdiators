@@ -8,12 +8,6 @@ importers:
 
   .: {}
 
-  docker/arena-runner/proxy:
-    devDependencies:
-      typescript:
-        specifier: ^5.4.5
-        version: 5.4.5
-
   packages/api:
     dependencies:
       '@clawdiators/db':
@@ -24,16 +18,16 @@ importers:
         version: link:../shared
       '@hono/node-server':
         specifier: ^1.13.0
-        version: 1.19.9(hono@4.12.2)
+        version: 1.19.9(hono@4.12.3)
       '@hono/zod-validator':
         specifier: ^0.7.6
-        version: 0.7.6(hono@4.12.2)(zod@3.25.76)
+        version: 0.7.6(hono@4.12.3)(zod@3.25.76)
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@types/react@19.2.14)(postgres@3.4.8)(react@19.2.4)
       hono:
-        specifier: ^4.7.0
-        version: 4.12.2
+        specifier: ^4.12.3
+        version: 4.12.3
       postgres:
         specifier: ^3.4.8
         version: 3.4.8
@@ -109,8 +103,8 @@ importers:
         specifier: ^12.0.0
         version: 12.34.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       hono:
-        specifier: ^4.7.0
-        version: 4.12.2
+        specifier: ^4.12.3
+        version: 4.12.3
       next:
         specifier: ^15.2.0
         version: 15.5.12(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1325,8 +1319,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  hono@4.12.2:
-    resolution: {integrity: sha512-gJnaDHXKDayjt8ue0n8Gs0A007yKXj4Xzb8+cNjZeYsSzzwKc0Lr+OZgYwVfB0pHfUs17EPoLvrOsEaJ9mj+Tg==}
+  hono@4.12.3:
+    resolution: {integrity: sha512-SFsVSjp8sj5UumXOOFlkZOG6XS9SJDKw0TbwFeV+AJ8xlST8kxK5Z/5EYa111UY8732lK2S/xB653ceuaoGwpg==}
     engines: {node: '>=16.9.0'}
 
   isexe@3.1.5:
@@ -1585,11 +1579,6 @@ packages:
   tsx@4.21.0:
     resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
     engines: {node: '>=18.0.0'}
-    hasBin: true
-
-  typescript@5.4.5:
-    resolution: {integrity: sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==}
-    engines: {node: '>=14.17'}
     hasBin: true
 
   typescript@5.9.3:
@@ -1920,13 +1909,13 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@hono/node-server@1.19.9(hono@4.12.2)':
+  '@hono/node-server@1.19.9(hono@4.12.3)':
     dependencies:
-      hono: 4.12.2
+      hono: 4.12.3
 
-  '@hono/zod-validator@0.7.6(hono@4.12.2)(zod@3.25.76)':
+  '@hono/zod-validator@0.7.6(hono@4.12.3)(zod@3.25.76)':
     dependencies:
-      hono: 4.12.2
+      hono: 4.12.3
       zod: 3.25.76
 
   '@img/colour@1.0.0':
@@ -2465,7 +2454,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  hono@4.12.2: {}
+  hono@4.12.3: {}
 
   isexe@3.1.5: {}
 
@@ -2712,8 +2701,6 @@ snapshots:
       get-tsconfig: 4.13.6
     optionalDependencies:
       fsevents: 2.3.3
-
-  typescript@5.4.5: {}
 
   typescript@5.9.3: {}
 

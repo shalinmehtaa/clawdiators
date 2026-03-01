@@ -1,6 +1,7 @@
 "use client";
 
 import { usePreferences } from "@/components/preferences";
+import { Tooltip } from "@/components/tooltip";
 
 interface ScoringDimension {
   key: string;
@@ -135,24 +136,31 @@ export function ChallengeDetailView({
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className={`text-xs font-bold uppercase tracking-wider ${colorCls}`}>
-                  {ch.category}
-                </span>
-                <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded badge-${ch.difficulty}`}>
-                  {ch.difficulty}
-                </span>
-                {ch.calibrated_difficulty && ch.calibrated_difficulty !== ch.difficulty && (
-                  <span
-                    className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-dashed badge-${ch.calibrated_difficulty}`}
-                    title={`Calibrated difficulty based on ${(ch.calibration_data as any)?.sample_size ?? "?"} matches`}
-                  >
-                    {ch.calibrated_difficulty}
+                <Tooltip text="coding = code puzzles, reasoning = logic problems, context = information retrieval, adversarial = debate, multimodal = image/data analysis, endurance = long-running tasks" position="bottom">
+                  <span className={`text-xs font-bold uppercase tracking-wider ${colorCls}`}>
+                    {ch.category}
                   </span>
+                </Tooltip>
+                <Tooltip text="newcomer = warm-up, contender = standard, veteran = advanced, legendary = extreme" position="bottom">
+                  <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded badge-${ch.difficulty}`}>
+                    {ch.difficulty}
+                  </span>
+                </Tooltip>
+                {ch.calibrated_difficulty && ch.calibrated_difficulty !== ch.difficulty && (
+                  <Tooltip text={`Calibrated difficulty based on ${(ch.calibration_data as any)?.sample_size ?? "?"} matches`} position="bottom">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-dashed badge-${ch.calibrated_difficulty}`}
+                    >
+                      {ch.calibrated_difficulty}
+                    </span>
+                  </Tooltip>
                 )}
                 {ch.match_type !== "single" && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-sky border border-border">
-                    {ch.match_type}
-                  </span>
+                  <Tooltip text={ch.match_type === "multi-checkpoint" ? "Submit intermediate results at each phase." : ch.match_type === "long-running" ? "Requires periodic heartbeats to keep the match alive." : ch.match_type} position="bottom">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-sky border border-border">
+                      {ch.match_type}
+                    </span>
+                  </Tooltip>
                 )}
                 {!ch.active && (
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-elevated text-text-muted border border-border">
@@ -160,33 +168,45 @@ export function ChallengeDetailView({
                   </span>
                 )}
                 {ch.verification_policy && (
-                  <span
-                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                      ch.verification_policy.mode === "required"
-                        ? "bg-coral/10 text-coral border-coral/30"
-                        : ch.verification_policy.mode === "recommended"
-                          ? "bg-sky/10 text-sky border-sky/30"
-                          : "bg-bg-elevated text-text-muted border-border"
-                    }`}
-                  >
-                    Verification {ch.verification_policy.mode}
-                  </span>
+                  <Tooltip text={
+                    ch.verification_policy.mode === "required"
+                      ? "Must verify or match is rejected."
+                      : ch.verification_policy.mode === "recommended"
+                        ? "Encouraged for leaderboard placement."
+                        : "Verification is your choice."
+                  } position="bottom">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                        ch.verification_policy.mode === "required"
+                          ? "bg-coral/10 text-coral border-coral/30"
+                          : ch.verification_policy.mode === "recommended"
+                            ? "bg-sky/10 text-sky border-sky/30"
+                            : "bg-bg-elevated text-text-muted border-border"
+                      }`}
+                    >
+                      Verification {ch.verification_policy.mode}
+                    </span>
+                  </Tooltip>
                 )}
               </div>
               {/* Constraint pills */}
               {ch.constraints && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {ch.constraints.tokenBudget && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/10 text-gold border border-gold/30">
-                      {ch.constraints.tokenBudget >= 1000
-                        ? `${Math.round(ch.constraints.tokenBudget / 1000)}k tokens`
-                        : `${ch.constraints.tokenBudget} tokens`}
-                    </span>
+                    <Tooltip text="Max combined input + output tokens for this match." position="bottom">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/10 text-gold border border-gold/30">
+                        {ch.constraints.tokenBudget >= 1000
+                          ? `${Math.round(ch.constraints.tokenBudget / 1000)}k tokens`
+                          : `${ch.constraints.tokenBudget} tokens`}
+                      </span>
+                    </Tooltip>
                   )}
                   {ch.constraints.maxLlmCalls && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/10 text-gold border border-gold/30">
-                      {ch.constraints.maxLlmCalls} calls max
-                    </span>
+                    <Tooltip text="Max number of LLM API calls allowed." position="bottom">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/10 text-gold border border-gold/30">
+                        {ch.constraints.maxLlmCalls} calls max
+                      </span>
+                    </Tooltip>
                   )}
                   {ch.constraints.allowedModels?.map((m) => (
                     <span key={m} className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple/10 text-purple border border-purple/30">
@@ -194,9 +214,11 @@ export function ChallengeDetailView({
                     </span>
                   ))}
                   {ch.constraints.networkAccess === false && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-coral/10 text-coral border border-coral/30" title="Non-LLM traffic (web search, external APIs) is blocked for verified submissions">
-                      LLM-only network
-                    </span>
+                    <Tooltip text="Non-LLM traffic (web search, external APIs) is blocked for verified submissions." position="bottom">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-coral/10 text-coral border border-coral/30">
+                        LLM-only network
+                      </span>
+                    </Tooltip>
                   )}
                 </div>
               )}

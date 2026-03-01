@@ -84,6 +84,8 @@ interface MatchDetail {
   verified_input_tokens: number | null;
   verified_output_tokens: number | null;
   verified_llm_calls: number | null;
+  system_prompt_hash: string | null;
+  harness_registry_name: string | null;
   attestation: Record<string, unknown> | null;
 }
 
@@ -380,6 +382,29 @@ export default async function MatchReplayPage({
             <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-4">
               Verification
             </h2>
+            {/* Harness fingerprint */}
+            {match.system_prompt_hash && (
+              <div className="mb-4 pb-4 border-b border-border">
+                <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">Harness Fingerprint</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="font-mono text-[10px] text-text-secondary bg-bg-raised px-2 py-1 rounded">
+                    {match.system_prompt_hash.slice(0, 16)}…
+                  </code>
+                  {match.harness_registry_name ? (
+                    <span className="text-xs font-bold text-purple">
+                      {match.harness_registry_name}
+                    </span>
+                  ) : (
+                    <a
+                      href="/harnesses"
+                      className="text-[10px] text-text-muted hover:text-purple transition-colors"
+                    >
+                      unregistered — add to registry →
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
             {!match.verified ? (
               <p className="text-xs text-text-muted">
                 Unverified match. Run with{" "}

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { eq, and, isNull } from "drizzle-orm";
-import { db, challengeDrafts, challenges, agents, verificationImages } from "@clawdiators/db";
+import { eq, and, isNull, desc } from "drizzle-orm";
+import { db, challengeDrafts, challenges, agents, verificationImages, modelPricing } from "@clawdiators/db";
 import { adminAuthMiddleware } from "../middleware/admin-auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { validateSpec, verifyDeterminism } from "../challenges/primitives/validator.js";
@@ -347,4 +347,61 @@ adminRoutes.post("/agents/:id/unarchive", async (c) => {
     .where(eq(agents.id, id));
 
   return envelope(c, { id, archived: false }, 200, "Agent restored to the arena.");
+});
+
+// ── Model Pricing Admin ───────────────────────────────────────────────────
+
+// GET /admin/pricing — list all pricing rows (including inactive)
+adminRoutes.get("/pricing", async (c) => {
+  const rows = await db.query.modelPricing.findMany({
+    orderBy: [desc(modelPricing.effectiveFrom), desc(modelPricing.active)],
+  });
+  return envelope(c, rows.map((r) => ({
+    pattern:        r.pattern,
+    input_per_1m:   r.inputPer1m,
+    output_per_1m:  r.outputPer1m,
+    active:         r.active,
+    effective_from: r.effectiveFrom.toISOString(),
+  })));
+});
+
+// POST /admin/pricing — upsert a pricing row
+adminRoutes.post("/pricing", async (c) => {
+  const body = await c.req.json<{ pattern: string; input_per_1m: number; output_per_1m: number }>();
+  if (!body.pattern || typeof body.input_per_1m !== "number" || typeof body.output_per_1m !== "number") {
+    return errorEnvelope(c, "pattern, input_per_1m, output_per_1m are required", 400);
+  }
+  await db
+    .insert(modelPricing)
+    .values({
+      pattern:       body.pattern,
+      inputPer1m:    body.input_per_1m,
+      outputPer1m:   body.output_per_1m,
+      active:        true,
+      effectiveFrom: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: modelPricing.pattern,
+      set: {
+        inputPer1m:    body.input_per_1m,
+        outputPer1m:   body.output_per_1m,
+        active:        true,
+        effectiveFrom: new Date(),
+      },
+    });
+  return envelope(c, { pattern: body.pattern, input_per_1m: body.input_per_1m, output_per_1m: body.output_per_1m });
+});
+
+// DELETE /admin/pricing/:pattern — deactivate a pricing row
+adminRoutes.delete("/pricing/:pattern", async (c) => {
+  const pattern = c.req.param("pattern");
+  const row = await db.query.modelPricing.findFirst({
+    where: eq(modelPricing.pattern, pattern),
+  });
+  if (!row) return errorEnvelope(c, "Pattern not found", 404);
+  await db
+    .update(modelPricing)
+    .set({ active: false })
+    .where(eq(modelPricing.pattern, pattern));
+  return envelope(c, { pattern, active: false });
 });

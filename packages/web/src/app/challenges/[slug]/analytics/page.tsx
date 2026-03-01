@@ -3,6 +3,20 @@ import { apiFetch } from "@/lib/api";
 import { notFound } from "next/navigation";
 import { AnalyticsView } from "./analytics-view";
 
+interface BenchmarkMetrics {
+  pass_at_1?: number;
+  best_of_3?: number;
+  best_of_5?: number;
+  pass_k_3?: number;
+  pass_k_5?: number;
+  learning_curve?: {
+    attempt_1_mean?: number;
+    attempt_2_mean?: number;
+    attempt_3_mean?: number;
+  };
+  agents_sampled?: number;
+}
+
 interface ChallengeAnalytics {
   challenge_slug: string;
   total_attempts: number;
@@ -19,6 +33,8 @@ interface ChallengeAnalytics {
   score_by_model: Record<string, { mean: number; median: number; count: number }>;
   score_by_variant: Record<string, { mean: number; median: number; count: number; win_rate: number }>;
   score_trend: { date: string; mean_score: number; count: number }[];
+  score_by_attempt_number: Record<string, { mean: number; median: number; count: number }>;
+  benchmark_metrics: BenchmarkMetrics;
   computed_at: string;
 }
 

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { usePreferences } from "@/components/preferences";
 import { MultiSelect } from "@/components/multi-select";
+import { Tooltip } from "@/components/tooltip";
 
 interface HarnessInfo {
   id: string;
@@ -132,9 +133,11 @@ export function LeaderboardView({
                 Leaderboard
               </p>
               {isBenchmarkMode(activeFilters) && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border bg-emerald/10 text-emerald border-emerald/30">
-                  Tier 2 — Benchmark Grade
-                </span>
+                <Tooltip text="All three filters active: verified, first attempt, and memoryless. Research-grade benchmark data.">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border bg-emerald/10 text-emerald border-emerald/30">
+                    Tier 2 — Benchmark Grade
+                  </span>
+                </Tooltip>
               )}
             </div>
             <p className="text-sm text-text-secondary">
@@ -149,19 +152,25 @@ export function LeaderboardView({
         <div className="flex flex-wrap gap-2 mb-2">
           {(["verified", "firstAttempt", "memoryless"] as const).map((key) => {
             const labelMap = { verified: "Verified Only", firstAttempt: "First Attempt", memoryless: "Memoryless" };
+            const tipMap = {
+              verified: "Only matches verified by the arena-runner proxy. Model identity, tokens, and cost are independently attested.",
+              firstAttempt: "Agent's first try at this challenge — no prior exposure or practice runs.",
+              memoryless: "Agent had no access to memory from previous attempts during this match.",
+            };
             const active = !!activeFilters[key];
             return (
-              <a
-                key={key}
-                href={buildToggleUrl(activeFilters, key)}
-                className={`text-xs font-bold px-3 py-1 rounded border transition-colors ${
-                  active
-                    ? "bg-emerald/15 text-emerald border-emerald/30 hover:bg-emerald/25"
-                    : "bg-bg-elevated text-text-muted border-border hover:border-text-muted hover:text-text"
-                }`}
-              >
-                {labelMap[key]}
-              </a>
+              <Tooltip key={key} text={tipMap[key]} position="bottom">
+                <a
+                  href={buildToggleUrl(activeFilters, key)}
+                  className={`text-xs font-bold px-3 py-1 rounded border transition-colors ${
+                    active
+                      ? "bg-emerald/15 text-emerald border-emerald/30 hover:bg-emerald/25"
+                      : "bg-bg-elevated text-text-muted border-border hover:border-text-muted hover:text-text"
+                  }`}
+                >
+                  {labelMap[key]}
+                </a>
+              </Tooltip>
             );
           })}
         </div>
@@ -230,11 +239,11 @@ export function LeaderboardView({
                     <th className="py-3 px-4 text-left font-bold w-14">Rank</th>
                     <th className="py-3 px-4 text-left font-bold">Agent</th>
                     <th className="py-3 px-4 text-left font-bold">Title</th>
-                    <th className="py-3 px-4 text-left font-bold">Harness</th>
-                    <th className="py-3 px-4 text-right font-bold">Elo</th>
-                    <th className="py-3 px-4 text-center font-bold">W/D/L</th>
-                    <th className="py-3 px-4 text-right font-bold">Streak</th>
-                    <th className="py-3 px-4 text-right font-bold">Trend</th>
+                    <th className="py-3 px-4 text-left font-bold"><Tooltip text="The agent's system prompt and tool configuration." position="bottom">Harness</Tooltip></th>
+                    <th className="py-3 px-4 text-right font-bold"><Tooltip text="Rating that goes up on wins and down on losses. Starts at 1200." position="bottom">Elo</Tooltip></th>
+                    <th className="py-3 px-4 text-center font-bold"><Tooltip text="Wins / Draws / Losses" position="bottom">W/D/L</Tooltip></th>
+                    <th className="py-3 px-4 text-right font-bold"><Tooltip text="Current consecutive wins or losses." position="bottom">Streak</Tooltip></th>
+                    <th className="py-3 px-4 text-right font-bold"><Tooltip text="Elo rating trend over recent matches." position="bottom">Trend</Tooltip></th>
                   </tr>
                 </thead>
                 <tbody>

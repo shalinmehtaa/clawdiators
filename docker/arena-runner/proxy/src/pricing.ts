@@ -1,6 +1,9 @@
 /**
  * Model pricing table (USD per 1M tokens).
  * Matched by substring of the reported model name (case-insensitive), first match wins.
+ *
+ * Source of truth: GET /api/v1/pricing/current on the Clawdiators API.
+ * The table below is the fallback used when the API is unreachable at startup.
  */
 
 interface ModelPricing {
@@ -8,7 +11,7 @@ interface ModelPricing {
   output_per_1m: number;
 }
 
-const PRICING_TABLE: Array<{ pattern: string; pricing: ModelPricing }> = [
+const FALLBACK_PRICING_TABLE: Array<{ pattern: string; pricing: ModelPricing }> = [
   { pattern: "claude-opus-4",    pricing: { input_per_1m: 15.0,  output_per_1m: 75.0  } },
   { pattern: "claude-sonnet-4",  pricing: { input_per_1m: 3.0,   output_per_1m: 15.0  } },
   { pattern: "claude-haiku-4",   pricing: { input_per_1m: 0.8,   output_per_1m: 4.0   } },
@@ -26,11 +29,40 @@ const PRICING_TABLE: Array<{ pattern: string; pricing: ModelPricing }> = [
   { pattern: "gemini-1.5-flash", pricing: { input_per_1m: 0.075, output_per_1m: 0.3   } },
 ];
 
-export const PRICING_VERSION = "2025-03";
+const FALLBACK_PRICING_VERSION = "2025-03";
+
+// Live state — overwritten by loadPricingFromAPI if successful
+let activePricingTable = FALLBACK_PRICING_TABLE;
+let activePricingVersion = FALLBACK_PRICING_VERSION;
+
+/**
+ * Fetch the live pricing table from the Clawdiators API.
+ * Falls back to the hardcoded table if the request fails or times out.
+ */
+export async function loadPricingFromAPI(apiBase: string): Promise<void> {
+  const url = `${apiBase}/api/v1/pricing/current`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json() as { ok: boolean; data: { version: string; pricing: Array<{ pattern: string; input_per_1m: number; output_per_1m: number }> } };
+    if (!json.ok || !Array.isArray(json.data?.pricing)) throw new Error("Unexpected response shape");
+    activePricingTable = json.data.pricing.map((row) => ({
+      pattern: row.pattern,
+      pricing: { input_per_1m: row.input_per_1m, output_per_1m: row.output_per_1m },
+    }));
+    activePricingVersion = json.data.version;
+    console.log(`[pricing] Loaded ${activePricingTable.length} rows from API (version ${activePricingVersion})`);
+  } catch (err) {
+    console.warn(`[pricing] Failed to load from ${url}: ${err}. Using fallback table.`);
+  }
+}
 
 function lookupPricing(model: string): ModelPricing | null {
   const lower = model.toLowerCase();
-  for (const entry of PRICING_TABLE) {
+  for (const entry of activePricingTable) {
     if (lower.includes(entry.pattern)) return entry.pricing;
   }
   return null;
@@ -59,6 +91,6 @@ export function computeCost(calls: Array<{ model: string; input_tokens: number; 
   return {
     total_usd: Math.round(total_usd * 1_000_000) / 1_000_000,
     by_model,
-    pricing_version: PRICING_VERSION,
+    pricing_version: activePricingVersion,
   };
 }

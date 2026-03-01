@@ -19,7 +19,7 @@ interface Preferences {
 const PreferencesContext = createContext<Preferences>({
   showRaw: false,
   setShowRaw: () => {},
-  theme: "dark",
+  theme: "light",
   toggleTheme: () => {},
 });
 
@@ -30,7 +30,7 @@ export function usePreferences() {
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   // Always start with defaults to match server render; sync from localStorage after mount
   const [showRaw, setShowRawState] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
 
   // Read stored preferences after hydration to avoid SSR mismatch
   useEffect(() => {

@@ -92,6 +92,20 @@
       "when": 1773200000000,
       "tag": "0012_verified_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773300000000,
+      "tag": "0013_harness_fingerprint_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1773400000000,
+      "tag": "0014_model_pricing",
+      "breakpoints": true
     }
   ]
 }

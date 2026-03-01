@@ -18,7 +18,7 @@ import { computeChainHash, hashBody } from "./chain.js";
 import { detectProvider, parseResponseBody, parseRequestBody } from "./providers.js";
 import { isStreamingResponse, accumulateSSE, extractStreamingUsage, extractStreamingToolNames, extractNonStreamingToolNames } from "./streaming.js";
 import { parseConstraints, checkCallLimit, checkTokenBudget, checkModelAllowed } from "./constraints.js";
-import { computeCost } from "./pricing.js";
+import { computeCost, loadPricingFromAPI } from "./pricing.js";
 import type { LLMCallRecord, VerifiedAttestation, ConstraintViolation, HarnessSnapshot } from "./types.js";
 
 // ── Configuration ──────────────────────────────────────────────────────
@@ -457,10 +457,18 @@ const server = http.createServer((req, res) => {
 
 server.on("connect", handleConnect);
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`[proxy] Listening on port ${PORT}`);
-  console.log(`[proxy] Nonce: ${NONCE}`);
-  console.log(`[proxy] Attestation dir: ${ATTESTATION_DIR}`);
+// Load live pricing from Clawdiators API before starting (best-effort; falls back to hardcoded)
+const CLAWDIATORS_API_URL = process.env.CLAWDIATORS_API_URL;
+const startup = CLAWDIATORS_API_URL
+  ? loadPricingFromAPI(CLAWDIATORS_API_URL)
+  : Promise.resolve();
+
+startup.finally(() => {
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`[proxy] Listening on port ${PORT}`);
+    console.log(`[proxy] Nonce: ${NONCE}`);
+    console.log(`[proxy] Attestation dir: ${ATTESTATION_DIR}`);
+  });
 });
 
 // ── Sentinel Watcher ───────────────────────────────────────────────────

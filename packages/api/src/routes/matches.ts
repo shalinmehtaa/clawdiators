@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, desc, and, sql, isNull } from "drizzle-orm";
-import { db, matches, agents, challenges, challengeTracks, trackProgress, verificationImages } from "@clawdiators/db";
+import { db, matches, agents, challenges, challengeTracks, trackProgress, verificationImages, harnessRegistry } from "@clawdiators/db";
 import { ELO_DEFAULT, DIFFICULTY_ELO, HEARTBEAT_GRACE_PERIOD_MS, VERIFIED_ELO_BONUS } from "@clawdiators/shared";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
@@ -10,6 +10,7 @@ import { generateBoutName, generateFlavourText, computeTitle, computeAllTitles }
 import { calculateElo, scoreToResult } from "../services/elo.js";
 import { getChallenge } from "../challenges/registry.js";
 import { evaluate } from "../challenges/evaluator.js";
+import { injectChallengeMdContext } from "../challenges/workspace.js";
 import { recalibrateChallenge } from "../services/calibration.js";
 import { generateNonce, verifyAttestation } from "../services/verification.js";
 
@@ -83,6 +84,16 @@ matchRoutes.post(
           where: eq(challenges.id, existingActive.challengeId),
         });
         const existingMod = existingChallenge ? getChallenge(existingChallenge.slug) : null;
+        const existingChallengeMd = existingMod?.workspaceSpec?.challengeMd
+          ? injectChallengeMdContext(existingMod.workspaceSpec.challengeMd, {
+              seed: existingActive.seed,
+              attemptNumber: existingActive.attemptNumber,
+              verified: existingActive.verified,
+              memoryless: existingActive.memoryless,
+              constraints: existingChallenge?.constraints as Record<string, unknown> | null ?? null,
+              verificationPolicy: existingChallenge?.verificationPolicy as { mode?: string; memorylessRecommended?: boolean } | null ?? null,
+            })
+          : null;
         return envelope(c, {
           match_id: existingActive.id,
           bout_name: existingActive.boutName,
@@ -92,7 +103,7 @@ matchRoutes.post(
           expires_at: existingActive.expiresAt,
           match_type: existingChallenge?.matchType ?? challenge.matchType,
           workspace_url: `/api/v1/challenges/${existingChallenge?.slug ?? challenge.slug}/workspace?seed=${existingActive.seed}`,
-          challenge_md: existingMod?.workspaceSpec?.challengeMd ?? null,
+          challenge_md: existingChallengeMd,
           submission_spec: existingMod?.submissionSpec ?? null,
           submit_url: `/api/v1/matches/${existingActive.id}/submit`,
           attempt_number: existingActive.attemptNumber,
@@ -198,7 +209,16 @@ matchRoutes.post(
         started_at: match.startedAt,
         expires_at: match.expiresAt,
         workspace_url: `/api/v1/challenges/${challenge.slug}/workspace?seed=${seed}`,
-        challenge_md: mod.workspaceSpec?.challengeMd ?? null,
+        challenge_md: mod.workspaceSpec?.challengeMd
+          ? injectChallengeMdContext(mod.workspaceSpec.challengeMd, {
+              seed,
+              attemptNumber,
+              verified,
+              memoryless,
+              constraints: challenge.constraints as Record<string, unknown> | null ?? null,
+              verificationPolicy: challenge.verificationPolicy as { mode?: string; memorylessRecommended?: boolean } | null ?? null,
+            })
+          : null,
         submission_spec: mod.submissionSpec ?? null,
         submit_url: `/api/v1/matches/${match.id}/submit`,
         attempt_number: attemptNumber,
@@ -806,6 +826,14 @@ matchRoutes.get("/:matchId", async (c) => {
     where: eq(challenges.id, match.challengeId),
   });
 
+  let harnessRegistryName: string | null = null;
+  if (match.systemPromptHash) {
+    const registryEntry = await db.query.harnessRegistry.findFirst({
+      where: eq(harnessRegistry.systemPromptHash, match.systemPromptHash),
+    });
+    harnessRegistryName = registryEntry?.harnessName ?? null;
+  }
+
   return envelope(c, {
     id: match.id,
     bout_name: match.boutName,
@@ -821,6 +849,8 @@ matchRoutes.get("/:matchId", async (c) => {
     verified_input_tokens: match.verifiedInputTokens ?? null,
     verified_output_tokens: match.verifiedOutputTokens ?? null,
     verified_llm_calls: match.verifiedLlmCalls ?? null,
+    system_prompt_hash: match.systemPromptHash ?? null,
+    harness_registry_name: harnessRegistryName,
     attestation: match.attestation ?? null,
     agent: agent
       ? { id: agent.id, name: agent.name, title: agent.title }

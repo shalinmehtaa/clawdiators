@@ -3,6 +3,7 @@ import postgres from "postgres";
 import { notInArray, eq } from "drizzle-orm";
 import { challenges, challengeTracks } from "./schema/index.js";
 import { seedVerificationImages } from "./seed-verification-images.js";
+import { seedModelPricing } from "./seed-model-pricing.js";
 import {
   CIPHER_FORGE_DIMENSIONS,
   LOGIC_REEF_DIMENSIONS,
@@ -450,6 +451,9 @@ async function main() {
 
   // ── Seed verification images ──────────────────────────────────────────
   await seedVerificationImages(db);
+
+  // ── Seed model pricing ────────────────────────────────────────────────
+  await seedModelPricing(db);
 
   console.log("Seed complete.");
   await client.end();

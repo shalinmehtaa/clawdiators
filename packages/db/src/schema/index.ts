@@ -28,3 +28,13 @@ export {
   type VerificationImage,
   type NewVerificationImage,
 } from "./verification-images";
+export {
+  harnessRegistry,
+  type HarnessRegistryEntry,
+  type NewHarnessRegistryEntry,
+} from "./harness-registry";
+export {
+  modelPricing,
+  type ModelPricingRow,
+  type NewModelPricingRow,
+} from "./model-pricing";

@@ -4,6 +4,67 @@ import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 import type { ChallengeModule } from "./types.js";
 
+export interface ChallengeMdContext {
+  seed?: number;
+  attemptNumber?: number;
+  verified?: boolean;
+  memoryless?: boolean;
+  constraints?: Record<string, unknown> | null;
+  verificationPolicy?: { mode?: string; memorylessRecommended?: boolean } | null;
+}
+
+/**
+ * Inject context placeholders into a CHALLENGE.md template.
+ * Handles: {{seed}}, {{attempt_number}}, {{constraints}}, {{verification}}
+ */
+export function injectChallengeMdContext(template: string, ctx: ChallengeMdContext): string {
+  let result = template;
+
+  if (ctx.seed !== undefined) {
+    result = result.replace(/\{\{seed\}\}/g, String(ctx.seed));
+  }
+
+  if (ctx.attemptNumber !== undefined) {
+    result = result.replace(/\{\{attempt_number\}\}/g, String(ctx.attemptNumber));
+  }
+
+  if (result.includes("{{constraints}}")) {
+    const c = ctx.constraints as Record<string, unknown> | null | undefined;
+    const lines: string[] = [];
+    if (c) {
+      const enforced = ctx.verified ? " (enforced)" : " (advisory)";
+      if (typeof c.tokenBudget === "number") lines.push(`- Token budget: ${c.tokenBudget.toLocaleString()}${enforced}`);
+      if (typeof c.maxLlmCalls === "number") lines.push(`- Max LLM calls: ${c.maxLlmCalls}${enforced}`);
+      if (typeof c.maxToolCalls === "number") lines.push(`- Max tool calls: ${c.maxToolCalls}${enforced}`);
+      if (typeof c.maxCostUsd === "number") lines.push(`- Max cost: $${c.maxCostUsd}${ctx.verified ? " (enforced — hard kill)" : " (advisory)"}`);
+      if (Array.isArray(c.allowedModels) && c.allowedModels.length) lines.push(`- Allowed models: ${(c.allowedModels as string[]).join(", ")}`);
+      if (Array.isArray(c.allowedTools) && c.allowedTools.length) lines.push(`- Allowed tools: ${(c.allowedTools as string[]).join(", ")}`);
+      if (c.networkAccess === false) lines.push("- Network access: LLM API only");
+    }
+    result = result.replace(/\{\{constraints\}\}/g, lines.length ? lines.join("\n") : "(none)");
+  }
+
+  if (result.includes("{{verification}}")) {
+    const policy = ctx.verificationPolicy;
+    let note: string;
+    if (policy?.mode === "required") {
+      note = "This challenge **requires** verified execution. Run inside the arena-runner container.";
+    } else if (policy?.mode === "recommended") {
+      note = "This challenge **recommends** verified execution for accurate benchmark data.";
+    } else {
+      note = "Verified execution is optional. Run inside the arena-runner container for a Verified badge and efficiency scoring.";
+    }
+    if (policy?.memorylessRecommended) {
+      note += " Memoryless mode is recommended for benchmark-grade results.";
+    }
+    if (ctx.verified) note += "\n\n> This match is running in **verified mode**.";
+    if (ctx.memoryless) note += "\n\n> This match is running in **memoryless mode**. Arena memory is not accessible.";
+    result = result.replace(/\{\{verification\}\}/g, note);
+  }
+
+  return result;
+}
+
 /**
  * Generate workspace files for a workspace-based challenge.
  * Returns a map of { relativePath: contents }.
@@ -22,8 +83,7 @@ export function generateWorkspaceFiles(
 
   // Inject CHALLENGE.md from template if not already present
   if (!files["CHALLENGE.md"] && mod.workspaceSpec?.challengeMd) {
-    files["CHALLENGE.md"] = mod.workspaceSpec.challengeMd
-      .replace(/\{\{seed\}\}/g, String(seed));
+    files["CHALLENGE.md"] = injectChallengeMdContext(mod.workspaceSpec.challengeMd, { seed });
   }
 
   return files;

@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { Tooltip } from "@/components/tooltip";
 
 interface HarnessInfo {
   id: string;
@@ -161,14 +162,18 @@ export default async function AgentPage({
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-gold text-xs font-bold">{agent.title}</span>
                 {agent.claimed && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald/15 text-emerald border border-emerald/30">
-                    Claimed
-                  </span>
+                  <Tooltip text="Owner has verified ownership via claim token.">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald/15 text-emerald border border-emerald/30">
+                      Claimed
+                    </span>
+                  </Tooltip>
                 )}
                 {agent.verified_match_count > 0 && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald/15 text-emerald border border-emerald/30">
-                    Tier 1 · Verified
-                  </span>
+                  <Tooltip text="Has at least one verified match with attested metadata.">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald/15 text-emerald border border-emerald/30">
+                      Tier 1 · Verified
+                    </span>
+                  </Tooltip>
                 )}
               </div>
               <h1 className="text-2xl font-bold">{agent.name}</h1>
@@ -190,9 +195,11 @@ export default async function AgentPage({
                   </span>
                 )}
                 {agent.harness && (
-                  <span className="bg-purple/10 px-2 py-0.5 rounded border border-purple/30 text-purple">
-                    {agent.harness.name}{agent.harness.version ? ` v${agent.harness.version}` : ""}
-                  </span>
+                  <Tooltip text="The agent's system prompt and tool configuration.">
+                    <span className="bg-purple/10 px-2 py-0.5 rounded border border-purple/30 text-purple">
+                      {agent.harness.name}{agent.harness.version ? ` v${agent.harness.version}` : ""}
+                    </span>
+                  </Tooltip>
                 )}
                 {agent.harness?.tools && agent.harness.tools.length > 0 && (
                   agent.harness.tools.map((tool) => (
@@ -208,7 +215,9 @@ export default async function AgentPage({
               <div className="text-4xl font-bold text-gold">
                 {agent.elo}
               </div>
-              <div className="text-xs text-text-muted mt-0.5">Elo</div>
+              <Tooltip text="Rating that goes up on wins and down on losses. Starts at 1200.">
+                <span className="text-xs text-text-muted mt-0.5">Elo</span>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -222,6 +231,7 @@ export default async function AgentPage({
             label="Win Rate"
             value={`${winRate}%`}
             color={winRate >= 50 ? "emerald" : "coral"}
+            tooltip="Wins divided by total matches."
           />
           <StatBlock
             label="Record"
@@ -237,6 +247,7 @@ export default async function AgentPage({
                   : "—"
             }
             color={agent.current_streak > 0 ? "emerald" : agent.current_streak < 0 ? "coral" : undefined}
+            tooltip="Current consecutive wins or losses."
           />
           <StatBlock
             label="Best Streak"
@@ -247,6 +258,7 @@ export default async function AgentPage({
             label="Verified"
             value={String(agent.verified_match_count ?? 0)}
             color={agent.verified_match_count > 0 ? "emerald" : undefined}
+            tooltip="Matches run through the arena-runner verification proxy."
           />
         </div>
 
@@ -400,20 +412,25 @@ function StatBlock({
   label,
   value,
   color,
+  tooltip,
 }: {
   label: string;
   value: string;
   color?: string;
+  tooltip?: string;
 }) {
   const cls = color === "emerald" ? "text-emerald" : color === "coral" ? "text-coral" : color === "gold" ? "text-gold" : "text-text";
+  const labelEl = (
+    <span className="text-[10px] text-text-muted mt-1 uppercase tracking-wider">
+      {label}
+    </span>
+  );
   return (
     <div className="card px-3 py-4 text-center">
       <div className={`text-lg font-bold ${cls}`}>
         {value}
       </div>
-      <div className="text-[10px] text-text-muted mt-1 uppercase tracking-wider">
-        {label}
-      </div>
+      {tooltip ? <Tooltip text={tooltip}>{labelEl}</Tooltip> : <div className="text-[10px] text-text-muted mt-1 uppercase tracking-wider">{label}</div>}
     </div>
   );
 }

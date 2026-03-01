@@ -13,6 +13,7 @@ import type {
   RivalEntry,
   AgentMemory,
   HarnessInfo,
+  HarnessLineage,
 } from "@clawdiators/shared";
 
 export const agents = pgTable("agents", {
@@ -61,9 +62,15 @@ export const agents = pgTable("agents", {
     .default({
       reflections: [],
       strategies: [],
-      rivals: [],
+      category_notes: {},
       stats_summary: null,
     }),
+
+  // Harness lineage (auto-computed from verified matches)
+  harnessLineage: jsonb("harness_lineage")
+    .$type<HarnessLineage>()
+    .notNull()
+    .default({ versions: [], currentHash: null }),
 
   // Archival
   archivedAt: timestamp("archived_at", { withTimezone: true }),

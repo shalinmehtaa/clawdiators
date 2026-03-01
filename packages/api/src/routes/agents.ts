@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
-import { db, agents, matches, challenges } from "@clawdiators/db";
+import { db, agents, matches, challenges, challengeMemory } from "@clawdiators/db";
 import {
   API_KEY_PREFIX,
   API_KEY_BYTES,
@@ -11,6 +11,10 @@ import {
   AGENT_NAME_MAX,
   AGENT_NAME_PATTERN,
   FLAVOUR_REGISTER,
+  MEMORY_MAX_REFLECTIONS,
+  MEMORY_MAX_STRATEGIES,
+  CHALLENGE_MEMORY_MAX_NOTES_LENGTH,
+  CHALLENGE_MEMORY_MAX_STRATEGIES,
 } from "@clawdiators/shared";
 import { authMiddleware, hashApiKey } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
@@ -141,7 +145,7 @@ agentRoutes.get("/me", authMiddleware, async (c) => {
   });
   const memoryRedacted = !!activeMemoryless;
   const memoryToReturn = memoryRedacted
-    ? { reflections: [], strategies: [], rivals: [], stats_summary: null }
+    ? { reflections: [], strategies: [], category_notes: {}, stats_summary: null }
     : agent.memory;
 
   return envelope(c, {
@@ -350,7 +354,7 @@ const memorySchema = z.object({
         ts: z.string(),
       }),
     )
-    .max(20)
+    .max(MEMORY_MAX_REFLECTIONS)
     .optional(),
   strategies: z
     .array(
@@ -360,18 +364,16 @@ const memorySchema = z.object({
         ts: z.string(),
       }),
     )
-    .max(10)
+    .max(MEMORY_MAX_STRATEGIES)
     .optional(),
-  rivals: z
-    .array(
+  category_notes: z
+    .record(
       z.object({
-        agentId: z.string(),
-        name: z.string(),
-        notes: z.string().max(500),
-        bouts: z.number(),
+        note: z.string().max(500),
+        confidence: z.number().min(0).max(1),
+        ts: z.string(),
       }),
     )
-    .max(10)
     .optional(),
   stats_summary: z
     .object({
@@ -414,7 +416,7 @@ agentRoutes.patch(
     const memory = { ...agent.memory };
     if (updates.reflections !== undefined) memory.reflections = updates.reflections;
     if (updates.strategies !== undefined) memory.strategies = updates.strategies;
-    if (updates.rivals !== undefined) memory.rivals = updates.rivals;
+    if (updates.category_notes !== undefined) memory.category_notes = updates.category_notes;
     if (updates.stats_summary !== undefined) memory.stats_summary = updates.stats_summary;
 
     await db
@@ -423,6 +425,206 @@ agentRoutes.patch(
       .where(eq(agents.id, agent.id));
 
     return envelope(c, { memory }, 200, "Memory updated. The mind sharpens.");
+  },
+);
+
+// GET /agents/me/memory/challenges — summary list (no notes)
+agentRoutes.get("/me/memory/challenges", authMiddleware, async (c) => {
+  const agent = c.get("agent");
+
+  const rows = await db.query.challengeMemory.findMany({
+    where: eq(challengeMemory.agentId, agent.id),
+  });
+
+  return envelope(
+    c,
+    rows.map((r) => ({
+      challenge_slug: r.challengeSlug,
+      attempt_count: r.attemptCount,
+      best_score: r.bestScore ?? null,
+      avg_score: r.avgScore ?? null,
+      last_attempted_at: r.lastAttemptedAt?.toISOString() ?? null,
+      score_trend: r.scoreTrend ?? null,
+    })),
+    200,
+    "Your challenge memory. Each trial leaves its mark.",
+  );
+});
+
+// GET /agents/me/memory/challenges/:slug — full record including notes/strategies
+agentRoutes.get("/me/memory/challenges/:slug", authMiddleware, async (c) => {
+  const agent = c.get("agent");
+  const slug = c.req.param("slug");
+
+  const row = await db.query.challengeMemory.findFirst({
+    where: and(
+      eq(challengeMemory.agentId, agent.id),
+      eq(challengeMemory.challengeSlug, slug),
+    ),
+  });
+
+  if (!row) {
+    return envelope(
+      c,
+      {
+        challenge_slug: slug,
+        attempt_count: 0,
+        best_score: null,
+        avg_score: null,
+        last_attempted_at: null,
+        score_trend: null,
+        best_score_breakdown: null,
+        best_match_id: null,
+        notes: null,
+        strategies: [],
+      },
+      200,
+      "No memory of this challenge yet. Enter and make your mark.",
+    );
+  }
+
+  return envelope(
+    c,
+    {
+      challenge_slug: row.challengeSlug,
+      attempt_count: row.attemptCount,
+      best_score: row.bestScore ?? null,
+      avg_score: row.avgScore ?? null,
+      last_attempted_at: row.lastAttemptedAt?.toISOString() ?? null,
+      score_trend: row.scoreTrend ?? null,
+      best_score_breakdown: row.bestScoreBreakdown ?? null,
+      best_match_id: row.bestMatchId ?? null,
+      notes: row.notes ?? null,
+      strategies: row.strategies ?? [],
+    },
+    200,
+    "Memory recalled.",
+  );
+});
+
+// PATCH /agents/me/memory/challenges/:slug — write notes and/or strategies
+const challengeMemoryPatchSchema = z.object({
+  notes: z.string().max(CHALLENGE_MEMORY_MAX_NOTES_LENGTH).nullable().optional(),
+  strategies: z
+    .array(
+      z.object({
+        insight: z.string().max(500),
+        confidence: z.number().min(0).max(1),
+        ts: z.string(),
+      }),
+    )
+    .max(CHALLENGE_MEMORY_MAX_STRATEGIES)
+    .optional(),
+});
+
+agentRoutes.patch(
+  "/me/memory/challenges/:slug",
+  authMiddleware,
+  zValidator("json", challengeMemoryPatchSchema),
+  async (c) => {
+    const agent = c.get("agent");
+    const slug = c.req.param("slug");
+    const updates = c.req.valid("json");
+
+    // Block writes during active memoryless match
+    const activeMemoryless = await db.query.matches.findFirst({
+      where: and(
+        eq(matches.agentId, agent.id),
+        eq(matches.status, "active"),
+        eq(matches.memoryless, true),
+      ),
+    });
+    if (activeMemoryless) {
+      return errorEnvelope(
+        c,
+        "Memory writes are blocked during memoryless matches.",
+        403,
+        "In memoryless mode, the mind remains untouched.",
+      );
+    }
+
+    const existing = await db.query.challengeMemory.findFirst({
+      where: and(
+        eq(challengeMemory.agentId, agent.id),
+        eq(challengeMemory.challengeSlug, slug),
+      ),
+    });
+
+    const now = new Date();
+
+    if (!existing) {
+      // Create a shell row with just the agent-written fields
+      await db.insert(challengeMemory).values({
+        agentId: agent.id,
+        challengeSlug: slug,
+        attemptCount: 0,
+        notes: updates.notes ?? null,
+        strategies: updates.strategies ?? [],
+      });
+    } else {
+      const setFields: Record<string, unknown> = { updatedAt: now };
+      if (updates.notes !== undefined) setFields.notes = updates.notes;
+      if (updates.strategies !== undefined) setFields.strategies = updates.strategies;
+      await db
+        .update(challengeMemory)
+        .set(setFields)
+        .where(
+          and(
+            eq(challengeMemory.agentId, agent.id),
+            eq(challengeMemory.challengeSlug, slug),
+          ),
+        );
+    }
+
+    return envelope(
+      c,
+      { challenge_slug: slug, updated: true },
+      200,
+      "Challenge memory updated. Strategy sharpened.",
+    );
+  },
+);
+
+// GET /agents/me/harness-lineage — full lineage including version history
+agentRoutes.get("/me/harness-lineage", authMiddleware, async (c) => {
+  const agent = c.get("agent");
+  const lineage = agent.harnessLineage ?? { versions: [], currentHash: null };
+  return envelope(c, lineage, 200, "Harness lineage retrieved.");
+});
+
+// PATCH /agents/me/harness-lineage/:hash/label — label a harness version
+const harnessLabelSchema = z.object({
+  label: z.string().max(200),
+});
+
+agentRoutes.patch(
+  "/me/harness-lineage/:hash/label",
+  authMiddleware,
+  zValidator("json", harnessLabelSchema),
+  async (c) => {
+    const agent = c.get("agent");
+    const hash = c.req.param("hash");
+    const { label } = c.req.valid("json");
+
+    const lineage = agent.harnessLineage ?? { versions: [], currentHash: null };
+    const version = lineage.versions?.find((v) => v.hash === hash);
+    if (!version) {
+      return errorEnvelope(
+        c,
+        "Harness version not found",
+        404,
+        "No record of that system prompt hash in your lineage.",
+      );
+    }
+
+    version.label = label;
+
+    await db
+      .update(agents)
+      .set({ harnessLineage: lineage, updatedAt: new Date() })
+      .where(eq(agents.id, agent.id));
+
+    return envelope(c, { hash, label }, 200, "Version labelled. The lineage remembers.");
   },
 );
 
@@ -454,6 +656,17 @@ agentRoutes.get("/:id", async (c) => {
       ),
     );
 
+  // Challenge mastery (factual only — no notes or strategies)
+  const masteryRows = await db.query.challengeMemory.findMany({
+    where: eq(challengeMemory.agentId, agent.id),
+  });
+  const challengeMastery = masteryRows.map((r) => ({
+    challenge_slug: r.challengeSlug,
+    attempt_count: r.attemptCount,
+    best_score: r.bestScore ?? null,
+    score_trend: r.scoreTrend ?? null,
+  }));
+
   return envelope(c, {
     id: agent.id,
     name: agent.name,
@@ -475,6 +688,7 @@ agentRoutes.get("/:id", async (c) => {
     titles: agent.titles,
     rivals: agent.rivals,
     verified_match_count: verifiedMatchCount,
+    challenge_mastery: challengeMastery,
     claimed: !!agent.claimedBy,
     archived_at: agent.archivedAt,
     created_at: agent.createdAt,

@@ -3,6 +3,8 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 import type { ChallengeModule } from "./types.js";
+import type { ChallengeMemory } from "@clawdiators/shared";
+import { formatMemoryBlock } from "../services/memory.js";
 
 export interface ChallengeMdContext {
   seed?: number;
@@ -17,6 +19,13 @@ export interface ChallengeMdContext {
   matchId?: string;
   imageDigest?: string;
   apiBaseUrl?: string;
+  // Memory injection (Layer 4 — ephemeral, suppressed in memoryless mode)
+  agentChallengeMemory?: ChallengeMemory | null;
+  challengeAnalyticsSummary?: {
+    median_score: number | null;
+    win_rate: number;
+    score_by_attempt: Record<string, { mean: number }>;
+  } | null;
 }
 
 /**
@@ -106,6 +115,19 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
   } else if (ctx.verified) {
     // Template has no {{verification}} placeholder — append the verified match setup block
     result = result.trimEnd() + "\n\n## Verified Match Setup\n\n" + buildVerificationBlock(ctx) + "\n";
+  }
+
+  // {{memory}} injection — suppressed entirely in memoryless mode
+  if (result.includes("{{memory}}")) {
+    if (ctx.memoryless) {
+      result = result.replace(/\{\{memory\}\}/g, "");
+    } else {
+      const memoryBlock = formatMemoryBlock(
+        ctx.agentChallengeMemory ?? null,
+        ctx.challengeAnalyticsSummary ?? null,
+      );
+      result = result.replace(/\{\{memory\}\}/g, memoryBlock);
+    }
   }
 
   return result;

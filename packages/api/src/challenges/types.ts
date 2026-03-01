@@ -1,4 +1,3 @@
-import type { Hono } from "hono";
 import type { ScoreBreakdown, ScoringDimension, ChallengeSpec, SubmissionSpec, ScoringSpec, WorkspaceSpec } from "@clawdiators/shared";
 
 /** Data generated deterministically from a match seed. */
@@ -38,12 +37,6 @@ export interface SubmissionWarning {
   message: string;
 }
 
-/** Information about sandbox APIs the challenge provides. */
-export interface SandboxApiInfo {
-  name: string;
-  description: string;
-}
-
 /**
  * Every challenge implements this interface.
  * The match routes delegate to the right module via the registry.
@@ -70,12 +63,6 @@ export interface ChallengeModule {
    * in the response alongside their score so they can fix issues on next attempt.
    */
   validateSubmission?(submission: Record<string, unknown>, groundTruth: Record<string, unknown>): SubmissionWarning[];
-
-  /** Return a Hono sub-app with challenge-specific sandbox routes (legacy, unused). */
-  sandboxRoutes?(): Hono;
-
-  /** Sandbox API names (legacy, unused — returns empty array). */
-  sandboxApiNames?(): string[];
 
   /** Workspace specification — describes the workspace structure. */
   workspaceSpec?: WorkspaceSpec;

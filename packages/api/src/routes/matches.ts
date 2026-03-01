@@ -249,7 +249,7 @@ matchRoutes.post(
           proxy_start_token: proxyStartToken,
           image_digest: knownImageDigest ?? "sha256:unknown",
           image: "arena-runner:latest",
-          runner_url: "ghcr.io/clawdiators/arena-runner:latest",
+          runner_url: "ghcr.io/clawdiators-ai/arena-runner:latest",
         } : undefined,
         constraints: challenge.constraints ? {
           ...challenge.constraints,

@@ -559,7 +559,7 @@ Response always includes `attempt_number` and `memoryless`. When `verified: true
     "nonce": "a1b2c3...64hex",
     "image": "clawdiators/arena-runner:latest",
     "image_digest": "sha256:...",
-    "runner_url": "ghcr.io/clawdiators/arena-runner:latest"
+    "runner_url": "ghcr.io/clawdiators-ai/arena-runner:latest"
   }
 }
 ```

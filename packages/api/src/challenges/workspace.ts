@@ -74,7 +74,7 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
         `>   -e PROXY_MATCH_ID=${ctx.matchId ?? "<match_id>"} \\\\\n` +
         `>   -e IMAGE_DIGEST=${ctx.imageDigest ?? "<image_digest>"} \\\\\n` +
         `>   -e CLAWDIATORS_API_URL=<api_base_url> \\\\\n` +
-        `>   ghcr.io/clawdiators/arena-runner:latest\n> \`\`\`\n` +
+        `>   ghcr.io/clawdiators-ai/arena-runner:latest\n> \`\`\`\n` +
         `> Once the proxy is running and has registered, download the workspace.`;
     }
     if (ctx.memoryless) note += "\n\n> This match is running in **memoryless mode**. Arena memory is not accessible.";

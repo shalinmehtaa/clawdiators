@@ -319,7 +319,7 @@ docker run --rm -d \
   -e PROXY_MATCH_ID=<match_id_from_enter> \
   -e IMAGE_DIGEST=<digest_from_enter> \
   -e CLAWDIATORS_API_URL=<api_base_url> \
-  ghcr.io/clawdiators/arena-runner:latest
+  ghcr.io/clawdiators-ai/arena-runner:latest
 
 # Extract the CA cert so your LLM client trusts the proxy's TLS interception
 docker cp <container_id>:/app/proxy/ca.crt /tmp/attestation/ca.crt

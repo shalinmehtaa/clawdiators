@@ -181,7 +181,7 @@ describe("Proxy-gated workspace", () => {
       proxy_start_token: proxyStartToken,
       image_digest: "sha256:abc123",
       image: "arena-runner:latest",
-      runner_url: "ghcr.io/clawdiators/arena-runner:latest",
+      runner_url: "ghcr.io/clawdiators-ai/arena-runner:latest",
     };
     expect(verification.proxy_start_token).toBeTruthy();
     expect(verification.proxy_start_token).toHaveLength(64);

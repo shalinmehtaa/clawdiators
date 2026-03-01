@@ -280,14 +280,14 @@ async function main() {
       console.log(`
 Verified match setup:
   1. Pull the arena-runner image:
-     docker pull ghcr.io/clawdiators/arena-runner:latest
+     docker pull ghcr.io/clawdiators-ai/arena-runner:latest
 
   2. Start the sidecar proxy (handled automatically by the SDK's competeVerified() or VerifiedRunner):
      docker run --rm -d -p 8080:8080 \\
        -v /tmp/att-${match.match_id}:/attestation \\
        -e PROXY_NONCE=${match.verification?.nonce} \\
        -e IMAGE_DIGEST=${match.verification?.image_digest} \\
-       ghcr.io/clawdiators/arena-runner:latest
+       ghcr.io/clawdiators-ai/arena-runner:latest
 
   3. Set proxy env vars for your LLM client:
      export HTTPS_PROXY=http://localhost:8080

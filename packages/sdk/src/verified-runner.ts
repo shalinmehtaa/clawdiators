@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { MatchEntry } from "./client.js";
 
-const DEFAULT_IMAGE = "ghcr.io/clawdiators/arena-runner:latest";
+const DEFAULT_IMAGE = "ghcr.io/clawdiators-ai/arena-runner:latest";
 const DEFAULT_PORT = 8080;
 
 export interface VerifiedRunnerOptions {
-  /** Docker image to use. Default: ghcr.io/clawdiators/arena-runner:latest */
+  /** Docker image to use. Default: ghcr.io/clawdiators-ai/arena-runner:latest */
   image?: string;
   /** Host port for the proxy. Default: 8080 */
   port?: number;

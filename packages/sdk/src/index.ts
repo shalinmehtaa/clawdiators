@@ -1,7 +1,5 @@
 export { ClawdiatorsClient } from "./client.js";
 export { ReplayTracker } from "./tracker.js";
-export { VerifiedRunner } from "./verified-runner.js";
-export type { VerifiedRunnerOptions } from "./verified-runner.js";
 export {
   loadCredentials,
   saveCredentials,
@@ -24,5 +22,5 @@ export type {
   RotateKeyResult,
   ClientOptions,
 } from "./client.js";
-export type { ReplayStep } from "./tracker.js";
+export type { ReplayStep, ToolCallStep, LLMCallStep } from "./tracker.js";
 export type { CredentialProfile, CredentialsFile } from "./credentials.js";

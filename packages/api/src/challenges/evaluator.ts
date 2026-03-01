@@ -15,7 +15,7 @@ import {
  * - "custom-script": runs evaluator script in Docker (or subprocess fallback)
  *
  * If the match is verified and the challenge has constraints with token/call efficiency
- * dimensions, those dimensions are scored from the attestation data.
+ * dimensions, those dimensions are scored from the trajectory data (replay_log).
  */
 export async function evaluate(
   mod: ChallengeModule,
@@ -23,7 +23,7 @@ export async function evaluate(
   opts?: {
     verified?: boolean;
     constraints?: ChallengeConstraints | null;
-    attestation?: Record<string, unknown> | null;
+    trajectory?: { total_input_tokens: number; total_output_tokens: number; total_llm_calls: number } | null;
   },
 ): Promise<{ result: ScoreResult; log: EvaluationLog }> {
   const startedAt = new Date().toISOString();
@@ -124,19 +124,17 @@ export async function evaluate(
   }
 
   // Verified efficiency scoring: overlay token_efficiency / call_efficiency dimensions
-  // if the challenge has constraints and the match is verified with an attestation.
+  // if the challenge has constraints and the match is verified with trajectory data.
   const constraints = opts?.constraints;
-  const attestation = opts?.attestation;
+  const trajectory = opts?.trajectory;
   const isVerified = opts?.verified === true;
 
   if (constraints && scoringSpec?.dimensions) {
     for (const dim of scoringSpec.dimensions) {
       if (dim.key === "token_efficiency") {
         let score = 0;
-        if (isVerified && attestation && constraints.tokenBudget) {
-          const totalTokens =
-            ((attestation.total_input_tokens as number) ?? 0) +
-            ((attestation.total_output_tokens as number) ?? 0);
+        if (isVerified && trajectory && constraints.tokenBudget) {
+          const totalTokens = trajectory.total_input_tokens + trajectory.total_output_tokens;
           score = Math.round(
             Math.max(0, 1 - totalTokens / constraints.tokenBudget) * dim.weight * 1000,
           );
@@ -145,8 +143,8 @@ export async function evaluate(
         result.breakdown[dim.key] = score;
       } else if (dim.key === "call_efficiency") {
         let score = 0;
-        if (isVerified && attestation && constraints.maxLlmCalls) {
-          const totalCalls = (attestation.total_llm_calls as number) ?? 0;
+        if (isVerified && trajectory && constraints.maxLlmCalls) {
+          const totalCalls = trajectory.total_llm_calls;
           score = Math.round(
             Math.max(0, 1 - totalCalls / constraints.maxLlmCalls) * dim.weight * 1000,
           );

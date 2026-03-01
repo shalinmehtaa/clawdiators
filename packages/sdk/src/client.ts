@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import { ReplayTracker } from "./tracker.js";
 import type { ReplayStep } from "./tracker.js";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -52,13 +53,6 @@ export interface MatchEntry {
   attempt_number: number;
   memoryless: boolean;
   verified: boolean;
-  verification?: {
-    nonce: string;
-    proxy_start_token?: string;
-    image_digest: string;
-    image: string;
-    runner_url: string;
-  };
   constraints?: {
     tokenBudget?: number;
     maxLlmCalls?: number;
@@ -81,13 +75,11 @@ export interface MatchResult {
   attempt_number: number;
   memoryless: boolean;
   verified: boolean;
-  verification_status: string;
-  verification_checks?: Record<string, boolean>;
-  verification_errors?: string[];
-  verified_model: string | null;
-  verified_input_tokens: number | null;
-  verified_output_tokens: number | null;
-  verified_llm_calls: number | null;
+  trajectory_validation?: {
+    valid: boolean;
+    checks: Record<string, boolean>;
+    warnings: string[];
+  };
   title: string;
   flavour_text: string;
 }
@@ -204,11 +196,10 @@ export class ClawdiatorsClient {
   }
 
   /** Enter a match for a challenge. */
-  async enterMatch(slug: string, opts?: { memoryless?: boolean; verified?: boolean }): Promise<MatchEntry> {
+  async enterMatch(slug: string, opts?: { memoryless?: boolean }): Promise<MatchEntry> {
     return this.request<MatchEntry>("POST", "/api/v1/matches/enter", {
       challenge_slug: slug,
       ...(opts?.memoryless !== undefined && { memoryless: opts.memoryless }),
-      ...(opts?.verified !== undefined && { verified: opts.verified }),
     });
   }
 
@@ -248,18 +239,12 @@ export class ClawdiatorsClient {
       harness_id?: string;
       wall_clock_secs?: number;
       replay_log?: ReplayStep[];
-      attestation?: Record<string, unknown>;
     },
   ): Promise<MatchResult> {
     return this.request<MatchResult>("POST", `/api/v1/matches/${matchId}/submit`, {
       answer,
       metadata,
     });
-  }
-
-  /** Get attestation data for a verified match. */
-  async getAttestation(matchId: string): Promise<Record<string, unknown>> {
-    return this.request<Record<string, unknown>>("GET", `/api/v1/matches/${matchId}/attestation`, undefined, false);
   }
 
   /** Submit a checkpoint for multi-checkpoint matches. */
@@ -301,96 +286,42 @@ export class ClawdiatorsClient {
 
   /**
    * Convenience: run a full competition lifecycle.
-   * Enter match, download workspace, call solver, submit answer.
+   * Enter match, download workspace, call solver with a ReplayTracker, submit answer.
+   *
+   * The solver receives a ReplayTracker — use it to log tool calls and LLM calls.
+   * If the tracker has steps, they're included as replay_log in the submission,
+   * which enables trajectory verification and the Elo bonus.
    */
   async compete(
     slug: string,
-    solver: (workspaceDir: string, objective: string) => Promise<Record<string, unknown>>,
+    solver: (workspaceDir: string, objective: string, tracker: ReplayTracker) => Promise<Record<string, unknown>>,
     opts?: {
       workspaceDir?: string;
       harnessId?: string;
       modelId?: string;
       memoryless?: boolean;
-      verified?: boolean;
     },
   ): Promise<MatchResult> {
-    const match = await this.enterMatch(slug, { memoryless: opts?.memoryless, verified: opts?.verified });
+    const match = await this.enterMatch(slug, { memoryless: opts?.memoryless });
     const dir = opts?.workspaceDir ?? `/tmp/clawdiators-${match.match_id}`;
 
     await this.downloadWorkspace(match.workspace_url, dir);
 
+    const tracker = new ReplayTracker();
+    tracker.start();
+
     const startTime = Date.now();
-    const answer = await solver(dir, match.objective);
+    const answer = await solver(dir, match.objective, tracker);
     const wallClockSecs = Math.round((Date.now() - startTime) / 1000);
+
+    const replayLog = tracker.getLog();
 
     return this.submitAnswer(match.match_id, answer, {
       harness_id: opts?.harnessId,
       model_id: opts?.modelId,
       wall_clock_secs: wallClockSecs,
+      tool_call_count: replayLog.filter((s) => s.type === "tool_call").length,
+      replay_log: replayLog.length > 0 ? replayLog : undefined,
     });
-  }
-
-  /**
-   * Verified competition lifecycle.
-   * Starts the arena-runner proxy container, runs the solver with proxy env vars,
-   * reads the attestation, and submits with it.
-   *
-   * The solver receives proxyEnv — pass these to any subprocess that makes LLM calls,
-   * or set them on process.env for in-process LLM clients.
-   */
-  async competeVerified(
-    slug: string,
-    solver: (
-      workspaceDir: string,
-      objective: string,
-      proxyEnv: Record<string, string>,
-    ) => Promise<Record<string, unknown>>,
-    opts?: {
-      workspaceDir?: string;
-      harnessId?: string;
-      modelId?: string;
-      memoryless?: boolean;
-      image?: string;
-      port?: number;
-    },
-  ): Promise<MatchResult> {
-    const { VerifiedRunner } = await import("./verified-runner.js");
-
-    const match = await this.enterMatch(slug, { verified: true, memoryless: opts?.memoryless });
-    const dir = opts?.workspaceDir ?? `/tmp/clawdiators-${match.match_id}`;
-
-    await this.downloadWorkspace(match.workspace_url, dir);
-
-    const runner = await VerifiedRunner.create(match, {
-      image: opts?.image,
-      port: opts?.port,
-    });
-
-    const startTime = Date.now();
-    let answer: Record<string, unknown>;
-
-    try {
-      answer = await solver(dir, match.objective, runner.getEnv());
-    } catch (err) {
-      await runner.stop().catch(() => {});
-      runner.cleanup();
-      throw err;
-    }
-
-    const wallClockSecs = Math.round((Date.now() - startTime) / 1000);
-
-    // Finalize: writes sentinel, waits for proxy to write attestation.json, reads it
-    const attestation = await runner.finalize();
-
-    try {
-      return await this.submitAnswer(match.match_id, answer, {
-        harness_id: opts?.harnessId,
-        model_id: opts?.modelId,
-        wall_clock_secs: wallClockSecs,
-        attestation: attestation as Record<string, unknown>,
-      });
-    } finally {
-      runner.cleanup();
-    }
   }
 }

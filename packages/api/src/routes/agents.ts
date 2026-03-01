@@ -638,7 +638,8 @@ agentRoutes.patch(
     const { label } = c.req.valid("json");
 
     const lineage = agent.harnessLineage ?? { versions: [], currentHash: null };
-    const version = lineage.versions?.find((v) => v.hash === hash);
+    const versions = Array.isArray((lineage as any).versions) ? (lineage as any).versions : [];
+    const version = versions.find((v: any) => v.hash === hash);
     if (!version) {
       return errorEnvelope(
         c,

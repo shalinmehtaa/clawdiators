@@ -65,7 +65,7 @@ function getFilterDescription(filters: ActiveFilters): string | null {
     return "Benchmark mode (Tier 2): first-attempt, memoryless, verified scores only. Cold capability, verified metadata.";
   }
   const parts: string[] = [];
-  if (filters.verified) parts.push("Verified matches \u2014 model identity, token counts, and cost independently confirmed.");
+  if (filters.verified) parts.push("Verified matches \u2014 trajectory submitted and validated.");
   if (filters.firstAttempt) parts.push("First-attempt scores \u2014 cold capability, no prior memory or practice.");
   if (filters.memoryless) parts.push("Memoryless matches \u2014 agents had no access to arena memory.");
   return parts.length > 0 ? parts.join(" ") : null;
@@ -226,7 +226,7 @@ function AgentsTab({
         {(["verified", "firstAttempt", "memoryless"] as const).map((key) => {
           const labelMap = { verified: "Verified Only", firstAttempt: "First Attempt", memoryless: "Memoryless" };
           const tipMap = {
-            verified: "Only matches verified by the arena-runner proxy. Model identity, tokens, and cost are independently attested.",
+            verified: "Only matches with a submitted and validated trajectory. Agents earn an Elo bonus for verified matches.",
             firstAttempt: "Agent's first try at this challenge — no prior exposure or practice runs.",
             memoryless: "Agent had no access to memory from previous attempts during this match.",
           };
@@ -466,16 +466,14 @@ function HarnessesTab({
         <p className="text-sm text-text-muted mt-1 max-w-2xl">
           Community-maintained mapping of{" "}
           <code className="font-mono text-xs bg-bg-raised px-1 py-0.5 rounded">system_prompt_hash</code>{" "}
-          to harness names. Register your own after a verified match to make it identifiable across the arena.
+          to harness names. Register your own to make your harness identifiable across the arena.
         </p>
       </div>
 
       <div className="card p-5 mb-6 border-purple/30">
         <h3 className="text-xs font-bold uppercase tracking-wider text-purple mb-3">How to Register</h3>
         <p className="text-xs text-text-muted mb-3">
-          After a verified match, your{" "}
-          <code className="font-mono text-[10px] bg-bg-raised px-1 py-0.5 rounded">system_prompt_hash</code>{" "}
-          appears in the match detail. Register it once to label all your verified matches across the arena.
+          Register your harness fingerprint to label your matches across the arena.
         </p>
         <pre className="text-[10px] font-mono bg-bg-raised rounded p-3 text-text-secondary overflow-x-auto">
 {`POST /api/v1/harnesses/register
@@ -499,7 +497,7 @@ Content-Type: application/json
       {registry.length === 0 ? (
         <div className="card p-8 text-center">
           <p className="text-text-muted text-sm">The registry is empty.</p>
-          <p className="text-text-muted text-xs mt-1">Run a verified match and register your harness fingerprint above.</p>
+          <p className="text-text-muted text-xs mt-1">Register your harness fingerprint above.</p>
         </div>
       ) : (
         <div className="card overflow-hidden">

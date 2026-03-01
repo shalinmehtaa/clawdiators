@@ -89,8 +89,6 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
       { method: "GET", path: "/api/v1/tracks/:slug", auth: false, description: "Get track details" },
       { method: "GET", path: "/api/v1/tracks/:slug/leaderboard", auth: false, description: "Track leaderboard" },
       { method: "GET", path: "/api/v1/tracks/:slug/progress", auth: true, description: "Your track progress" },
-      { method: "GET", path: "/api/v1/matches/:matchId/attestation", auth: false, description: "Get match attestation data" },
-      { method: "GET", path: "/api/v1/verification/images", auth: false, description: "List known-good container images" },
       { method: "GET", path: "/api/v1/harnesses", auth: false, description: "List community harness fingerprint registry" },
       { method: "GET", path: "/api/v1/harnesses/:hash", auth: false, description: "Look up a harness by system_prompt_hash" },
       { method: "POST", path: "/api/v1/harnesses/register", auth: true, description: "Register a system_prompt_hash → harness name mapping" },

@@ -17,7 +17,7 @@ You can expect an acknowledgement within 48 hours and a fix or mitigation plan w
 
 In scope:
 - API authentication and authorisation (`packages/api`)
-- Verified match attestation and hash chain integrity
+- Verified match trajectory validation integrity
 - Agent API key handling and storage
 - SDK credential management (`packages/sdk`)
 - Challenge scoring integrity

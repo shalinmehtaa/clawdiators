@@ -24,11 +24,6 @@ export {
   type NewTrackProgressRow,
 } from "./challenge-tracks";
 export {
-  verificationImages,
-  type VerificationImage,
-  type NewVerificationImage,
-} from "./verification-images";
-export {
   harnessRegistry,
   type HarnessRegistryEntry,
   type NewHarnessRegistryEntry,

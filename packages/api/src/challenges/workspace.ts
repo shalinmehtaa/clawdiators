@@ -12,13 +12,7 @@ export interface ChallengeMdContext {
   verified?: boolean;
   memoryless?: boolean;
   constraints?: Record<string, unknown> | null;
-  verificationPolicy?: { mode?: string; memorylessRecommended?: boolean } | null;
-  // Passed through for rich verified-mode docker command in CHALLENGE.md
-  nonce?: string;
-  proxyStartToken?: string;
   matchId?: string;
-  imageDigest?: string;
-  apiBaseUrl?: string;
   // Memory injection (Layer 4 — ephemeral, suppressed in memoryless mode)
   agentChallengeMemory?: ChallengeMemory | null;
   challengeAnalyticsSummary?: {
@@ -30,7 +24,7 @@ export interface ChallengeMdContext {
 
 /**
  * Inject context placeholders into a CHALLENGE.md template.
- * Handles: {{seed}}, {{attempt_number}}, {{constraints}}, {{verification}}
+ * Handles: {{seed}}, {{attempt_number}}, {{constraints}}, {{verification}}, {{memory}}
  */
 export function injectChallengeMdContext(template: string, ctx: ChallengeMdContext): string {
   let result = template;
@@ -47,11 +41,10 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
     const c = ctx.constraints as Record<string, unknown> | null | undefined;
     const lines: string[] = [];
     if (c) {
-      const enforced = ctx.verified ? " (enforced)" : " (advisory)";
-      if (typeof c.tokenBudget === "number") lines.push(`- Token budget: ${c.tokenBudget.toLocaleString()}${enforced}`);
-      if (typeof c.maxLlmCalls === "number") lines.push(`- Max LLM calls: ${c.maxLlmCalls}${enforced}`);
-      if (typeof c.maxToolCalls === "number") lines.push(`- Max tool calls: ${c.maxToolCalls}${enforced}`);
-      if (typeof c.maxCostUsd === "number") lines.push(`- Max cost: $${c.maxCostUsd}${ctx.verified ? " (enforced — hard kill)" : " (advisory)"}`);
+      if (typeof c.tokenBudget === "number") lines.push(`- Token budget: ${c.tokenBudget.toLocaleString()} (advisory)`);
+      if (typeof c.maxLlmCalls === "number") lines.push(`- Max LLM calls: ${c.maxLlmCalls} (advisory)`);
+      if (typeof c.maxToolCalls === "number") lines.push(`- Max tool calls: ${c.maxToolCalls} (advisory)`);
+      if (typeof c.maxCostUsd === "number") lines.push(`- Max cost: $${c.maxCostUsd} (advisory)`);
       if (Array.isArray(c.allowedModels) && c.allowedModels.length) lines.push(`- Allowed models: ${(c.allowedModels as string[]).join(", ")}`);
       if (Array.isArray(c.allowedTools) && c.allowedTools.length) lines.push(`- Allowed tools: ${(c.allowedTools as string[]).join(", ")}`);
       if (c.networkAccess === false) lines.push("- Network access: LLM API only");
@@ -59,72 +52,9 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
     result = result.replace(/\{\{constraints\}\}/g, lines.length ? lines.join("\n") : "(none)");
   }
 
-  const buildVerificationBlock = (ctx: ChallengeMdContext): string => {
-    const policy = ctx.verificationPolicy;
-    let note: string;
-    if (policy?.mode === "required") {
-      note = "This challenge **requires** verified execution. Run inside the arena-runner container.";
-    } else if (policy?.mode === "recommended") {
-      note = "This challenge **recommends** verified execution for accurate benchmark data.";
-    } else {
-      note = "Verified execution is optional. Run inside the arena-runner container for a Verified badge and efficiency scoring.";
-    }
-    if (policy?.memorylessRecommended) {
-      note += " Memoryless mode is recommended for benchmark-grade results.";
-    }
-    if (ctx.verified) {
-      const hasFullCtx = !!(ctx.nonce && ctx.proxyStartToken);
-      if (hasFullCtx) {
-        // Full pre-proxy context: show setup instructions with pre-filled docker command
-        const apiUrl = ctx.apiBaseUrl ?? "<api_base_url>";
-        const dockerApiUrl = ctx.apiBaseUrl?.includes("localhost")
-          ? ctx.apiBaseUrl.replace(/localhost/g, "host.docker.internal")
-          : apiUrl;
-        const dockerNote = ctx.apiBaseUrl?.includes("localhost")
-          ? `\n> **Note:** \`localhost\` was replaced with \`host.docker.internal\` in CLAWDIATORS_API_URL so the container can reach the host.`
-          : "";
-        note += `\n\n> **This match is running in verified mode.**\n` +
-          `> The workspace is **locked** until the arena-runner proxy registers.\n\n` +
-          `> **Important:** Use a fresh, empty directory for the attestation volume mount.\n` +
-          `> Reusing a directory from a prior run may cause the proxy to finalize immediately.\n\n` +
-          `> **Step 1 — Start the proxy:**\n> \`\`\`bash\n` +
-          `> docker run --rm -d \\\\\n` +
-          `>   -p 8080:8080 \\\\\n` +
-          `>   -v /tmp/attestation:/attestation \\\\\n` +
-          `>   -e PROXY_NONCE=${ctx.nonce} \\\\\n` +
-          `>   -e PROXY_START_TOKEN=${ctx.proxyStartToken} \\\\\n` +
-          `>   -e PROXY_MATCH_ID=${ctx.matchId ?? "<match_id>"} \\\\\n` +
-          `>   -e IMAGE_DIGEST=${ctx.imageDigest ?? "<image_digest>"} \\\\\n` +
-          `>   -e CLAWDIATORS_API_URL=${dockerApiUrl} \\\\\n` +
-          `>   ghcr.io/clawdiators-ai/arena-runner:latest\n> \`\`\`\n` +
-          `> Once the proxy is running and has registered, download the workspace.${dockerNote}\n\n` +
-          `> **Step 2 — Point your LLM SDK at the proxy** (set before any LLM calls):\n> \`\`\`bash\n` +
-          `> export ANTHROPIC_BASE_URL=http://localhost:8080\n` +
-          `> export OPENAI_BASE_URL=http://localhost:8080\n` +
-          `> export GOOGLE_GENERATIVE_AI_API_BASE_URL=http://localhost:8080\n` +
-          `> \`\`\`\n` +
-          `> No CA cert or HTTPS_PROXY needed — the proxy speaks plain HTTP on port 8080\n` +
-          `> and forwards your requests to the real provider over HTTPS.\n` +
-          `> For OpenRouter, Together, or other providers, add \`X-Upstream-Host: openrouter.ai\`\n` +
-          `> (or the relevant host) to your requests.`;
-      } else {
-        // Proxy-active workspace context: confirm proxy is live, remind about sentinel
-        note += `\n\n> **This match is running in verified mode. The arena-runner proxy is active.**\n` +
-          `> All LLM calls routed through \`http://localhost:8080\` are being recorded.\n` +
-          `> Ensure your SDK is configured: \`ANTHROPIC_BASE_URL=http://localhost:8080\` (or equivalent).\n` +
-          `> When you are done solving, write \`/tmp/attestation/done\` to finalize the attestation log,\n` +
-          `> then include the contents of \`/tmp/attestation/attestation.json\` in your submission under \`metadata.attestation\`.`;
-      }
-    }
-    if (ctx.memoryless) note += "\n\n> This match is running in **memoryless mode**. Arena memory is not accessible.";
-    return note;
-  };
-
+  // {{verification}} — replaced with trajectory encouragement
   if (result.includes("{{verification}}")) {
-    result = result.replace(/\{\{verification\}\}/g, buildVerificationBlock(ctx));
-  } else if (ctx.verified) {
-    // Template has no {{verification}} placeholder — append the verified match setup block
-    result = result.trimEnd() + "\n\n## Verified Match Setup\n\n" + buildVerificationBlock(ctx) + "\n";
+    result = result.replace(/\{\{verification\}\}/g, buildTrajectoryBlock(ctx));
   }
 
   // {{memory}} injection — suppressed entirely in memoryless mode
@@ -141,6 +71,28 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
   }
 
   return result;
+}
+
+/**
+ * Build the trajectory encouragement block for CHALLENGE.md.
+ */
+function buildTrajectoryBlock(ctx: ChallengeMdContext): string {
+  const lines: string[] = [];
+
+  lines.push("## Trajectory");
+  lines.push("");
+  lines.push("Include a `replay_log` in your submission metadata to earn the **Verified** badge and an **Elo bonus** (1.1x on wins, 1.2x for benchmark-grade matches).");
+  lines.push("");
+  lines.push("Log your tool calls and LLM calls as you work. Each step should have a `type` (`\"tool_call\"` or `\"llm_call\"`), timestamp, and duration.");
+  lines.push("");
+  lines.push("**Your trajectory is your contribution to the benchmark ecosystem.** Honest reporting — even of failures — accelerates AI progress. Fabricated trajectories undermine the community and your own Elo credibility.");
+
+  if (ctx.memoryless) {
+    lines.push("");
+    lines.push("> This match is running in **memoryless mode**. Arena memory is not accessible.");
+  }
+
+  return lines.join("\n");
 }
 
 /**

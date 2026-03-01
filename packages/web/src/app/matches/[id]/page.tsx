@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ReplayViewer } from "@/components/replay-viewer";
 import { VerifiedBadge } from "@/components/verified-badge";
-import { AttestationViewer } from "@/components/attestation-viewer";
 
 interface ScoringDimension {
   key: string;
@@ -26,7 +25,8 @@ interface EvaluationLog {
   errors: string[];
 }
 
-interface ReplayStep {
+interface ToolCallStep {
+  type: "tool_call";
   ts: string;
   tool: string;
   input: string;
@@ -35,6 +35,20 @@ interface ReplayStep {
   error?: boolean;
   metadata?: Record<string, unknown>;
 }
+
+interface LLMCallStep {
+  type: "llm_call";
+  ts: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  duration_ms: number;
+  error?: boolean;
+  response_text?: string;
+  metadata?: Record<string, unknown>;
+}
+
+type ReplayStep = ToolCallStep | LLMCallStep;
 
 interface SubmissionMetadata {
   token_count?: number;
@@ -79,16 +93,8 @@ interface MatchDetail {
   started_at: string;
   submitted_at: string | null;
   completed_at: string | null;
-  // Verification fields
+  // Verification
   verified: boolean;
-  verification_status: string;
-  verified_model: string | null;
-  verified_input_tokens: number | null;
-  verified_output_tokens: number | null;
-  verified_llm_calls: number | null;
-  system_prompt_hash: string | null;
-  harness_registry_name: string | null;
-  attestation: Record<string, unknown> | null;
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -181,15 +187,7 @@ export default async function MatchReplayPage({
                 </h1>
                 {match.verified !== undefined && (
                   <VerifiedBadge
-                    status={
-                      !match.verified
-                        ? "unverified"
-                        : match.verification_status === "verified"
-                          ? "verified"
-                          : match.verification_status === "failed"
-                            ? "failed"
-                            : "pending"
-                    }
+                    status={match.verified ? "verified" : "unverified"}
                     size="md"
                   />
                 )}
@@ -388,46 +386,15 @@ export default async function MatchReplayPage({
             <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-4">
               Verification
             </h2>
-            {/* Harness fingerprint */}
-            {match.system_prompt_hash && (
-              <div className="mb-4 pb-4 border-b border-border">
-                <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">Harness Fingerprint</div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <code className="font-mono text-[10px] text-text-secondary bg-bg-raised px-2 py-1 rounded">
-                    {match.system_prompt_hash.slice(0, 16)}…
-                  </code>
-                  {match.harness_registry_name ? (
-                    <span className="text-xs font-bold text-purple">
-                      {match.harness_registry_name}
-                    </span>
-                  ) : (
-                    <a
-                      href="/leaderboard?tab=harnesses"
-                      className="text-[10px] text-text-muted hover:text-purple transition-colors"
-                    >
-                      unregistered — add to registry →
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-            {!match.verified ? (
-              <p className="text-xs text-text-muted">
-                Unverified match. Run with{" "}
-                <code className="text-emerald">arena-runner</code> for a verified
-                result and Elo bonus.
-              </p>
-            ) : match.verification_status === "verified" && match.attestation ? (
-              <AttestationViewer
-                attestation={match.attestation as any}
-                raw={match.attestation}
-              />
-            ) : match.verification_status === "failed" ? (
-              <p className="text-xs text-coral">
-                Verification failed. Attestation did not pass all checks.
+            {match.verified ? (
+              <p className="text-xs text-emerald">
+                Trajectory submitted and validated. This match receives the verified Elo bonus.
               </p>
             ) : (
-              <p className="text-xs text-gold">Attestation not yet submitted.</p>
+              <p className="text-xs text-text-muted">
+                No trajectory submitted. Include a <code className="text-emerald">replay_log</code> in
+                your submission metadata for verified status and an Elo bonus.
+              </p>
             )}
           </div>
         )}

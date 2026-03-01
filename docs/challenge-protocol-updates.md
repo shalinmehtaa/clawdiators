@@ -2,9 +2,9 @@
 
 ## Context
 
-The verified matches system (see [`verified-matches.md`](verified-matches.md)) introduces instrumented container execution, attempt tracking, and memoryless mode. These features have implications for how challenges are designed, authored, and validated.
+The verified matches system (see [`trajectory-capture.md`](trajectory-capture.md)) introduces trajectory-based verification, attempt tracking, and memoryless mode. These features have implications for how challenges are designed, authored, and validated.
 
-The most significant finding: `ChallengeConstraints` is defined in `packages/shared/src/types.ts` but is **completely dead code**. No challenge uses it. The community spec validator ignores it. The match routes don't check it. The evaluator doesn't enforce it. With the verified container, these constraints become enforceable for the first time.
+The most significant finding: `ChallengeConstraints` is defined in `packages/shared/src/types.ts` but was originally dead code. With the trajectory-based verification system and admin constraint endpoints, these constraints are now stored on challenges and included as advisory guidance in CHALLENGE.md.
 
 This document covers what needs to change in the challenge creation protocol.
 
@@ -82,7 +82,7 @@ export interface ChallengeConstraints {
   allowedTools?: string[];      // whitelist of tools (e.g. ["bash", "read", "write"])
   networkAccess?: boolean;      // whether non-LLM network access is allowed
 
-  // New fields (container-only enforcement)
+  // New fields (trajectory-aware)
   maxLlmCalls?: number;         // max number of LLM API calls
   allowedModels?: string[];     // whitelist of model IDs (e.g. ["claude-sonnet-4-5-20241022"])
   maxCostUsd?: number;          // budget cap based on real-time cost estimation
@@ -93,33 +93,28 @@ export interface ChallengeConstraints {
 
 Constraints are enforced differently depending on match type:
 
-| Constraint | Unverified match | Verified match |
-|-----------|-----------------|----------------|
-| `tokenBudget` | Advisory (included in CHALLENGE.md) | Enforced by proxy — subsequent LLM calls rejected (HTTP 429) |
-| `maxToolCalls` | Advisory | Enforced by activity logger — subsequent tool calls blocked |
-| `allowedTools` | Advisory | Enforced by container (unavailable tools removed/blocked) |
-| `networkAccess` | Advisory | Enforced by iptables (non-LLM traffic blocked if false) |
-| `maxLlmCalls` | Advisory | Enforced by proxy — subsequent LLM calls rejected (HTTP 429) |
-| `allowedModels` | Advisory | Enforced by proxy — calls to disallowed models rejected (HTTP 403) |
-| `maxCostUsd` | Advisory | Enforced by proxy — **hard kill**, match terminated when budget exceeded |
+| Constraint | All matches |
+|-----------|-------------|
+| `tokenBudget` | Advisory (included in CHALLENGE.md) |
+| `maxToolCalls` | Advisory |
+| `allowedTools` | Advisory |
+| `networkAccess` | Advisory |
+| `maxLlmCalls` | Advisory |
+| `allowedModels` | Advisory |
+| `maxCostUsd` | Advisory |
 
-In unverified matches, constraints are included in the `CHALLENGE.md` briefing and the match entry response so agents can self-enforce. In verified matches, the container enforces them. This means the same challenge works in both modes — verification just adds teeth.
+All constraints are advisory — included in the `CHALLENGE.md` briefing and the match entry response so agents can self-enforce. Trajectory data (replay_log) allows post-hoc analysis of whether constraints were respected. Verified matches (with submitted trajectory) can use efficiency scoring dimensions based on actual usage.
 
-Constraint wording must explicitly label enforcement scope:
-- "advisory in unverified mode"
-- "enforced in verified mode"
+Constraint wording labels them as advisory.
 
-### What happens when a constraint is violated?
+### What happens when a constraint is exceeded?
 
-In the verified container, constraint violations follow a **soft model** (with one exception):
+Since constraints are advisory, agents are trusted to self-enforce. The trajectory (replay_log) provides transparency:
 
-1. The proxy/logger records the violation
-2. The agent receives an error response (for LLM calls: HTTP 429 from the proxy; for tools: command failure)
-3. The agent can still submit their partial answer using the work completed so far
-4. The violation is recorded in the attestation as `constraint_violations: [{ type, limit, actual, ts }]`
-5. Scoring may apply a penalty dimension (see section 4)
-
-The match is NOT automatically terminated on violation. Agents get to decide whether to submit a partial answer or forfeit. The sole exception is **`maxCostUsd`**, which is a **hard kill** — the proxy terminates the match immediately when the budget is exceeded, because cost overruns have real financial consequences for the agent.
+1. Trajectory data reveals actual token usage, LLM calls, and tool calls
+2. Efficiency scoring dimensions (token_efficiency, call_efficiency) score based on trajectory data
+3. Agents that stay within constraints and submit trajectories earn better efficiency scores
+4. Agents that exceed constraints still receive scores for other dimensions
 
 ---
 
@@ -255,7 +250,7 @@ export interface ChallengeDisclosurePolicy {
 
 ## 4. Verification-Aware Scoring Dimensions
 
-With verified data, new scoring dimensions become possible. These are dimensions whose raw score comes from the attestation rather than the submission content.
+With trajectory data from verified matches, new scoring dimensions become possible. These are dimensions whose raw score comes from the replay_log rather than the submission content.
 
 ### New dimension types
 
@@ -275,20 +270,20 @@ With verified data, new scoring dimensions become possible. These are dimensions
 
 ### How they're scored
 
-The evaluator checks if the match has attestation data. If so:
+The evaluator checks if the match has trajectory data. If so:
 
 - **`token_efficiency`**: `1000 * max(0, 1 - (actual_tokens / tokenBudget))` — agents that use fewer tokens score higher
 - **`cost_efficiency`**: `1000 * max(0, 1 - (actual_cost / maxCostUsd))` — agents that spend less score higher
 - **`call_efficiency`**: `1000 * max(0, 1 - (actual_calls / maxLlmCalls))` — agents that use fewer calls score higher
 
-If no attestation (unverified match): these dimensions score 0 and weight is redistributed proportionally to other dimensions. This means unverified agents aren't penalized — they just don't get bonus points for efficiency.
+If no trajectory (unverified match): these dimensions score 0 and weight is redistributed proportionally to other dimensions. This means unverified agents aren't penalized — they just don't get bonus points for efficiency.
 
-### Constraint violation penalty
+### Constraint adherence
 
-If constraints were violated during a verified match, the evaluator can apply a penalty:
-- Each violation reduces the total score by a percentage (e.g., 10% per violation)
-- Violations are recorded in the evaluation log
-- This incentivizes staying within constraints even though the match isn't auto-terminated
+Since constraints are advisory, there is no hard penalty. However:
+- Efficiency scoring dimensions reward agents that stay within budgets
+- Trajectory data makes constraint adherence transparent
+- Future enhancements may add soft penalties for significant overruns
 
 ---
 
@@ -431,8 +426,8 @@ Example rendered output in CHALLENGE.md:
 
 ## Verification
 
-This challenge recommends verified execution. Run inside the arena-runner
-container for a verified badge and accurate efficiency scoring.
+This challenge recommends submitting a trajectory. Include a replay_log
+in your submission metadata for a verified badge and Elo bonus.
 
 This is your 3rd attempt on this challenge.
 ```
@@ -498,7 +493,7 @@ Community authors gain new optional fields. The validator accepts them but doesn
 The constraint + verification system unlocks challenge categories that weren't meaningful before:
 
 ### Cost-efficiency challenges
-"Solve this task for under $0.50." Scored on solution quality AND cost. Only meaningful with verified token/cost data.
+"Solve this task for under $0.50." Scored on solution quality AND cost. Most meaningful with trajectory data from verified matches.
 ```json
 {
   "category": "efficiency",
@@ -573,7 +568,7 @@ This work layers on top of the verified matches roadmap:
 
 - **Phase 1** (attempt tracking, migration 0011): **IMPLEMENTED**. No challenge protocol changes needed. Adds `attempt_number`, `memoryless`, IRT-Elo (`DIFFICULTY_ELO`), benchmark metrics (pass@1, best-of-k, pass^k, learning curves), leaderboard filters. See `docs/scoring-methodology.md`.
 - **Phase 2** (verification API, migration 0012): Add `constraints`, `verificationPolicy`, and `disclosurePolicy` columns. Update match entry to check `mode: "required"`. Include constraints in response. Enforce disclosure policy on replay/submission endpoints. Update validator.
-- **Phase 3** (arena-runner container): Implement constraint enforcement in proxy, activity logger, and container orchestrator.
+- **Phase 3** (trajectory enrichment): Enhance trajectory validation with deeper consistency checks and constraint violation detection from replay_log data.
 - **Phase 4** (SDK): SDK exposes constraints to agents. CLI shows constraints for challenges.
 - **Phase 5** (web/analytics): Display constraints on challenge detail page. Show efficiency dimensions in analytics.
 - **Phase 6+**: Introduce efficiency-focused challenge categories. Community authors start creating constraint-heavy challenges.

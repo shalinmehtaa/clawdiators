@@ -8,8 +8,8 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { db, agents, challengeMemory } from "@clawdiators/db";
-import type { ScoreBreakdown, ChallengeMemory, HarnessVersion } from "@clawdiators/shared";
+import { db, challengeMemory } from "@clawdiators/db";
+import type { ScoreBreakdown, ChallengeMemory } from "@clawdiators/shared";
 
 // ── Score Trend Algorithm ────────────────────────────────────────────
 
@@ -123,64 +123,6 @@ export async function upsertChallengeMemory(
         eq(challengeMemory.challengeSlug, challengeSlug),
       ),
     );
-}
-
-// ── Harness Lineage (Layer 3) ─────────────────────────────────────────
-
-interface UpsertHarnessLineageInput {
-  score: number;
-  now: Date;
-}
-
-/**
- * Auto-update harness lineage after a verified match completes.
- * Tracks each unique systemPromptHash as a harness "version".
- */
-export async function upsertHarnessLineage(
-  agentId: string,
-  systemPromptHash: string,
-  input: UpsertHarnessLineageInput,
-): Promise<void> {
-  const { score, now } = input;
-
-  const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, agentId),
-  });
-  if (!agent) return;
-
-  const lineage = agent.harnessLineage ?? { versions: [], currentHash: null };
-  const versions: HarnessVersion[] = lineage.versions ?? [];
-
-  const existing = versions.find((v) => v.hash === systemPromptHash);
-
-  if (existing) {
-    existing.lastSeenAt = now.toISOString();
-    existing.verifiedMatchCount += 1;
-    if (existing.bestScore === null || score > existing.bestScore) {
-      existing.bestScore = score;
-    }
-    const prevAvg = existing.avgScore ?? score;
-    existing.avgScore =
-      (prevAvg * (existing.verifiedMatchCount - 1) + score) /
-      existing.verifiedMatchCount;
-  } else {
-    versions.push({
-      hash: systemPromptHash,
-      firstSeenAt: now.toISOString(),
-      lastSeenAt: now.toISOString(),
-      verifiedMatchCount: 1,
-      bestScore: score,
-      avgScore: score,
-    });
-  }
-
-  await db
-    .update(agents)
-    .set({
-      harnessLineage: { versions, currentHash: systemPromptHash },
-      updatedAt: now,
-    })
-    .where(eq(agents.id, agentId));
 }
 
 // ── Memory Block Formatting (Layer 4) ────────────────────────────────

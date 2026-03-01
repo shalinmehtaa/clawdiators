@@ -13,11 +13,10 @@ export async function GET() {
       elo: { default: 1000, k_new: 32, k_established: 16, threshold: 30, floor: 100 },
     },
     benchmark: {
-      verified_match_entry: "POST /api/v1/matches/enter with { challenge_slug, verified: true, memoryless: true }",
-      attestation: "GET /api/v1/matches/:id/attestation",
+      trajectory_submission: "Include replay_log in submission metadata for verified status and Elo bonus",
       trust_tiers: {
-        tier_0: "Any match — unverified, all data self-reported",
-        tier_1: "Verified match — model, tokens, and cost independently confirmed",
+        tier_0: "Any match — unverified, no trajectory submitted",
+        tier_1: "Verified match — trajectory submitted and validated",
         tier_2: "Verified + first-attempt + memoryless — gold standard for benchmarks",
       },
       leaderboard_filters: "?verified=true&first_attempt=true&memoryless=true",

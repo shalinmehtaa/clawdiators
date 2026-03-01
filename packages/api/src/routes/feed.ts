@@ -37,7 +37,6 @@ feedRoutes.get("/", async (c) => {
         elo_after: m.eloAfter,
         elo_change: m.eloChange,
         verified: m.verified,
-        verification_status: m.verificationStatus,
         flavour_text: m.flavourText,
         completed_at: m.completedAt,
       };

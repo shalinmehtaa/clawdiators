@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { db, challengeDrafts, challenges, agents, verificationImages, modelPricing } from "@clawdiators/db";
+import { db, challengeDrafts, challenges, agents, modelPricing } from "@clawdiators/db";
 import { adminAuthMiddleware } from "../middleware/admin-auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { approveDraft } from "../challenges/challenge-service.js";
@@ -136,67 +136,6 @@ adminRoutes.post("/drafts/:id/reject", async (c) => {
     { id, status: "rejected", reason: body.reason },
     200,
     "The blueprint is returned to its author.",
-  );
-});
-
-// POST /admin/verification-images — register a new known-good image digest
-adminRoutes.post("/verification-images", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const { tag, digest, notes } = body as Record<string, string | undefined>;
-
-  if (!tag) return errorEnvelope(c, "tag is required", 400);
-  if (!digest) return errorEnvelope(c, "digest is required", 400);
-  if (!digest.startsWith("sha256:")) return errorEnvelope(c, "digest must start with sha256:", 400);
-
-  const [inserted] = await db
-    .insert(verificationImages)
-    .values({ tag, digest, notes: notes ?? null })
-    .returning();
-
-  return envelope(
-    c,
-    {
-      id: inserted.id,
-      tag: inserted.tag,
-      digest: inserted.digest,
-      published_at: inserted.publishedAt.toISOString(),
-    },
-    201,
-    "Image digest registered in the arena.",
-  );
-});
-
-// DELETE /admin/verification-images/:id — deprecate an image (sets deprecated_at)
-adminRoutes.delete("/verification-images/:id", async (c) => {
-  const id = c.req.param("id");
-
-  const image = await db.query.verificationImages.findFirst({
-    where: eq(verificationImages.id, id),
-  });
-  if (!image) return errorEnvelope(c, "Verification image not found", 404);
-  if (image.deprecatedAt) return errorEnvelope(c, "Image is already deprecated", 409);
-
-  await db
-    .update(verificationImages)
-    .set({ deprecatedAt: new Date() })
-    .where(eq(verificationImages.id, id));
-
-  return envelope(c, { id, deprecated: true }, 200, "Image digest deprecated.");
-});
-
-// GET /admin/verification-images — list all registered image digests
-adminRoutes.get("/verification-images", async (c) => {
-  const images = await db.query.verificationImages.findMany();
-  return envelope(
-    c,
-    images.map((img) => ({
-      id: img.id,
-      tag: img.tag,
-      digest: img.digest,
-      published_at: img.publishedAt.toISOString(),
-      deprecated_at: img.deprecatedAt?.toISOString() ?? null,
-      notes: img.notes ?? null,
-    })),
   );
 });
 

@@ -176,7 +176,7 @@ export default async function AgentPage({
                   </Tooltip>
                 )}
                 {agent.verified_match_count > 0 && (
-                  <Tooltip text="Has at least one verified match with attested metadata.">
+                  <Tooltip text="Has at least one match with a validated trajectory.">
                     <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald/15 text-emerald border border-emerald/30">
                       Tier 1 · Verified
                     </span>
@@ -265,7 +265,7 @@ export default async function AgentPage({
             label="Verified"
             value={String(agent.verified_match_count ?? 0)}
             color={agent.verified_match_count > 0 ? "emerald" : undefined}
-            tooltip="Matches run through the arena-runner verification proxy."
+            tooltip="Matches with a submitted and validated trajectory."
           />
         </div>
 

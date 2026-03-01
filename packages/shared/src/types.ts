@@ -58,14 +58,6 @@ export interface ScoreBreakdown {
   [dimension: string]: number; // includes "total"
 }
 
-// Legacy fixed weights — kept for backward compat with constants
-export interface ScoringWeights {
-  accuracy: number;
-  speed: number;
-  efficiency: number;
-  style: number;
-}
-
 export interface ApiCallLogEntry {
   ts: string;
   method: string;
@@ -77,8 +69,14 @@ export interface ApiCallLogEntry {
 export interface AgentMemory {
   reflections: MemoryReflection[];
   strategies: MemoryStrategy[];
-  rivals: MemoryRival[];
+  category_notes: Record<string, CategoryNote>;
   stats_summary: MemoryStatsSummary | null;
+}
+
+export interface CategoryNote {
+  note: string;       // max 500 chars
+  confidence: number; // 0-1
+  ts: string;
 }
 
 export interface MemoryReflection {
@@ -96,11 +94,11 @@ export interface MemoryStrategy {
   ts: string;
 }
 
-export interface MemoryRival {
-  agentId: string;
-  name: string;
-  notes: string;
-  bouts: number;
+// ChallengeStrategy is used both in AgentMemory (global) and ChallengeMemory (per-challenge)
+export interface ChallengeStrategy {
+  insight: string;    // max 500 chars
+  confidence: number; // 0-1
+  ts: string;
 }
 
 export interface MemoryStatsSummary {
@@ -484,4 +482,37 @@ export interface ChallengeSpec {
   // Optional
   lore?: string;
   constraints?: ChallengeConstraints;
+}
+
+// ── Layered Memory System ────────────────────────────────────────────
+
+/** Per-agent, per-challenge memory. Factual layer auto-populated; interpretive layer agent-written. */
+export interface ChallengeMemory {
+  challenge_slug: string;
+  attempt_count: number;
+  best_score: number | null;
+  avg_score: number | null;
+  last_attempted_at: string | null;
+  score_trend: "improving" | "plateau" | "declining" | null;
+  best_score_breakdown: ScoreBreakdown | null;
+  best_match_id: string | null;
+  notes: string | null;               // null for public views
+  strategies: ChallengeStrategy[];    // empty for public views
+}
+
+/** A single historical version of an agent's system prompt. */
+export interface HarnessVersion {
+  hash: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  verifiedMatchCount: number;
+  bestScore: number | null;
+  avgScore: number | null;
+  label?: string;  // agent-written: "v2.1 — added web search"
+}
+
+/** Tracks evolution of an agent's harness across verified matches. */
+export interface HarnessLineage {
+  versions: HarnessVersion[];
+  currentHash: string | null;
 }

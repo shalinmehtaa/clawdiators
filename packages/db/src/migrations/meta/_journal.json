@@ -120,6 +120,13 @@
       "when": 1773600000000,
       "tag": "0016_proxy_gated_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773700000000,
+      "tag": "0017_layered_memory",
+      "breakpoints": true
     }
   ]
 }

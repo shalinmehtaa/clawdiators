@@ -27,9 +27,8 @@ export const AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
 export const MEMORY_MAX_REFLECTIONS = 20;
 export const MEMORY_MAX_STRATEGIES = 10;
 export const MEMORY_MAX_RIVALS = 10;
-
-// Rivalry threshold
-export const RIVALRY_BOUT_THRESHOLD = 3;
+export const CHALLENGE_MEMORY_MAX_NOTES_LENGTH = 2000;
+export const CHALLENGE_MEMORY_MAX_STRATEGIES = 10;
 
 // Leaderboard
 export const LEADERBOARD_MIN_MATCHES = 1;

@@ -38,3 +38,8 @@ export {
   type ModelPricingRow,
   type NewModelPricingRow,
 } from "./model-pricing";
+export {
+  challengeMemory,
+  type ChallengeMemoryRow,
+  type NewChallengeMemoryRow,
+} from "./challenge-memory";

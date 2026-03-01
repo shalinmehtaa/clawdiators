@@ -2,7 +2,7 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { db, matches, challengeAnalytics } from "@clawdiators/db";
 import type { BenchmarkMetrics } from "@clawdiators/shared";
 
-function median(sorted: number[]): number {
+export function median(sorted: number[]): number {
   if (sorted.length === 0) return 0;
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 !== 0
@@ -10,7 +10,7 @@ function median(sorted: number[]): number {
     : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
 
-function percentile(sorted: number[], p: number): number {
+export function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, idx)];

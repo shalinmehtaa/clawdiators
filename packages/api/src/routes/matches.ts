@@ -4,6 +4,7 @@ import { z } from "zod";
 import { eq, desc, and, sql, isNull, inArray } from "drizzle-orm";
 import { db, matches, agents, challenges, challengeTracks, trackProgress, verificationImages, harnessRegistry } from "@clawdiators/db";
 import { ELO_DEFAULT, DIFFICULTY_ELO, HEARTBEAT_GRACE_PERIOD_MS, VERIFIED_ELO_BONUS, BENCHMARK_ELO_BONUS } from "@clawdiators/shared";
+import type { TrackScoringMethod } from "@clawdiators/shared";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { generateBoutName, generateFlavourText, computeTitle, computeAllTitles } from "../services/whimsy.js";
@@ -13,6 +14,10 @@ import { evaluate } from "../challenges/evaluator.js";
 import { injectChallengeMdContext } from "../challenges/workspace.js";
 import { recalibrateChallenge } from "../services/calibration.js";
 import { generateNonce, verifyAttestation } from "../services/verification.js";
+import { selectVariant, mergeVariantConfig } from "../services/variants.js";
+import { computeTrackScore } from "../services/tracks.js";
+import { replayStepSchema } from "../schemas/replay.js";
+import { upsertChallengeMemory, upsertHarnessLineage } from "../services/memory.js";
 
 export const matchRoutes = new Hono();
 
@@ -158,16 +163,9 @@ matchRoutes.post(
     let variantId: string | null = null;
     let effectiveConfig = challenge.config;
     if (challenge.variants && challenge.variants.length > 0) {
-      const variants = challenge.variants;
-      const totalWeight = variants.reduce((sum, v) => sum + (v.weight ?? 1), 0);
-      let roll = (seed % 10000) / 10000 * totalWeight;
-      let selected = variants[0];
-      for (const v of variants) {
-        roll -= v.weight ?? 1;
-        if (roll <= 0) { selected = v; break; }
-      }
+      const selected = selectVariant(challenge.variants, seed);
       variantId = selected.id;
-      effectiveConfig = { ...challenge.config, ...selected.config_overrides };
+      effectiveConfig = mergeVariantConfig(challenge.config as Record<string, unknown>, selected) as typeof challenge.config;
     }
 
     const data = mod.generateData(seed, effectiveConfig);
@@ -312,16 +310,6 @@ matchRoutes.post("/:matchId/proxy-ready", async (c) => {
 });
 
 // POST /matches/:matchId/submit — submit answer
-const replayStepSchema = z.object({
-  ts: z.string(),
-  tool: z.string(),
-  input: z.string().max(5000),
-  output: z.string().max(5000).optional(),
-  duration_ms: z.number(),
-  error: z.boolean().optional(),
-  metadata: z.record(z.unknown()).optional(),
-});
-
 const submitSchema = z.object({
   answer: z.record(z.unknown()),
   metadata: z.object({
@@ -616,19 +604,7 @@ matchRoutes.post(
         ])];
 
         // Compute cumulative score based on scoring method
-        let cumulativeScore = 0;
-        const scoreValues = Object.values(bestScores) as number[];
-        if (track.scoringMethod === "sum") {
-          cumulativeScore = scoreValues.reduce((a, b) => a + b, 0);
-        } else if (track.scoringMethod === "average") {
-          cumulativeScore = scoreValues.length > 0
-            ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
-            : 0;
-        } else if (track.scoringMethod === "min") {
-          cumulativeScore = scoreValues.length > 0
-            ? Math.min(...scoreValues)
-            : 0;
-        }
+        const cumulativeScore = computeTrackScore(bestScores, track.scoringMethod as TrackScoringMethod);
 
         const isCompleted = completedSlugs.length >= track.challengeSlugs.length;
 
@@ -658,6 +634,31 @@ matchRoutes.post(
       }
     } catch {
       // Track progress update is best-effort
+    }
+
+    // Auto-update challenge memory (Layer 2 — factual, best-effort)
+    upsertChallengeMemory(agent.id, challenge.slug, {
+      score: breakdown.total,
+      breakdown,
+      matchId: match.id,
+      now,
+    }).catch(() => {
+      // Best-effort — do not fail the submit if memory update fails
+    });
+
+    // Auto-update harness lineage (Layer 3 — verified matches only, best-effort)
+    if (
+      match.verified &&
+      verificationStatus === "verified" &&
+      verificationFields.systemPromptHash &&
+      typeof verificationFields.systemPromptHash === "string"
+    ) {
+      upsertHarnessLineage(agent.id, verificationFields.systemPromptHash, {
+        score: breakdown.total,
+        now,
+      }).catch(() => {
+        // Best-effort
+      });
     }
 
     return envelope(

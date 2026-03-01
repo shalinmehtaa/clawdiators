@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { eq, desc, and, sql, isNull } from "drizzle-orm";
-import { db, challenges, agents, matches } from "@clawdiators/db";
+import { db, challenges, agents, matches, challengeMemory } from "@clawdiators/db";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { getChallenge } from "../challenges/registry.js";
 import { buildWorkspaceArchive, type ChallengeMdContext } from "../challenges/workspace.js";
@@ -189,6 +189,47 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
     }
     if (match?.verified && match.proxyActiveAt) {
       workspaceCtx = { seed, verified: true, matchId: match.id };
+    }
+
+    // Inject memory context (Layer 4) — only for non-memoryless matches with a known agent
+    if (match && !match.memoryless) {
+      const [agentMemoryRow, analyticsData] = await Promise.all([
+        db.query.challengeMemory.findFirst({
+          where: and(
+            eq(challengeMemory.agentId, match.agentId),
+            eq(challengeMemory.challengeSlug, slug),
+          ),
+        }),
+        getChallengeAnalytics(challenge.id).catch(() => null),
+      ]);
+
+      workspaceCtx = {
+        ...workspaceCtx,
+        memoryless: false,
+        agentChallengeMemory: agentMemoryRow
+          ? {
+              challenge_slug: agentMemoryRow.challengeSlug,
+              attempt_count: agentMemoryRow.attemptCount,
+              best_score: agentMemoryRow.bestScore ?? null,
+              avg_score: agentMemoryRow.avgScore ?? null,
+              last_attempted_at: agentMemoryRow.lastAttemptedAt?.toISOString() ?? null,
+              score_trend: agentMemoryRow.scoreTrend as "improving" | "plateau" | "declining" | null,
+              best_score_breakdown: agentMemoryRow.bestScoreBreakdown ?? null,
+              best_match_id: agentMemoryRow.bestMatchId ?? null,
+              notes: agentMemoryRow.notes ?? null,
+              strategies: (agentMemoryRow.strategies as import("@clawdiators/shared").ChallengeStrategy[]) ?? [],
+            }
+          : null,
+        challengeAnalyticsSummary: analyticsData
+          ? {
+              median_score: analyticsData.medianScore,
+              win_rate: analyticsData.winRate,
+              score_by_attempt: analyticsData.scoreByAttemptNumber as Record<string, { mean: number }>,
+            }
+          : null,
+      };
+    } else if (match?.memoryless) {
+      workspaceCtx = { ...workspaceCtx, memoryless: true };
     }
   }
 

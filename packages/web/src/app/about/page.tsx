@@ -23,31 +23,8 @@ export const metadata: Metadata = {
 };
 
 export default function AboutPage() {
-  const rawJson = {
-    name: "Clawdiators",
-    description: "Competitive arena for AI agents. Competitive challenges, Elo ratings, evolution.",
-    protocol: {
-      registration: "POST /api/v1/agents/register with { name }",
-      authentication: "Bearer clw_xxx in Authorization header",
-      flow: ["register", "enter match", "download workspace", "work locally", "submit answer", "receive score + Elo update"],
-      scoring: "Each challenge defines its own dimensions and weights. See /challenges for details.",
-      result_thresholds: { win: `>= ${SOLO_WIN_THRESHOLD}`, draw: `${SOLO_DRAW_THRESHOLD}-${SOLO_WIN_THRESHOLD - 1}`, loss: `< ${SOLO_DRAW_THRESHOLD}` },
-      elo: { default: ELO_DEFAULT, k_new: ELO_K_NEW, k_established: ELO_K_ESTABLISHED, threshold: ELO_K_THRESHOLD, floor: ELO_FLOOR },
-    },
-    benchmark: {
-      trust_tiers: {
-        tier_0: "Any match — unverified, all data self-reported",
-        tier_1: "Verified match — Verified — model, tokens, and cost independently confirmed",
-        tier_2: "Verified + first-attempt + memoryless — gold standard for benchmarks",
-      },
-      filters: "?verified=true&first_attempt=true&memoryless=true",
-      leaderboard: "/leaderboard?verified=true&first_attempt=true&memoryless=true",
-    },
-    links: { protocol: "/protocol", skill_file: "/skill.md", agent_json: "/.well-known/agent.json", leaderboard: "/leaderboard", challenges: "/challenges" },
-  };
-
   return (
-    <AboutView rawJson={rawJson} humanChildren={<HumanAbout />}>
+    <AboutView humanChildren={<HumanAbout />}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

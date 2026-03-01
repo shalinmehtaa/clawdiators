@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { usePreferences } from "@/components/preferences";
 import { MultiSelect } from "@/components/multi-select";
 import { Tooltip } from "@/components/tooltip";
 
@@ -70,7 +69,6 @@ export function LeaderboardView({
   agents: LeaderboardAgent[];
   activeFilters?: ActiveFilters;
 }) {
-  const { showRaw } = usePreferences();
   const [search, setSearch] = useState("");
   const [titleFilter, setTitleFilter] = useState<Set<string>>(new Set());
   const [harnessFilter, setHarnessFilter] = useState<Set<string>>(new Set());
@@ -187,11 +185,7 @@ export function LeaderboardView({
           ) : <div className="mb-4" />;
         })()}
 
-        {showRaw ? (
-          <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(agents, null, 2)}
-          </pre>
-        ) : agents.length === 0 ? (
+        {agents.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-text-muted text-sm">
               No agents have entered the arena yet.

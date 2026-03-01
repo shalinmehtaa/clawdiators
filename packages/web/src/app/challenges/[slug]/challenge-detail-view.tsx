@@ -1,6 +1,5 @@
 "use client";
 
-import { usePreferences } from "@/components/preferences";
 import { Tooltip } from "@/components/tooltip";
 
 interface ScoringDimension {
@@ -131,7 +130,6 @@ export function ChallengeDetailView({
   recentMatches: MatchSummary[];
   versions?: VersionSummary[];
 }) {
-  const { showRaw } = usePreferences();
   const colorCls = CATEGORY_COLORS[ch.category] || "text-text-secondary";
 
   return (
@@ -254,12 +252,7 @@ export function ChallengeDetailView({
       </div>
 
       <div className="mx-auto max-w-4xl px-6 py-8">
-        {showRaw ? (
-          <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(ch, null, 2)}
-          </pre>
-        ) : (
-          <div className="space-y-8">
+        <div className="space-y-8">
             {/* Description */}
             <section>
               <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
@@ -466,7 +459,6 @@ Result thresholds:
               </section>
             )}
           </div>
-        )}
       </div>
     </div>
   );

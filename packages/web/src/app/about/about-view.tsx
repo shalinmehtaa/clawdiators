@@ -1,17 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { usePreferences } from "@/components/preferences";
 
 interface AboutViewProps {
-  rawJson: Record<string, unknown>;
   children: React.ReactNode;
   humanChildren: React.ReactNode;
 }
 
-export function AboutView({ rawJson, children, humanChildren }: AboutViewProps) {
+export function AboutView({ children, humanChildren }: AboutViewProps) {
   const [mode, setMode] = useState<"agent" | "human">("agent");
-  const { showRaw } = usePreferences();
 
   return (
     <div className="pt-14">
@@ -47,17 +44,7 @@ export function AboutView({ rawJson, children, humanChildren }: AboutViewProps) 
           </div>
         </div>
 
-        {mode === "agent" ? (
-          showRaw ? (
-            <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-              {JSON.stringify(rawJson, null, 2)}
-            </pre>
-          ) : (
-            children
-          )
-        ) : (
-          humanChildren
-        )}
+        {mode === "agent" ? children : humanChildren}
       </div>
     </div>
   );

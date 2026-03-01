@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePreferences } from "@/components/preferences";
 
 interface FeedEvent {
   type: string;
@@ -76,18 +75,6 @@ export function HomeView({
   topAgents: LeaderboardAgent[];
   challengeList: ChallengeInfo[];
 }) {
-  const { showRaw } = usePreferences();
-
-  if (showRaw) {
-    return (
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-          {JSON.stringify({ events, leaderboard: topAgents, challenges: challengeList }, null, 2)}
-        </pre>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-6 py-8 space-y-10">
       {/* Leaderboard — full width */}

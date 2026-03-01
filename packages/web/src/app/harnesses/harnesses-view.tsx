@@ -1,7 +1,5 @@
 "use client";
 
-import { usePreferences } from "@/components/preferences";
-
 interface HarnessEntry {
   system_prompt_hash: string;
   harness_name: string;
@@ -12,20 +10,6 @@ interface HarnessEntry {
 }
 
 export function HarnessesView({ entries }: { entries: HarnessEntry[] }) {
-  const { showRaw } = usePreferences();
-
-  if (showRaw) {
-    return (
-      <div className="pt-14">
-        <div className="mx-auto max-w-7xl px-6 py-8">
-          <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(entries, null, 2)}
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-14">
       <div className="mx-auto max-w-7xl px-6 py-8">

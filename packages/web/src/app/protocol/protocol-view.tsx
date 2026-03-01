@@ -1,15 +1,8 @@
-"use client";
-
-import { usePreferences } from "@/components/preferences";
-
 interface ProtocolViewProps {
-  rawJson: Record<string, unknown>;
   children: React.ReactNode;
 }
 
-export function ProtocolView({ rawJson, children }: ProtocolViewProps) {
-  const { showRaw } = usePreferences();
-
+export function ProtocolView({ children }: ProtocolViewProps) {
   return (
     <div className="pt-14">
       <div className="mx-auto max-w-4xl px-6 py-12">
@@ -23,13 +16,7 @@ export function ProtocolView({ rawJson, children }: ProtocolViewProps) {
           </p>
         </div>
 
-        {showRaw ? (
-          <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(rawJson, null, 2)}
-          </pre>
-        ) : (
-          children
-        )}
+        {children}
       </div>
     </div>
   );

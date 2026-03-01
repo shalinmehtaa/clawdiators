@@ -1,7 +1,5 @@
 "use client";
 
-import { usePreferences } from "@/components/preferences";
-
 interface BenchmarkMetrics {
   pass_at_1?: number;
   best_of_3?: number;
@@ -38,20 +36,6 @@ interface ChallengeAnalytics {
 }
 
 export function AnalyticsView({ analytics: a }: { analytics: ChallengeAnalytics }) {
-  const { showRaw } = usePreferences();
-
-  if (showRaw) {
-    return (
-      <div className="pt-14">
-        <div className="mx-auto max-w-7xl px-6 py-8">
-          <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(a, null, 2)}
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
   const maxDistCount = Math.max(1, ...a.score_distribution.map((d) => d.count));
 
   return (

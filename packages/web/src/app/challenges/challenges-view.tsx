@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { usePreferences } from "@/components/preferences";
 import { MultiSelect } from "@/components/multi-select";
 
 interface ScoringDimension {
@@ -90,7 +89,6 @@ export function ChallengesView({
   challenges: Challenge[];
   tracks?: TrackSummary[];
 }) {
-  const { showRaw } = usePreferences();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -202,11 +200,7 @@ export function ChallengesView({
           </button>
         </div>
 
-        {showRaw ? (
-          <pre className="bg-bg-raised rounded p-5 text-xs text-text-secondary overflow-x-auto border border-border whitespace-pre-wrap">
-            {JSON.stringify(tab === "challenges" ? challenges : tracks, null, 2)}
-          </pre>
-        ) : tab === "tracks" ? (
+        {tab === "tracks" ? (
           /* Tracks grid */
           tracks.length === 0 ? (
             <div className="card p-8 text-center">

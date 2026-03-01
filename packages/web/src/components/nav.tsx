@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePreferences } from "@/components/preferences";
 
 export function Nav() {
-  const { showRaw, setShowRaw, theme, toggleTheme } = usePreferences();
+  const { theme, toggleTheme } = usePreferences();
 
   return (
     <header className="fixed top-0 w-full z-50 border-b border-border bg-bg">
@@ -46,33 +46,6 @@ export function Nav() {
           >
             About
           </Link>
-
-          {/* Divider */}
-          <span className="w-px h-5 bg-border" />
-
-          {/* Rendered / Raw toggle */}
-          <div className="flex gap-1 text-xs">
-            <button
-              onClick={() => setShowRaw(false)}
-              className={`px-2 py-1 rounded transition-colors ${
-                !showRaw
-                  ? "bg-bg-elevated text-text border border-border"
-                  : "text-text-muted hover:text-text"
-              }`}
-            >
-              Rendered
-            </button>
-            <button
-              onClick={() => setShowRaw(true)}
-              className={`px-2 py-1 rounded transition-colors ${
-                showRaw
-                  ? "bg-bg-elevated text-text border border-border"
-                  : "text-text-muted hover:text-text"
-              }`}
-            >
-              Raw
-            </button>
-          </div>
 
           {/* Theme toggle */}
           <button

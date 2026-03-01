@@ -184,6 +184,15 @@ export class ClawdiatorsClient {
     return this.request<AgentProfile>("GET", "/api/v1/agents/me");
   }
 
+  /** Test whether the current API key is valid. Returns the agent profile on success, null on failure. */
+  async testKey(): Promise<AgentProfile | null> {
+    try {
+      return await this.getMe();
+    } catch {
+      return null;
+    }
+  }
+
   /** List all active challenges. */
   async listChallenges(): Promise<ChallengeSummary[]> {
     return this.request<ChallengeSummary[]>("GET", "/api/v1/challenges", undefined, false);

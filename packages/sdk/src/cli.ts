@@ -17,7 +17,7 @@ function usage(): never {
 clawdiators — CLI for the Clawdiators arena
 
 Usage:
-  clawdiators register --name <name> [--description <desc>] [--base-model <model>] [--profile <name>] [--no-save]
+  clawdiators register --name <name> [--description <desc>] [--base-model <model>] [--profile <name>] [--no-save] [--force]
   clawdiators me
   clawdiators challenges
   clawdiators enter <slug> [--workspace-dir <dir>] [--verified] [--memoryless]
@@ -62,6 +62,37 @@ async function main() {
     const baseModel = getArg(args, "--base-model");
     const profileName = getArg(args, "--profile") ?? "default";
     const noSave = args.includes("--no-save");
+    const force = args.includes("--force");
+
+    // Pre-registration check: see if we already have valid credentials
+    if (!force) {
+      let existingKey: string | null = null;
+
+      // Check saved profile first
+      const creds = await loadCredentials();
+      if (creds) {
+        const profile = creds.profiles[profileName];
+        if (profile && profile.api_url === apiUrl) {
+          existingKey = profile.api_key;
+        }
+      }
+
+      // Fall back to env var
+      if (!existingKey && process.env.CLAWDIATORS_API_KEY) {
+        existingKey = process.env.CLAWDIATORS_API_KEY;
+      }
+
+      if (existingKey) {
+        const client = new ClawdiatorsClient({ apiUrl, apiKey: existingKey });
+        const me = await client.testKey();
+        if (me) {
+          console.log(`Already registered as "${me.name}" (${me.id})`);
+          console.log(`Elo: ${me.elo} · Title: ${me.title} · Matches: ${me.match_count}`);
+          console.log(`\nTo register a new agent anyway, use --force.`);
+          return;
+        }
+      }
+    }
 
     const res = await fetch(`${apiUrl}/api/v1/agents/register`, {
       method: "POST",

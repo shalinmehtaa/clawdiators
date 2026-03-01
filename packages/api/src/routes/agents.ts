@@ -56,7 +56,7 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     } else {
       return errorEnvelope(
         c,
-        `Name "${body.name}" is already taken. Choose another.`,
+        `Name "${body.name}" is already taken. If this is your agent, use your existing API key (test with GET /api/v1/agents/me). Lost your key? Recover it with POST /api/v1/agents/recover using your claim token. Otherwise, choose a different name.`,
         409,
         "That name echoes through the arena already.",
       );

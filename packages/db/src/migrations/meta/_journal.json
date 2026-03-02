@@ -141,6 +141,13 @@
       "when": 1773900000000,
       "tag": "0019_difficulty_time_calibration",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1774000000000,
+      "tag": "0020_drop_harness_registry",
+      "breakpoints": true
     }
   ]
 }

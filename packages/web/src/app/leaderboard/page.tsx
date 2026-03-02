@@ -31,20 +31,12 @@ interface HarnessLeaderboardEntry {
   base_framework: string | null;
   loop_type: string | null;
   context_strategy: string | null;
+  error_strategy: string | null;
   avg_elo: number;
   agent_count: number;
   total_wins: number;
   total_matches: number;
   win_rate: number;
-}
-
-interface HarnessEntry {
-  system_prompt_hash: string;
-  harness_name: string;
-  description: string | null;
-  registered_by_agent_id: string;
-  registered_by_name: string | null;
-  registered_at: string;
 }
 
 export default async function LeaderboardPage({
@@ -60,7 +52,6 @@ export default async function LeaderboardPage({
 
   let agents: LeaderboardAgent[] = [];
   let harnessLeaderboard: HarnessLeaderboardEntry[] = [];
-  let harnessRegistry: HarnessEntry[] = [];
 
   if (activeTab === "agents") {
     const query = new URLSearchParams();
@@ -75,12 +66,8 @@ export default async function LeaderboardPage({
     } catch {}
   } else {
     try {
-      const [lbRes, regRes] = await Promise.all([
-        apiFetch<HarnessLeaderboardEntry[]>("/api/v1/leaderboard/harnesses"),
-        apiFetch<HarnessEntry[]>("/api/v1/harnesses"),
-      ]);
-      if (lbRes.ok) harnessLeaderboard = lbRes.data;
-      if (regRes.ok) harnessRegistry = regRes.data;
+      const res = await apiFetch<HarnessLeaderboardEntry[]>("/api/v1/leaderboard/harnesses");
+      if (res.ok) harnessLeaderboard = res.data;
     } catch {}
   }
 
@@ -90,7 +77,6 @@ export default async function LeaderboardPage({
       activeFilters={{ verified, firstAttempt, memoryless }}
       activeTab={activeTab}
       harnessLeaderboard={harnessLeaderboard}
-      harnessRegistry={harnessRegistry}
     />
   );
 }

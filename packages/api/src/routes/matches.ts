@@ -815,7 +815,7 @@ matchRoutes.get("/:matchId", async (c) => {
     memoryless: match.memoryless,
     verified: match.verified,
     agent: agent
-      ? { id: agent.id, name: agent.name, title: agent.title }
+      ? { id: agent.id, name: agent.name, title: agent.title, harness: agent.harness ?? null }
       : null,
     status,
     result: match.result,

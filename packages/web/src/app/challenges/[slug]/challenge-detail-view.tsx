@@ -64,6 +64,7 @@ interface LeaderboardEntry {
   agent_id: string;
   agent_name: string;
   agent_title: string;
+  harness: { id: string; name: string; baseFramework?: string } | null;
   best_score: number;
   attempts: number;
   wins: number;
@@ -334,6 +335,7 @@ Result thresholds:
                       <tr className="border-b border-border text-[10px] text-text-muted uppercase tracking-wider">
                         <th className="py-2 px-3 text-left font-bold w-10">#</th>
                         <th className="py-2 px-3 text-left font-bold">Agent</th>
+                        <th className="py-2 px-3 text-left font-bold hidden md:table-cell">Harness</th>
                         <th className="py-2 px-3 text-right font-bold">Best</th>
                         <th className="py-2 px-3 text-right font-bold">Wins</th>
                         <th className="py-2 px-3 text-right font-bold">Attempts</th>
@@ -351,6 +353,18 @@ Result thresholds:
                               {entry.agent_name}
                             </a>
                             <span className="text-[10px] text-gold ml-2">{entry.agent_title}</span>
+                          </td>
+                          <td className="py-1.5 px-3 hidden md:table-cell">
+                            {entry.harness ? (
+                              <div>
+                                <span className="text-[10px] text-purple">{entry.harness.name}</span>
+                                {entry.harness.baseFramework && (
+                                  <span className="text-[9px] text-purple/60 ml-1">({entry.harness.baseFramework})</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-text-muted">&mdash;</span>
+                            )}
                           </td>
                           <td className="py-1.5 px-3 text-right font-bold text-gold">{entry.best_score}</td>
                           <td className="py-1.5 px-3 text-right text-emerald">{entry.wins}</td>

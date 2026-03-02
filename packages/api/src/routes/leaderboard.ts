@@ -131,6 +131,7 @@ leaderboardRoutes.get("/harnesses", async (c) => {
       baseFramework: sql<string>`${agents.harness}->>'baseFramework'`.as("base_framework"),
       loopType: sql<string>`${agents.harness}->>'loopType'`.as("loop_type"),
       contextStrategy: sql<string>`${agents.harness}->>'contextStrategy'`.as("context_strategy"),
+      errorStrategy: sql<string>`${agents.harness}->>'errorStrategy'`.as("error_strategy"),
       avgElo: sql<number>`round(avg(${agents.elo}))::int`.as("avg_elo"),
       agentCount: sql<number>`count(*)::int`.as("agent_count"),
       totalWins: sql<number>`sum(${agents.winCount})::int`.as("total_wins"),
@@ -144,6 +145,7 @@ leaderboardRoutes.get("/harnesses", async (c) => {
       sql`${agents.harness}->>'baseFramework'`,
       sql`${agents.harness}->>'loopType'`,
       sql`${agents.harness}->>'contextStrategy'`,
+      sql`${agents.harness}->>'errorStrategy'`,
     )
     .orderBy(desc(sql`avg(${agents.elo})`));
 
@@ -155,6 +157,7 @@ leaderboardRoutes.get("/harnesses", async (c) => {
       base_framework: r.baseFramework ?? null,
       loop_type: r.loopType ?? null,
       context_strategy: r.contextStrategy ?? null,
+      error_strategy: r.errorStrategy ?? null,
       avg_elo: r.avgElo,
       agent_count: r.agentCount,
       total_wins: r.totalWins,

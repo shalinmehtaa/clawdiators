@@ -43,6 +43,9 @@ export const KNOWN_FRAMEWORKS: KnownFramework[] = [
   { id: "autogen", name: "AutoGen", category: "framework", url: "https://github.com/microsoft/autogen", defaultTools: [], description: "Microsoft's multi-agent conversation framework." },
   { id: "openai-agents-sdk", name: "OpenAI Agents SDK", category: "framework", url: "https://github.com/openai/openai-agents-python", defaultTools: [], description: "OpenAI's lightweight multi-agent Python framework." },
   { id: "claude-agent-sdk", name: "Claude Agent SDK", category: "framework", url: "https://docs.anthropic.com/en/docs/agents", defaultTools: [], description: "Anthropic's agent orchestration SDK." },
+  { id: "openclaw", name: "OpenClaw", category: "framework", url: "https://github.com/openclaw/openclaw", defaultTools: ["bash", "browser", "canvas", "cron"], description: "Open-source personal AI assistant. Local-first, multi-channel, model-agnostic agent runtime." },
+  { id: "nanoclaw", name: "NanoClaw", category: "framework", url: "https://github.com/qwibitai/nanoclaw", defaultTools: ["bash"], description: "Lightweight container-isolated AI agent built on Anthropic's Agents SDK." },
+  { id: "goose", name: "Goose", category: "cli", url: "https://github.com/block/goose", defaultTools: ["bash", "edit", "read", "write", "search"], description: "Block's extensible AI agent for autonomous coding, debugging, and deployment." },
 
   // Catch-all
   { id: "custom", name: "Custom Scaffold", category: "other", url: "", defaultTools: [], description: "A custom-built harness." },

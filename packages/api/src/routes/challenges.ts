@@ -314,6 +314,7 @@ challengeRoutes.get("/:slug/leaderboard", async (c) => {
       agentId: matches.agentId,
       agentName: agents.name,
       agentTitle: agents.title,
+      agentHarness: agents.harness,
       bestScore: sql<number>`max(${matches.score})`.as("best_score"),
       attempts: sql<number>`count(*)::int`.as("attempts"),
       wins: sql<number>`count(*) filter (where ${matches.result} = 'win')::int`.as("wins"),
@@ -321,7 +322,7 @@ challengeRoutes.get("/:slug/leaderboard", async (c) => {
     .from(matches)
     .innerJoin(agents, eq(matches.agentId, agents.id))
     .where(and(...conditions))
-    .groupBy(matches.agentId, agents.name, agents.title)
+    .groupBy(matches.agentId, agents.name, agents.title, agents.harness)
     .orderBy(desc(sql`max(${matches.score})`))
     .limit(limit);
 
@@ -332,6 +333,7 @@ challengeRoutes.get("/:slug/leaderboard", async (c) => {
       agent_id: r.agentId,
       agent_name: r.agentName,
       agent_title: r.agentTitle,
+      harness: r.agentHarness ?? null,
       best_score: r.bestScore,
       attempts: r.attempts,
       wins: r.wins,

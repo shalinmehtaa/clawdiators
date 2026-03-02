@@ -9,6 +9,12 @@ interface HarnessInfo {
   description?: string;
   version?: string;
   tools?: string[];
+  baseFramework?: string;
+  loopType?: string;
+  contextStrategy?: string;
+  errorStrategy?: string;
+  model?: string;
+  structuralHash?: string;
 }
 
 interface AgentProfile {
@@ -202,18 +208,19 @@ export default async function AgentPage({
                   </span>
                 )}
                 {agent.harness && (
-                  <Tooltip text="The agent's system prompt and tool configuration.">
+                  <Tooltip text="The agent's harness — tools, framework, and architecture.">
                     <span className="bg-purple/10 px-2 py-0.5 rounded border border-purple/30 text-purple">
                       {agent.harness.name}{agent.harness.version ? ` v${agent.harness.version}` : ""}
+                      {agent.harness.baseFramework && (
+                        <span className="text-purple/60 ml-1">({agent.harness.baseFramework})</span>
+                      )}
                     </span>
                   </Tooltip>
                 )}
-                {agent.harness?.tools && agent.harness.tools.length > 0 && (
-                  agent.harness.tools.map((tool) => (
-                    <span key={tool} className="bg-bg-elevated px-2 py-0.5 rounded border border-border">
-                      {tool}
-                    </span>
-                  ))
+                {agent.harness?.model && (
+                  <span className="bg-bg-elevated px-2 py-0.5 rounded border border-border">
+                    {agent.harness.model}
+                  </span>
                 )}
               </div>
             </div>
@@ -331,6 +338,65 @@ export default async function AgentPage({
             )}
           </div>
         </div>
+
+        {/* Harness Details */}
+        {agent.harness && (agent.harness.baseFramework || agent.harness.loopType || agent.harness.contextStrategy || agent.harness.errorStrategy || (agent.harness.tools && agent.harness.tools.length > 0)) && (
+          <div className="card p-5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-purple mb-4">
+              Harness
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3 text-xs mb-4">
+              {agent.harness.baseFramework && (
+                <div>
+                  <span className="text-text-muted">Framework</span>
+                  <div className="font-bold text-purple">{agent.harness.baseFramework}</div>
+                </div>
+              )}
+              {agent.harness.loopType && (
+                <div>
+                  <span className="text-text-muted">Loop Type</span>
+                  <div className="font-bold">{agent.harness.loopType}</div>
+                </div>
+              )}
+              {agent.harness.contextStrategy && (
+                <div>
+                  <span className="text-text-muted">Context Strategy</span>
+                  <div className="font-bold">{agent.harness.contextStrategy}</div>
+                </div>
+              )}
+              {agent.harness.errorStrategy && (
+                <div>
+                  <span className="text-text-muted">Error Strategy</span>
+                  <div className="font-bold">{agent.harness.errorStrategy}</div>
+                </div>
+              )}
+              {agent.harness.model && (
+                <div>
+                  <span className="text-text-muted">Model</span>
+                  <div className="font-bold">{agent.harness.model}</div>
+                </div>
+              )}
+              {agent.harness.structuralHash && (
+                <div>
+                  <span className="text-text-muted">Structural Hash</span>
+                  <div className="font-bold font-[family-name:var(--font-mono)] text-[10px]">{agent.harness.structuralHash}</div>
+                </div>
+              )}
+            </div>
+            {agent.harness.tools && agent.harness.tools.length > 0 && (
+              <div>
+                <span className="text-[10px] text-text-muted uppercase tracking-wider">Tools</span>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {agent.harness.tools.map((tool) => (
+                    <span key={tool} className="bg-bg-elevated px-2 py-0.5 rounded border border-border text-[10px]">
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Track Progress */}
         {trackEntries.length > 0 && (

@@ -131,8 +131,8 @@ describe("hasStructurallyChanged()", () => {
 // ── KNOWN_FRAMEWORKS ────────────────────────────────────────────────
 
 describe("KNOWN_FRAMEWORKS", () => {
-  it("has at least 25 entries", () => {
-    expect(KNOWN_FRAMEWORKS.length).toBeGreaterThanOrEqual(25);
+  it("has at least 28 entries", () => {
+    expect(KNOWN_FRAMEWORKS.length).toBeGreaterThanOrEqual(28);
   });
 
   it("has unique IDs", () => {

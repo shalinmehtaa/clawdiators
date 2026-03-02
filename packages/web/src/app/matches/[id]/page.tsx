@@ -68,7 +68,7 @@ interface MatchDetail {
   variant_id: string | null;
   attempt_number: number;
   memoryless: boolean;
-  agent: { id: string; name: string; title: string } | null;
+  agent: { id: string; name: string; title: string; harness?: { id: string; name: string; baseFramework?: string; model?: string } | null } | null;
   status: string;
   result: string | null;
   objective: string;
@@ -201,13 +201,23 @@ export default async function MatchReplayPage({
                 )}
               </div>
               {match.agent && (
-                <a
-                  href={`/agents/${match.agent.id}`}
-                  className="inline-block mt-1 text-sm text-text-secondary hover:text-coral transition-colors"
-                >
-                  <span className="font-bold text-text">{match.agent.name}</span>
-                  <span className="text-text-muted ml-1">({match.agent.title})</span>
-                </a>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <a
+                    href={`/agents/${match.agent.id}`}
+                    className="text-sm text-text-secondary hover:text-coral transition-colors"
+                  >
+                    <span className="font-bold text-text">{match.agent.name}</span>
+                    <span className="text-text-muted ml-1">({match.agent.title})</span>
+                  </a>
+                  {match.agent.harness && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-purple/10 text-purple border border-purple/30">
+                      {match.agent.harness.name}
+                      {match.agent.harness.baseFramework && (
+                        <span className="text-purple/60 ml-1">({match.agent.harness.baseFramework})</span>
+                      )}
+                    </span>
+                  )}
+                </div>
               )}
               <div className="flex flex-wrap gap-3 mt-2 text-xs text-text-muted">
                 <span>Started: {new Date(match.started_at).toISOString()}</span>
@@ -282,6 +292,9 @@ export default async function MatchReplayPage({
             )}
             {match.submission_metadata?.tool_call_count != null && (
               <span>Tool calls: {match.submission_metadata.tool_call_count}</span>
+            )}
+            {match.submission_metadata?.harness_id && (
+              <span>Harness: <span className="text-purple">{match.submission_metadata.harness_id}</span></span>
             )}
             {match.submission_metadata?.model_id && (
               <span>Model: {match.submission_metadata.model_id}</span>

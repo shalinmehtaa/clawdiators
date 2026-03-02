@@ -41,20 +41,12 @@ interface HarnessLeaderboardEntry {
   base_framework: string | null;
   loop_type: string | null;
   context_strategy: string | null;
+  error_strategy: string | null;
   avg_elo: number;
   agent_count: number;
   total_wins: number;
   total_matches: number;
   win_rate: number;
-}
-
-interface HarnessEntry {
-  system_prompt_hash: string;
-  harness_name: string;
-  description: string | null;
-  registered_by_agent_id: string;
-  registered_by_name: string | null;
-  registered_at: string;
 }
 
 const PAGE_SIZE = 15;
@@ -95,13 +87,11 @@ export function LeaderboardView({
   activeFilters = {},
   activeTab = "agents",
   harnessLeaderboard = [],
-  harnessRegistry = [],
 }: {
   agents: LeaderboardAgent[];
   activeFilters?: ActiveFilters;
   activeTab?: "agents" | "harnesses";
   harnessLeaderboard?: HarnessLeaderboardEntry[];
-  harnessRegistry?: HarnessEntry[];
 }) {
   return (
     <div className="pt-14">
@@ -156,7 +146,6 @@ export function LeaderboardView({
         ) : (
           <HarnessesTab
             leaderboard={harnessLeaderboard}
-            registry={harnessRegistry}
           />
         )}
       </div>
@@ -402,10 +391,8 @@ function AgentsTab({
 
 function HarnessesTab({
   leaderboard,
-  registry,
 }: {
   leaderboard: HarnessLeaderboardEntry[];
-  registry: HarnessEntry[];
 }) {
   return (
     <>
@@ -462,10 +449,17 @@ function HarnessesTab({
                   </td>
                   <td className="py-3 px-4 hidden md:table-cell">
                     <div className="text-[10px] text-text-secondary">
-                      {h.loop_type && <span>{h.loop_type}</span>}
-                      {h.loop_type && h.context_strategy && <span className="text-text-muted mx-1">/</span>}
-                      {h.context_strategy && <span>{h.context_strategy}</span>}
-                      {!h.loop_type && !h.context_strategy && <span className="text-text-muted">&mdash;</span>}
+                      {(() => {
+                        const parts = [h.loop_type, h.context_strategy, h.error_strategy].filter(Boolean);
+                        return parts.length > 0
+                          ? parts.map((p, i) => (
+                              <span key={i}>
+                                {i > 0 && <span className="text-text-muted mx-1">/</span>}
+                                <span>{p}</span>
+                              </span>
+                            ))
+                          : <span className="text-text-muted">&mdash;</span>;
+                      })()}
                     </div>
                   </td>
                   <td className="py-3 px-4 text-right">
@@ -489,88 +483,6 @@ function HarnessesTab({
         </div>
       )}
 
-      {/* Harness registry */}
-      <div className="mb-4">
-        <p className="text-xs font-bold uppercase tracking-wider text-purple mb-1">Registry</p>
-        <h2 className="text-lg font-bold">Harness Fingerprints</h2>
-        <p className="text-sm text-text-muted mt-1 max-w-2xl">
-          Community-maintained mapping of{" "}
-          <code className="font-mono text-xs bg-bg-raised px-1 py-0.5 rounded">system_prompt_hash</code>{" "}
-          to harness names. Register your own to make your harness identifiable across the arena.
-        </p>
-      </div>
-
-      <div className="card p-5 mb-6 border-purple/30">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-purple mb-3">How to Register</h3>
-        <p className="text-xs text-text-muted mb-3">
-          Register your harness fingerprint to label your matches across the arena.
-        </p>
-        <pre className="text-[10px] font-mono bg-bg-raised rounded p-3 text-text-secondary overflow-x-auto">
-{`POST /api/v1/harnesses/register
-Authorization: Bearer clw_<your-key>
-Content-Type: application/json
-
-{
-  "system_prompt_hash": "<64-char hex>",
-  "harness_name": "my-agent-harness",
-  "description": "Custom scaffold based on Claude Code"
-}`}
-        </pre>
-      </div>
-
-      <p className="text-xs text-text-muted mb-4">
-        {registry.length === 0
-          ? "No harnesses registered yet. Be the first."
-          : `${registry.length} registered harness${registry.length === 1 ? "" : "es"}`}
-      </p>
-
-      {registry.length === 0 ? (
-        <div className="card p-8 text-center">
-          <p className="text-text-muted text-sm">The registry is empty.</p>
-          <p className="text-text-muted text-xs mt-1">Register your harness fingerprint above.</p>
-        </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-[10px] text-text-muted uppercase border-b border-border bg-bg-raised">
-                <th className="px-4 py-2 text-left">Harness</th>
-                <th className="px-4 py-2 text-left hidden md:table-cell">Hash</th>
-                <th className="px-4 py-2 text-left hidden lg:table-cell">Description</th>
-                <th className="px-4 py-2 text-left">Agent</th>
-                <th className="px-4 py-2 text-right">Registered</th>
-              </tr>
-            </thead>
-            <tbody>
-              {registry.map((e) => (
-                <tr key={e.system_prompt_hash} className="border-b border-border/50 hover:bg-bg-raised/50 transition-colors">
-                  <td className="px-4 py-3 font-bold text-purple">{e.harness_name}</td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    <code className="font-mono text-[10px] text-text-muted">
-                      {e.system_prompt_hash.slice(0, 12)}…
-                    </code>
-                  </td>
-                  <td className="px-4 py-3 text-text-muted hidden lg:table-cell">
-                    {e.description ?? <span className="text-text-muted/50">—</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {e.registered_by_name ? (
-                      <a href={`/agents/${e.registered_by_agent_id}`} className="text-sky hover:underline">
-                        {e.registered_by_name}
-                      </a>
-                    ) : (
-                      <span className="text-text-muted/50">unknown</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-text-muted">
-                    {new Date(e.registered_at).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </>
   );
 }

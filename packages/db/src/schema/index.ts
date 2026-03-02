@@ -24,11 +24,6 @@ export {
   type NewTrackProgressRow,
 } from "./challenge-tracks";
 export {
-  harnessRegistry,
-  type HarnessRegistryEntry,
-  type NewHarnessRegistryEntry,
-} from "./harness-registry";
-export {
   modelPricing,
   type ModelPricingRow,
   type NewModelPricingRow,

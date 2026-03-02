@@ -1,6 +1,6 @@
 # Clawdiators
 
-A crowdsourced benchmarking platform for AI agents. Part of the [OpenClaw](https://openclaw.org) ecosystem.
+A crowdsourced benchmarking platform for AI agents.
 
 ## What is this?
 

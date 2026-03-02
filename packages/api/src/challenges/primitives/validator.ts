@@ -88,6 +88,35 @@ const phaseSchema = z.object({
   description: z.string().min(1),
 });
 
+// ── Code files schema (for code-based community challenges) ─────
+
+const codeFilesSchema = z.object({
+  "data.js": z.string().min(50).max(100_000),
+  "scorer.js": z.string().min(50).max(100_000),
+  "workspace.js": z.string().max(100_000).optional(),
+  "validator.js": z.string().max(100_000).optional(),
+  "setup.js": z.string().max(100_000).optional(),
+  "helpers.js": z.string().max(100_000).optional(),
+});
+
+const VALID_TIERS = ["sandboxed", "networked", "gpu", "custom"] as const;
+const VALID_RUNTIMES = ["node", "python", "multi"] as const;
+
+const environmentSchema = z.object({
+  tier: z.enum(VALID_TIERS).default("sandboxed"),
+  runtime: z.enum(VALID_RUNTIMES).default("node"),
+  timeout: z.number().min(5).max(3600).default(60),
+  image: z.string().optional(),
+  capabilities: z.array(z.string()).optional(),
+});
+
+const assetSchema = z.object({
+  url: z.string().url(),
+  sha256: z.string().length(64),
+  filename: z.string(),
+  size: z.number().max(100_000_000), // 100MB max per asset
+});
+
 // ── Policy schemas ───────────────────────────────────────────────────
 
 const constraintsSchema = z.object({
@@ -133,6 +162,10 @@ export const communitySpecSchema = z.object({
   scorer: scorerSchema,
   dataTemplate: dataTemplateSchema.optional(),
   phases: z.array(phaseSchema).optional(),
+  // Code-based challenge support
+  codeFiles: codeFilesSchema.optional(),
+  environment: environmentSchema.optional(),
+  assets: z.array(assetSchema).optional(),
   // Challenge policies
   constraints: constraintsSchema,
   verification: verificationPolicySchema,
@@ -143,9 +176,48 @@ export const communitySpecSchema = z.object({
     return Math.abs(sum - 1.0) < 0.001;
   },
   { message: "Scoring dimension weights must sum to 1.0" },
+).refine(
+  (spec) => {
+    // codeFiles XOR dataTemplate — can't have both
+    if (spec.codeFiles && spec.dataTemplate) {
+      return false;
+    }
+    return true;
+  },
+  { message: "codeFiles and dataTemplate are mutually exclusive — use one or the other" },
+).refine(
+  (spec) => {
+    // scorer required when maxScore > 1000 and no codeFiles (declarative path)
+    if (spec.scoring.maxScore > 1000 && !spec.scorer && !spec.codeFiles) {
+      return false;
+    }
+    return true;
+  },
+  { message: "scorer is required when maxScore > 1000 (default scorer caps at 1000)" },
+).refine(
+  (spec) => {
+    // gpu/custom tier requires image
+    if (spec.environment?.tier === "gpu" || spec.environment?.tier === "custom") {
+      if (!spec.environment.image) return false;
+    }
+    return true;
+  },
+  { message: "environment.image is required for gpu/custom tiers" },
+).refine(
+  (spec) => {
+    // assets require networked+ tier (need network to download)
+    if (spec.assets && spec.assets.length > 0) {
+      const tier = spec.environment?.tier ?? "sandboxed";
+      if (tier === "sandboxed") return false;
+    }
+    return true;
+  },
+  { message: "assets require environment.tier to be networked, gpu, or custom" },
 );
 
 export type CommunitySpec = z.infer<typeof communitySpecSchema>;
+export type CodeFiles = z.infer<typeof codeFilesSchema>;
+export type EnvironmentTier = (typeof VALID_TIERS)[number];
 
 /**
  * Validate a community challenge spec.

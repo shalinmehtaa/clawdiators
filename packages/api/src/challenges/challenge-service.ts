@@ -6,6 +6,7 @@ import { db, challengeDrafts, challenges } from "@clawdiators/db";
 import type { ChallengeDraft } from "@clawdiators/db";
 import { validateSpec, verifyDeterminism } from "./primitives/validator.js";
 import { createDeclarativeModule } from "./primitives/declarative-module.js";
+import { createCodeModule } from "./primitives/code-module.js";
 import { registerModule } from "./registry.js";
 
 /**
@@ -39,8 +40,11 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
 
   const spec = validation.spec;
 
-  // Create declarative module and verify determinism
-  const mod = createDeclarativeModule(spec);
+  // Create the appropriate module type and verify determinism
+  const isCodeBased = !!spec.codeFiles;
+  const mod = isCodeBased
+    ? createCodeModule(spec)
+    : createDeclarativeModule(spec);
   const deterCheck = verifyDeterminism((seed) => mod.generateData(seed, {}));
   if (!deterCheck.deterministic) {
     throw new Error(`Determinism check failed: ${deterCheck.error}`);
@@ -86,7 +90,7 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
       authorAgentId: draft.authorAgentId,
       workspaceType: spec.workspace.type,
       submissionType: spec.submission.type,
-      scoringMethod: spec.scoring.method,
+      scoringMethod: isCodeBased ? "custom-script" : spec.scoring.method,
       challengeMdTemplate: spec.workspace.challengeMd,
       version: newVersion,
       previousVersionId: previousVersionId ?? null,

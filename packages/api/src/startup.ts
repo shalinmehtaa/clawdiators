@@ -7,6 +7,7 @@ import { db, challenges, agents } from "@clawdiators/db";
 import { registerModule, getChallenge } from "./challenges/registry.js";
 import { validateSpec } from "./challenges/primitives/validator.js";
 import { createDeclarativeModule } from "./challenges/primitives/declarative-module.js";
+import { createCodeModule } from "./challenges/primitives/code-module.js";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -69,7 +70,10 @@ export async function loadCommunityModules(): Promise<void> {
       continue;
     }
 
-    const mod = createDeclarativeModule(validation.spec);
+    // Use code module for specs with codeFiles, declarative module otherwise
+    const mod = validation.spec.codeFiles
+      ? createCodeModule(validation.spec)
+      : createDeclarativeModule(validation.spec);
     registerModule(mod);
     loaded++;
   }

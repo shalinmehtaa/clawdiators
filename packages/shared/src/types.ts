@@ -292,6 +292,9 @@ export interface GateResult {
 export interface GateReport {
   gates: {
     spec_validity: GateResult;
+    code_syntax?: GateResult;
+    code_security?: GateResult;
+    content_safety?: GateResult;
     determinism: GateResult;
     contract_consistency: GateResult;
     baseline_solveability: GateResult;

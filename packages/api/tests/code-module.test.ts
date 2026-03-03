@@ -846,4 +846,190 @@ describe("communitySpecSchema codeFiles validation", () => {
     });
     expect(result.valid).toBe(true);
   });
+
+  it("rejects judgeModel with sandboxed tier", () => {
+    const result = validateSpec({
+      ...codeBasedSpec,
+      scoring: { ...codeBasedSpec.scoring, judgeModel: "claude-haiku-4-5-20251001" },
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => e.includes("judgeModel"))).toBe(true);
+    }
+  });
+
+  it("accepts judgeModel with networked tier", () => {
+    const result = validateSpec({
+      ...codeBasedSpec,
+      scoring: { ...codeBasedSpec.scoring, judgeModel: "claude-haiku-4-5-20251001", rubric: "Score quality" },
+      environment: { tier: "networked" },
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts rubric without judgeModel (rubric is optional standalone)", () => {
+    const result = validateSpec({
+      ...codeBasedSpec,
+      scoring: { ...codeBasedSpec.scoring, rubric: "Quality rubric text" },
+    });
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ── Tier 2+ evaluator wrapper ───────────────────────────────────────
+
+describe("createCodeModule Tier 2+ evaluator wrapper", () => {
+  const networkedSpec: CommunitySpec = {
+    ...codeBasedSpec,
+    environment: { tier: "networked" },
+  };
+
+  it("sandboxed tier does NOT set evaluator script", () => {
+    const mod = createCodeModule(codeBasedSpec);
+    expect(mod.scoringSpec?.evaluator).toBeUndefined();
+  });
+
+  it("networked tier sets evaluator script", () => {
+    const mod = createCodeModule(networkedSpec);
+    expect(mod.scoringSpec?.evaluator).toBeDefined();
+    expect(typeof mod.scoringSpec?.evaluator).toBe("string");
+  });
+
+  it("evaluator wrapper contains scorer.js code", () => {
+    const mod = createCodeModule(networkedSpec);
+    const wrapper = mod.scoringSpec?.evaluator!;
+    // scorer.js has a "score" function
+    expect(wrapper).toContain("function score(input)");
+  });
+
+  it("evaluator wrapper reads submission.json and ground-truth.json", () => {
+    const mod = createCodeModule(networkedSpec);
+    const wrapper = mod.scoringSpec?.evaluator!;
+    expect(wrapper).toContain("submission.json");
+    expect(wrapper).toContain("ground-truth.json");
+  });
+
+  it("evaluator wrapper reads timing metadata from env vars", () => {
+    const mod = createCodeModule(networkedSpec);
+    const wrapper = mod.scoringSpec?.evaluator!;
+    expect(wrapper).toContain("STARTED_AT");
+    expect(wrapper).toContain("SUBMITTED_AT");
+    expect(wrapper).toContain("API_CALL_COUNT");
+  });
+
+  it("mod.score() still works in-process for Tier 2+ specs (gate checking)", () => {
+    const mod = createCodeModule(networkedSpec);
+    const data = mod.generateData(42, {});
+    const now = new Date();
+    const result = mod.score({
+      submission: { answer: data.groundTruth.answer },
+      groundTruth: data.groundTruth,
+      startedAt: new Date(now.getTime() - 1000),
+      submittedAt: now,
+      apiCallCount: 0,
+    });
+    expect(result.breakdown.accuracy).toBe(700);
+    expect(result.breakdown.total).toBeGreaterThan(0);
+  });
+
+  it("evaluator wrapper includes LLM judge when judgeModel is set", () => {
+    const specWithJudge: CommunitySpec = {
+      ...codeBasedSpec,
+      environment: { tier: "networked" },
+      scoring: {
+        ...codeBasedSpec.scoring,
+        judgeModel: "claude-haiku-4-5-20251001",
+        rubric: "Score on clarity and correctness",
+      },
+    };
+    const mod = createCodeModule(specWithJudge);
+    const wrapper = mod.scoringSpec?.evaluator!;
+    expect(wrapper).toContain("llmJudge");
+    expect(wrapper).toContain("claude-haiku-4-5-20251001");
+    expect(wrapper).toContain("Score on clarity and correctness");
+  });
+
+  it("gpu tier also generates evaluator wrapper", () => {
+    const gpuSpec: CommunitySpec = {
+      ...codeBasedSpec,
+      environment: { tier: "gpu", image: "eval-cuda:latest" },
+    };
+    const mod = createCodeModule(gpuSpec);
+    expect(mod.scoringSpec?.evaluator).toBeDefined();
+  });
+});
+
+// ── cachedAssets injection ───────────────────────────────────────────
+
+describe("createCodeModule cachedAssets", () => {
+  it("injects CACHED_ASSETS global into data.js execution", () => {
+    const specWithAssetAware: CommunitySpec = {
+      ...codeBasedSpec,
+      codeFiles: {
+        "data.js": `
+function generateData(seed) {
+  var random = rng(seed);
+  var extra = typeof CACHED_ASSETS !== "undefined" ? CACHED_ASSETS.key : "none";
+  return {
+    objective: "Find the number. Asset: " + extra,
+    groundTruth: { answer: Math.floor(random() * 1000) },
+  };
+}
+module.exports = { generateData: generateData };
+`,
+        "scorer.js": validScorerJs,
+      },
+    };
+    const mod = createCodeModule(specWithAssetAware, { cachedAssets: { key: "test-value" } });
+    const data = mod.generateData(42, {});
+    expect(data.objective).toContain("test-value");
+  });
+
+  it("CACHED_ASSETS is undefined when not provided", () => {
+    const specWithAssetCheck: CommunitySpec = {
+      ...codeBasedSpec,
+      codeFiles: {
+        "data.js": `
+function generateData(seed) {
+  var random = rng(seed);
+  var hasAssets = typeof CACHED_ASSETS !== "undefined";
+  return {
+    objective: "Has assets: " + hasAssets,
+    groundTruth: { answer: Math.floor(random() * 1000) },
+  };
+}
+module.exports = { generateData: generateData };
+`,
+        "scorer.js": validScorerJs,
+      },
+    };
+    const mod = createCodeModule(specWithAssetCheck);
+    const data = mod.generateData(42, {});
+    expect(data.objective).toContain("Has assets: false");
+  });
+
+  it("CACHED_ASSETS available in scorer context", () => {
+    const specWithAssetScorer: CommunitySpec = {
+      ...codeBasedSpec,
+      codeFiles: {
+        "data.js": validDataJs,
+        "scorer.js": `
+function score(input) {
+  var bonus = typeof CACHED_ASSETS !== "undefined" ? 100 : 0;
+  return { breakdown: { accuracy: bonus, speed: 0, total: bonus } };
+}
+module.exports = { score: score };
+`,
+      },
+    };
+    const mod = createCodeModule(specWithAssetScorer, { cachedAssets: { lookup: [1, 2, 3] } });
+    const result = mod.score({
+      submission: {},
+      groundTruth: {},
+      startedAt: new Date(),
+      submittedAt: new Date(),
+      apiCallCount: 0,
+    });
+    expect(result.breakdown.accuracy).toBe(100);
+  });
 });

@@ -43,6 +43,8 @@ const scoringSpecSchema = z.object({
   maxScore: z.number().int().min(100).max(10000),
   evaluator: z.string().optional(),
   runtime: z.enum(["node", "python", "multi"]).optional(),
+  judgeModel: z.string().max(100).optional(),
+  rubric: z.string().max(10000).optional(),
 });
 
 // ── Scorer field schema (for declarative scoring) ───────────────────
@@ -213,6 +215,16 @@ export const communitySpecSchema = z.object({
     return true;
   },
   { message: "assets require environment.tier to be networked, gpu, or custom" },
+).refine(
+  (spec) => {
+    // judgeModel requires non-sandboxed tier (needs network for API calls)
+    if (spec.scoring.judgeModel) {
+      const tier = spec.environment?.tier ?? "sandboxed";
+      if (tier === "sandboxed") return false;
+    }
+    return true;
+  },
+  { message: "scoring.judgeModel requires environment.tier to be networked, gpu, or custom (needs network for API calls)" },
 );
 
 export type CommunitySpec = z.infer<typeof communitySpecSchema>;

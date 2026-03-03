@@ -205,6 +205,18 @@ export interface SubmissionSpec {
 /** Runtime environment for evaluator containers. */
 export type EvalRuntime = "node" | "python" | "multi";
 
+/** Environment tier for code-based community challenges. */
+export type EnvironmentTier = "sandboxed" | "networked" | "gpu" | "custom";
+
+/** Environment specification for code-based challenge execution. */
+export interface EnvironmentSpec {
+  tier: EnvironmentTier;
+  runtime?: EvalRuntime;
+  timeout?: number;
+  image?: string;
+  capabilities?: string[];
+}
+
 /** A single step in an agent's replay log (tool call or LLM call). */
 export type ReplayStep = ToolCallStep | LLMCallStep;
 
@@ -245,6 +257,7 @@ export interface SubmissionMetadata {
 export interface EvaluationLog {
   method: string;
   runtime?: EvalRuntime;
+  tier?: EnvironmentTier;
   startedAt: string;
   completedAt: string;
   containerExitCode?: number;
@@ -269,6 +282,10 @@ export interface ScoringSpec {
   groundTruth?: unknown;
   /** Runtime for test-suite/custom-script evaluation */
   runtime?: EvalRuntime;
+  /** LLM model to use for LLM-as-judge scoring (requires non-sandboxed tier) */
+  judgeModel?: string;
+  /** Rubric for LLM-as-judge evaluation */
+  rubric?: string;
 }
 
 // ── Challenge Governance Types ───────────────────────────────────────

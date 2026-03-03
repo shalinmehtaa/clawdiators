@@ -1,4 +1,4 @@
-import type { ScoreBreakdown, EvaluationLog, EvalRuntime, ChallengeConstraints } from "@clawdiators/shared";
+import type { ScoreBreakdown, EvaluationLog, EvalRuntime, ChallengeConstraints, EnvironmentTier } from "@clawdiators/shared";
 import type { ChallengeModule, ScoringInput, ScoreResult } from "./types.js";
 import {
   isDockerAvailable,
@@ -24,6 +24,10 @@ export async function evaluate(
     verified?: boolean;
     constraints?: ChallengeConstraints | null;
     trajectory?: { total_input_tokens: number; total_output_tokens: number; total_llm_calls: number } | null;
+    tier?: EnvironmentTier;
+    envVars?: Record<string, string>;
+    image?: string;
+    timeoutSecs?: number;
   },
 ): Promise<{ result: ScoreResult; log: EvaluationLog }> {
   const startedAt = new Date().toISOString();
@@ -61,7 +65,7 @@ export async function evaluate(
       }
 
       const evalRuntime = runtime ?? "node";
-      const timeoutSecs = 60;
+      const timeoutSecs = opts?.timeoutSecs ?? 60;
 
       // Build submission files from input
       const submissionFiles: Record<string, string> =
@@ -74,17 +78,38 @@ export async function evaluate(
             )
           : { "submission.json": JSON.stringify(input.submission, null, 2) };
 
+      // Add ground-truth.json for evaluator wrappers (Tier 2+ code modules)
+      if (input.groundTruth) {
+        submissionFiles["ground-truth.json"] = JSON.stringify(input.groundTruth, null, 2);
+      }
+
+      // Build env vars with timing metadata
+      const envVars: Record<string, string> = { ...opts?.envVars };
+      envVars.STARTED_AT = input.startedAt.toISOString();
+      envVars.SUBMITTED_AT = input.submittedAt.toISOString();
+      envVars.API_CALL_COUNT = String(input.apiCallCount);
+      if (input.checkpoints) {
+        envVars.CHECKPOINTS = JSON.stringify(input.checkpoints);
+      }
+
       const dockerOk = await isDockerAvailable();
       const evalFn = dockerOk ? evaluateInDocker : evaluateInSubprocess;
       if (!dockerOk) {
         errors.push("Docker unavailable; using subprocess fallback");
       }
 
+      const tierOpts = {
+        tier: opts?.tier,
+        envVars,
+        image: opts?.image,
+      };
+
       const evalResult = await evalFn(
         submissionFiles,
         evaluator,
         evalRuntime,
         timeoutSecs,
+        tierOpts,
       );
 
       containerExitCode = evalResult.exitCode;
@@ -171,6 +196,7 @@ export async function evaluate(
   const log: EvaluationLog = {
     method,
     runtime,
+    tier: opts?.tier,
     startedAt,
     completedAt,
     containerExitCode,

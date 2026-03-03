@@ -291,6 +291,195 @@ describe("evaluate() with Docker (mocked)", () => {
   });
 });
 
+// ── evaluate() with tier parameters ───────────────────────────────────
+
+describe("evaluate() with tier parameters", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("passes tier to Docker evaluator via opts", async () => {
+    const dockerMod = await import("../src/challenges/docker-evaluator.js");
+    vi.spyOn(dockerMod, "isDockerAvailable").mockResolvedValue(true);
+    const dockerSpy = vi.spyOn(dockerMod, "evaluateInDocker").mockResolvedValue({
+      scores: { accuracy: 500, speed: 200 },
+      exitCode: 0,
+      stdout: '{"scores":{"accuracy":500,"speed":200}}',
+      stderr: "",
+    });
+
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, {});
+
+    const fakeMod: ChallengeModule = {
+      ...mod,
+      scoringSpec: {
+        method: "custom-script",
+        dimensions: mod.dimensions,
+        maxScore: 1000,
+        evaluator: 'console.log(JSON.stringify({scores:{accuracy:500,speed:200}}))',
+        runtime: "node",
+      },
+    };
+
+    await evaluate(fakeMod, input, { tier: "networked" });
+
+    expect(dockerSpy).toHaveBeenCalledOnce();
+    const callArgs = dockerSpy.mock.calls[0];
+    // 5th arg is TierEvalOpts
+    expect(callArgs[4]).toBeDefined();
+    expect(callArgs[4]!.tier).toBe("networked");
+  });
+
+  it("passes envVars to Docker evaluator", async () => {
+    const dockerMod = await import("../src/challenges/docker-evaluator.js");
+    vi.spyOn(dockerMod, "isDockerAvailable").mockResolvedValue(true);
+    const dockerSpy = vi.spyOn(dockerMod, "evaluateInDocker").mockResolvedValue({
+      scores: { accuracy: 300 },
+      exitCode: 0,
+      stdout: '{"scores":{"accuracy":300}}',
+      stderr: "",
+    });
+
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, {});
+
+    const fakeMod: ChallengeModule = {
+      ...mod,
+      scoringSpec: {
+        method: "custom-script",
+        dimensions: mod.dimensions,
+        maxScore: 1000,
+        evaluator: 'console.log(JSON.stringify({scores:{accuracy:300}}))',
+        runtime: "node",
+      },
+    };
+
+    await evaluate(fakeMod, input, {
+      tier: "networked",
+      envVars: { ANTHROPIC_API_KEY: "test-key" },
+    });
+
+    const callArgs = dockerSpy.mock.calls[0];
+    expect(callArgs[4]!.envVars).toBeDefined();
+    expect(callArgs[4]!.envVars!.ANTHROPIC_API_KEY).toBe("test-key");
+  });
+
+  it("includes ground-truth.json in submission files", async () => {
+    const dockerMod = await import("../src/challenges/docker-evaluator.js");
+    vi.spyOn(dockerMod, "isDockerAvailable").mockResolvedValue(false);
+    const subSpy = vi.spyOn(dockerMod, "evaluateInSubprocess").mockResolvedValue({
+      scores: { accuracy: 400 },
+      exitCode: 0,
+      stdout: '{"scores":{"accuracy":400}}',
+      stderr: "",
+    });
+
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, { answer: 42 });
+
+    const fakeMod: ChallengeModule = {
+      ...mod,
+      scoringSpec: {
+        method: "custom-script",
+        dimensions: mod.dimensions,
+        maxScore: 1000,
+        evaluator: 'console.log(JSON.stringify({scores:{accuracy:400}}))',
+        runtime: "node",
+      },
+    };
+
+    await evaluate(fakeMod, input);
+
+    const callArgs = subSpy.mock.calls[0];
+    const submissionFiles = callArgs[0] as Record<string, string>;
+    expect(submissionFiles["ground-truth.json"]).toBeDefined();
+    const groundTruth = JSON.parse(submissionFiles["ground-truth.json"]);
+    expect(groundTruth).toBeDefined();
+  });
+
+  it("passes timing metadata as env vars", async () => {
+    const dockerMod = await import("../src/challenges/docker-evaluator.js");
+    vi.spyOn(dockerMod, "isDockerAvailable").mockResolvedValue(false);
+    const subSpy = vi.spyOn(dockerMod, "evaluateInSubprocess").mockResolvedValue({
+      scores: { accuracy: 400 },
+      exitCode: 0,
+      stdout: '{"scores":{"accuracy":400}}',
+      stderr: "",
+    });
+
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, {});
+
+    const fakeMod: ChallengeModule = {
+      ...mod,
+      scoringSpec: {
+        method: "custom-script",
+        dimensions: mod.dimensions,
+        maxScore: 1000,
+        evaluator: 'console.log(JSON.stringify({scores:{accuracy:400}}))',
+        runtime: "node",
+      },
+    };
+
+    await evaluate(fakeMod, input);
+
+    const callArgs = subSpy.mock.calls[0];
+    const tierOpts = callArgs[4];
+    expect(tierOpts?.envVars?.STARTED_AT).toBeDefined();
+    expect(tierOpts?.envVars?.SUBMITTED_AT).toBeDefined();
+    expect(tierOpts?.envVars?.API_CALL_COUNT).toBe("0");
+  });
+
+  it("uses custom timeoutSecs when provided", async () => {
+    const dockerMod = await import("../src/challenges/docker-evaluator.js");
+    vi.spyOn(dockerMod, "isDockerAvailable").mockResolvedValue(false);
+    const subSpy = vi.spyOn(dockerMod, "evaluateInSubprocess").mockResolvedValue({
+      scores: { accuracy: 400 },
+      exitCode: 0,
+      stdout: '{"scores":{"accuracy":400}}',
+      stderr: "",
+    });
+
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, {});
+
+    const fakeMod: ChallengeModule = {
+      ...mod,
+      scoringSpec: {
+        method: "custom-script",
+        dimensions: mod.dimensions,
+        maxScore: 1000,
+        evaluator: 'console.log(JSON.stringify({scores:{accuracy:400}}))',
+        runtime: "node",
+      },
+    };
+
+    await evaluate(fakeMod, input, { timeoutSecs: 120 });
+
+    const callArgs = subSpy.mock.calls[0];
+    expect(callArgs[3]).toBe(120); // timeoutSecs
+  });
+
+  it("includes tier in EvaluationLog when provided", async () => {
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, {});
+
+    const { log } = await evaluate(mod, input, { tier: "networked" });
+
+    expect(log.tier).toBe("networked");
+  });
+
+  it("tier is undefined in EvaluationLog when not provided", async () => {
+    const mod = getChallenge("cipher-forge")!;
+    const input = makeScoringInput(mod, {});
+
+    const { log } = await evaluate(mod, input);
+
+    expect(log.tier).toBeUndefined();
+  });
+});
+
 // ── computeWeightedTotal ──────────────────────────────────────────────
 
 describe("computeWeightedTotal", () => {

@@ -389,8 +389,26 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
 
   // Determine new draft status
   let newStatus: string = draft.status;
+  let requiresAdminApproval = false;
+
   if (quorum.status === "accepted") {
-    newStatus = "approved";
+    // Check if this draft requires admin approval (Tier 2+ or content safety flagged)
+    const spec = draft.spec as Record<string, unknown>;
+    const environment = spec.environment as Record<string, unknown> | undefined;
+    const tier = (environment?.tier as string) ?? "sandboxed";
+    const gateReport = draft.gateReport as Record<string, unknown> | undefined;
+    const gates = gateReport?.gates as Record<string, unknown> | undefined;
+    const contentSafety = gates?.content_safety as Record<string, unknown> | undefined;
+    const contentSafetyDetails = contentSafety?.details as Record<string, unknown> | undefined;
+    const safetyRequiresAdmin = contentSafetyDetails?.requires_admin_review === true;
+
+    if (tier !== "sandboxed" || safetyRequiresAdmin) {
+      // Tier 2+ or content-safety-flagged: route to admin, not auto-approve
+      newStatus = "pending_admin";
+      requiresAdminApproval = true;
+    } else {
+      newStatus = "approved";
+    }
   } else if (quorum.status === "rejected") {
     newStatus = "rejected";
   } else if (quorum.status === "escalated") {
@@ -410,8 +428,8 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
       .where(eq(challengeDrafts.id, id));
   }
 
-  // Auto-approve if quorum accepted
-  if (quorum.status === "accepted") {
+  // Auto-approve only if quorum accepted AND no admin approval required
+  if (quorum.status === "accepted" && !requiresAdminApproval) {
     try {
       await approveDraft(id);
     } catch (err) {
@@ -426,6 +444,7 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
       verdict_recorded: true,
       quorum_status: quorum,
       draft_status: newStatus,
+      requires_admin_approval: requiresAdminApproval,
     },
     200,
     "Your review has been recorded.",

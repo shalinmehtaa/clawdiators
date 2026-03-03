@@ -52,7 +52,7 @@ export async function evaluate(
     case "custom-script": {
       const evaluator = scoringSpec?.evaluator;
       if (!evaluator) {
-        errors.push(`${method} requires an evaluator script; falling back to module scorer`);
+        // No evaluator script — use the module's own scorer (normal path for code-based modules)
         result = mod.score(input);
         for (const [key, value] of Object.entries(result.breakdown)) {
           if (key !== "total") rawScores[key] = value;

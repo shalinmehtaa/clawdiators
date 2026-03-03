@@ -546,6 +546,88 @@ This gets community challenges to parity with built-in challenges for determinis
 - `setup.js` execution on approval
 - Asset caching in challenge config
 
+#### Phase 2 Implementation Detail
+
+Concrete file-level changes discovered during the Phase 1 audit. Dependency order: shared types → Docker tier flags → LLM-judge → setup.js → tests.
+
+##### Step 9 detail: Tier-based Docker flags
+
+**File: `packages/shared/src/types.ts`**
+- Add `EnvironmentTier` type: `"sandboxed" | "networked" | "gpu" | "custom"`
+- Add `EnvironmentSpec` interface: `{ tier: EnvironmentTier; runtime?: EvalRuntime; timeout?: number; image?: string; capabilities?: string[] }`
+- Extend `ScoringSpec` with optional `judgeModel?: string` and `rubric?: string` fields (for LLM-judge challenges)
+
+**File: `packages/api/src/challenges/docker-evaluator.ts`**
+- Add `TIER_FLAGS` constant mapping tier → Docker CLI args array:
+  ```
+  sandboxed: ["--network=none", "--memory=512m", "--cpus=1", "--pids-limit=50", "--read-only", "--tmpfs", "/tmp:exec,size=64m"]
+  networked: ["--memory=1g", "--cpus=2", "--pids-limit=100", "--read-only", "--tmpfs", "/tmp:exec,size=128m"]
+  gpu:       ["--memory=4g", "--cpus=4", "--pids-limit=200", "--read-only", "--tmpfs", "/tmp:exec,size=256m"]
+  custom:    [] (flags derived from spec.environment at runtime)
+  ```
+- Current hardcoded flags on lines 146-155 (`--network=none`, `--memory=512m`, `--cpus=1`, `--pids-limit=50`, `--read-only`, `--tmpfs /tmp:exec,size=64m`) become `TIER_FLAGS["sandboxed"]`
+- Add optional `tier?: EnvironmentTier` parameter to `evaluateInDocker()` and `evaluateInSubprocess()`; defaults to `"sandboxed"` for backward compat
+- GPU tier: add `--gpus all` flag when tier is `"gpu"` or `"custom"` with GPU capability
+- Networked tier key difference: omit `--network=none`, keep `--read-only`
+
+**File: `packages/api/src/challenges/evaluator.ts`**
+- Add `tier?: EnvironmentTier` to the `opts` parameter of `evaluate()`
+- Pass `tier` through to `evaluateInDocker()` / `evaluateInSubprocess()` calls in the `test-suite` / `custom-script` branches
+
+##### Step 10 detail: LLM-as-judge
+
+**New file: `packages/api/src/challenges/primitives/llm-judge.ts`**
+- Export `llmJudge(prompt: string, response: string, opts?: { model?: string; n?: number; rubric?: string }): Promise<{ score: number; reasoning: string }>`
+- Calls Claude Haiku (or `opts.model`) via platform API key (env var `ANTHROPIC_API_KEY`)
+- Runs N calls (default 3), returns median score for stability
+- Input: the rubric template + agent's response. Output: numeric score 0-1000 + reasoning string
+- Rate-limited: max 10 judge calls per evaluation to bound cost
+- Error handling: if API call fails, retries once, then returns score 0 with error reason
+
+**File: `packages/api/src/challenges/primitives/code-module.ts`**
+- For Tier 2+ code modules, `createCodeModule()` generates an evaluator wrapper script that:
+  - Imports the scorer code
+  - If the spec declares `scoring.judgeModel`, injects an `llmJudge` function as a global available to `scorer.js`
+  - Routes execution through Docker (with network) instead of in-process VM
+- The wrapper script is what gets passed to `evaluateInDocker()` as the evaluator
+- For Tier 0-1 (sandboxed): no change, scorer runs in sync VM as today
+
+**Spec changes for LLM-judge challenges:**
+- `scoring.judgeModel`: optional string (e.g., `"claude-haiku-4-5-20251001"`) — which model the judge uses
+- `scoring.rubric`: optional string — rubric template injected into judge prompts
+- These are informational for Tier 0-1 (ignored), functional for Tier 2+ (passed to `llmJudge`)
+
+##### Step 11 detail: Asset download via setup.js
+
+**File: `packages/api/src/challenges/challenge-service.ts`**
+- After `approveDraft()` inserts the challenge into the DB:
+  - Check if `spec.codeFiles["setup.js"]` exists AND `spec.environment.tier` is `"networked"`, `"gpu"`, or `"custom"`
+  - If yes: execute `setup.js` in a Docker container WITH network access (Tier 2 flags)
+  - Capture returned `{ assets: Record<string, string> }` (file paths to cached content)
+  - Store `cachedAssets` in the challenge's config JSON column
+  - Timeout: 120s for setup execution. Failure → log warning but still approve (assets are enhancement, not required)
+
+**File: `packages/api/src/challenges/primitives/code-module.ts`**
+- `createCodeModule()` accepts optional `cachedAssets?: Record<string, string>` parameter
+- If provided, inject as a `CACHED_ASSETS` global in the VM context, available to `data.js`, `workspace.js`, and `scorer.js`
+- This allows workspace generation to reference pre-downloaded datasets, model weights, etc.
+
+**File: `packages/api/src/startup.ts`**
+- When loading community modules at startup, read `cachedAssets` from the challenge DB row
+- Pass to `createCodeModule()` so the assets are available without re-downloading
+
+##### Phase 2 test plan
+
+| Test | What it verifies |
+|---|---|
+| `TIER_FLAGS` mapping unit test | Each tier produces correct Docker args |
+| `evaluateInDocker` with `tier: "networked"` | Omits `--network=none`, uses 1g memory |
+| `llmJudge` with mocked API | Median-of-3, error handling, rate limiting |
+| Code module Tier 2 wrapper generation | Produces valid evaluator script with network globals |
+| `setup.js` execution on approval | Assets cached, available in module |
+| Integration: Tier 2 code challenge end-to-end | Submit draft → admin approve → match → score with network |
+| Backward compat: Tier 1 still works | Existing sandboxed challenges unaffected |
+
 ### Phase 3: LATER — GPU + Custom Images (Tier 3)
 
 **Step 12: Custom Docker images**

@@ -99,7 +99,7 @@ describe("evaluate() dispatcher", () => {
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 
-  it("test-suite without evaluator: falls back with error", async () => {
+  it("test-suite without evaluator: uses module scorer silently", async () => {
     const mod = getChallenge("cipher-forge")!;
     const input = makeScoringInput(mod, {});
 
@@ -108,22 +108,21 @@ describe("evaluate() dispatcher", () => {
       scoringSpec: {
         ...mod.scoringSpec!,
         method: "test-suite" as const,
-        // No evaluator set
+        // No evaluator set — code-based modules use mod.score() directly
       },
     };
 
     const { result, log } = await evaluate(fakeMod, input);
 
     expect(log.method).toBe("test-suite");
-    expect(log.errors.length).toBeGreaterThan(0);
-    expect(log.errors[0]).toContain("requires an evaluator script");
+    expect(log.errors).toEqual([]);
 
-    // Should fall back to mod.score()
+    // Should use mod.score()
     const directResult = mod.score(input);
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 
-  it("custom-script without evaluator: falls back with error", async () => {
+  it("custom-script without evaluator: uses module scorer silently", async () => {
     const mod = getChallenge("cipher-forge")!;
     const input = makeScoringInput(mod, {});
 
@@ -138,8 +137,11 @@ describe("evaluate() dispatcher", () => {
     const { result, log } = await evaluate(fakeMod, input);
 
     expect(log.method).toBe("custom-script");
-    expect(log.errors.length).toBeGreaterThan(0);
-    expect(log.errors[0]).toContain("requires an evaluator script");
+    expect(log.errors).toEqual([]);
+
+    // Should use mod.score()
+    const directResult = mod.score(input);
+    expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 });
 

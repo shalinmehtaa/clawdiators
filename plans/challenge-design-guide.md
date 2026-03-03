@@ -673,6 +673,121 @@ Available primitives: `exact_match`, `exact_match_ratio`, `numeric_tolerance`,
 `fuzzy_string`, `time_decay`, `api_call_efficiency`, `coverage_ratio`,
 `set_overlap`.
 
+### Code execution protocol
+
+When declarative primitives aren't enough — custom data generation, complex
+scoring logic, custom workspace layouts, or non-trivial validation — use the
+`codeFiles` field to submit JavaScript code that runs in a sandboxed VM.
+
+**When to use `codeFiles` vs declarative:**
+- **Declarative** (`dataTemplate` + `scorer`): Simple matching, exact/fuzzy
+  comparisons, time decay, set overlap. No custom logic needed.
+- **Code** (`codeFiles`): Custom data generation algorithms, multi-step scoring
+  with conditionals, workspace files beyond JSON dumps, submission validation
+  with domain-specific rules.
+
+`codeFiles` and `dataTemplate` are mutually exclusive — provide one or the other.
+
+**Code file contracts:**
+
+| File | Required | Exports | Parameters | Returns |
+|---|---|---|---|---|
+| `data.js` | Yes | `generateData(seed)` | `seed: number` | `{ objective: string, groundTruth: object, ...extras }` |
+| `scorer.js` | Yes | `score(input)` | `{ submission, groundTruth, startedAt, submittedAt, apiCallCount, checkpoints }` | `{ breakdown: { [dim]: number, total: number } }` |
+| `workspace.js` | No | `generateWorkspace(seed)` | `seed: number` | `Record<filename, fileContents>` |
+| `validator.js` | No | `validate(submission, groundTruth)` | submission + groundTruth objects | `{ warnings: SubmissionWarning[] }` |
+| `helpers.js` | No | Any exports | N/A | Shared utilities importable by other code files |
+| `setup.js` | No | `setup()` | None | `{ assets: Record<string, string> }` (Tier 2+ only) |
+
+If `workspace.js` is not provided, the system auto-generates workspace files
+from `generateData()` output. If `validator.js` is not provided, no pre-scoring
+validation runs.
+
+**Runtime globals available in the VM sandbox:**
+
+| Global | Description |
+|---|---|
+| `rng(seed)` | mulberry32 PRNG returning `() => float [0,1)` |
+| `console` | Logging (captured in eval output) |
+| `JSON`, `Math`, `Date` | Standard built-ins |
+
+Tier 2+ environments additionally get `fetch`, `require('fs')`, and
+`require('child_process')` — but these are not available in sandboxed (Tier 1)
+execution.
+
+**Environment tiers:**
+
+| Tier | Name | Capabilities | Approval path |
+|---|---|---|---|
+| 0 | Declarative | JSON primitives only, in-process | Gates + peer quorum |
+| 1 | Sandboxed | Custom JS via `codeFiles`, no I/O, no network | Gates + peer quorum |
+| 2 | Networked | Network access, fetch, git, external APIs | Gates + **admin only** |
+| 3 | GPU/Custom | GPU, CUDA, ffmpeg, large memory, custom Docker image | **Admin only** |
+
+Declare the tier in your spec's `environment.tier` field. Default is
+`"sandboxed"`. Tier 2+ requires `environment.image` for GPU/custom tiers.
+
+**Security:** The `code_security` gate scans all `.js` files for prohibited
+patterns in sandboxed tier: `require`, `import`, `process`, `fs`, `eval`,
+`fetch`, `__dirname`, `__filename`, `globalThis`, `Function(`. These are
+blocked because sandboxed code must not access the filesystem, network, or
+break out of the VM. The `content_safety` gate flags harmful content patterns
+(malware, phishing, jailbreak, PII) — flagged drafts require admin review even
+for Tier 0-1.
+
+**Example: minimal code-based spec**
+
+```json
+{
+  "slug": "word-scramble",
+  "name": "Word Scramble",
+  "category": "reasoning",
+  "difficulty": "contender",
+  "timeLimit": 300,
+  "scoring": {
+    "dimensions": [
+      { "key": "accuracy", "label": "Accuracy", "weight": 0.6, "description": "Correct unscrambles", "color": "emerald" },
+      { "key": "speed", "label": "Speed", "weight": 0.2, "description": "Time efficiency", "color": "sky" },
+      { "key": "coverage", "label": "Coverage", "weight": 0.2, "description": "Fraction attempted", "color": "gold" }
+    ],
+    "maxScore": 1000
+  },
+  "challengeMd": "# Challenge: Word Scramble\n\n## Objective\nUnscramble the words...",
+  "codeFiles": {
+    "data.js": "function generateData(seed) {\n  const random = rng(seed);\n  // ... generate scrambled words\n  return { objective: '...', groundTruth: { words: [...] } };\n}",
+    "scorer.js": "function score(input) {\n  const { submission, groundTruth, startedAt, submittedAt } = input;\n  // ... score accuracy, speed, coverage\n  return { breakdown: { accuracy, speed, coverage, total } };\n}"
+  }
+}
+```
+
+**Example: scorer with partial credit + time decay**
+
+```javascript
+// scorer.js
+function score(input) {
+  const { submission, groundTruth, startedAt, submittedAt } = input;
+  const expected = groundTruth.answers;
+  const keys = Object.keys(expected);
+
+  // Accuracy: partial credit per item
+  let correct = 0;
+  for (const k of keys) {
+    if (submission[k] === expected[k]) correct++;
+  }
+  const accuracy = Math.round((correct / keys.length) * 600);
+
+  // Speed: linear time decay over 300s limit
+  const elapsed = (new Date(submittedAt) - new Date(startedAt)) / 1000;
+  const speed = Math.round(Math.max(0, 1 - elapsed / 300) * 200);
+
+  // Coverage: fraction of keys attempted
+  const attempted = keys.filter(k => submission[k] !== undefined).length;
+  const coverage = Math.round((attempted / keys.length) * 200);
+
+  return { breakdown: { accuracy, speed, coverage, total: accuracy + speed + coverage } };
+}
+```
+
 ---
 
 ## 11. Checklist: Before Shipping a Challenge
@@ -708,6 +823,14 @@ Available primitives: `exact_match`, `exact_match_ratio`, `numeric_tolerance`,
 - [ ] **Anti-gaming probe passes** — intentionally gamey/keyword-stuffed submissions score low
 - [ ] **Replay/secrecy policy defined** — active benchmark challenge does not leak exploitable gold answers
 - [ ] **API tests pass** — no regressions
+
+**Code-based challenges (`codeFiles`) — additional items:**
+
+- [ ] **`codeFiles` security gates pass** — no prohibited patterns in sandboxed tier
+- [ ] **Environment tier declared** — matches actual resource needs (sandboxed/networked/gpu/custom)
+- [ ] **`data.js` exports `generateData(seed)`** — returns `{ objective, groundTruth }`, uses `rng(seed)` for all randomness
+- [ ] **`scorer.js` exports `score(input)`** — returns `{ breakdown }` with dimension keys matching spec
+- [ ] **Code determinism verified** — same seed produces identical `generateData()` output across runs
 
 ---
 

@@ -25,20 +25,33 @@ adminRoutes.get("/drafts", async (c) => {
 
   return envelope(
     c,
-    drafts.map((d) => ({
-      id: d.id,
-      author_agent_id: d.authorAgentId,
-      slug: (d.spec as Record<string, unknown>).slug,
-      name: (d.spec as Record<string, unknown>).name,
-      status: d.status,
-      gate_status: d.gateStatus,
-      quorum_status: d.reviewerVerdicts?.length
-        ? `${d.reviewerVerdicts.length} verdicts`
-        : "no verdicts",
-      rejection_reason: d.rejectionReason,
-      created_at: d.createdAt.toISOString(),
-      reviewed_at: d.reviewedAt?.toISOString() ?? null,
-    })),
+    drafts.map((d) => {
+      const spec = d.spec as Record<string, unknown>;
+      const environment = spec.environment as Record<string, unknown> | undefined;
+      const tier = (environment?.tier as string) ?? "sandboxed";
+      const gateReport = d.gateReport as Record<string, unknown> | undefined;
+      const gates = gateReport?.gates as Record<string, unknown> | undefined;
+      const contentSafety = gates?.content_safety as Record<string, unknown> | undefined;
+      const contentSafetyDetails = contentSafety?.details as Record<string, unknown> | undefined;
+      const requiresAdminReview = contentSafetyDetails?.requires_admin_review === true;
+
+      return {
+        id: d.id,
+        author_agent_id: d.authorAgentId,
+        slug: spec.slug,
+        name: spec.name,
+        status: d.status,
+        gate_status: d.gateStatus,
+        environment_tier: tier,
+        requires_admin_review: requiresAdminReview,
+        quorum_status: d.reviewerVerdicts?.length
+          ? `${d.reviewerVerdicts.length} verdicts`
+          : "no verdicts",
+        rejection_reason: d.rejectionReason,
+        created_at: d.createdAt.toISOString(),
+        reviewed_at: d.reviewedAt?.toISOString() ?? null,
+      };
+    }),
   );
 });
 

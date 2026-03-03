@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EvalRuntime } from "@clawdiators/shared";
+import type { EvalRuntime, EnvironmentTier } from "@clawdiators/shared";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,6 +21,41 @@ const RUNTIME_COMMANDS: Record<EvalRuntime, (script: string) => string[]> = {
   multi: (script) =>
     script.endsWith(".py") ? ["python3", script] : ["node", script],
 };
+
+/** Tier-specific Docker CLI flags. */
+export const TIER_FLAGS: Record<EnvironmentTier, string[]> = {
+  sandboxed: [
+    "--network=none",
+    "--memory=512m",
+    "--cpus=1",
+    "--pids-limit=50",
+    "--read-only",
+    "--tmpfs", "/tmp:exec,size=64m",
+  ],
+  networked: [
+    "--memory=1g",
+    "--cpus=2",
+    "--pids-limit=100",
+    "--read-only",
+    "--tmpfs", "/tmp:exec,size=128m",
+  ],
+  gpu: [
+    "--memory=4g",
+    "--cpus=4",
+    "--pids-limit=200",
+    "--read-only",
+    "--tmpfs", "/tmp:exec,size=256m",
+    "--gpus", "all",
+  ],
+  custom: [],
+};
+
+/** Options for tier-aware evaluation. */
+export interface TierEvalOpts {
+  tier?: EnvironmentTier;
+  envVars?: Record<string, string>;
+  image?: string;
+}
 
 /** Size limits. */
 const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB
@@ -120,10 +155,20 @@ export async function evaluateInDocker(
   evaluatorScript: string,
   runtime: EvalRuntime,
   timeoutSecs: number,
+  opts?: TierEvalOpts,
 ): Promise<DockerEvalResult> {
   const evaluatorFilename =
     runtime === "python" ? "evaluator.py" : "evaluator.js";
   let dir: string | undefined;
+
+  const tier = opts?.tier ?? "sandboxed";
+  const tierFlags = TIER_FLAGS[tier];
+  const envFlags: string[] = [];
+  if (opts?.envVars) {
+    for (const [key, value] of Object.entries(opts.envVars)) {
+      envFlags.push("-e", `${key}=${value}`);
+    }
+  }
 
   try {
     dir = await prepareWorkdir(
@@ -131,7 +176,7 @@ export async function evaluateInDocker(
       evaluatorScript,
       evaluatorFilename,
     );
-    const image = RUNTIME_IMAGES[runtime];
+    const image = opts?.image ?? RUNTIME_IMAGES[runtime];
     const command = RUNTIME_COMMANDS[runtime](evaluatorFilename);
 
     const controller = new AbortController();
@@ -146,13 +191,8 @@ export async function evaluateInDocker(
         [
           "run",
           "--rm",
-          "--network=none",
-          "--memory=512m",
-          "--cpus=1",
-          "--pids-limit=50",
-          "--read-only",
-          "--tmpfs",
-          "/tmp:exec,size=64m",
+          ...tierFlags,
+          ...envFlags,
           "-v",
           `${dir}:/workspace:ro`,
           "-w",
@@ -204,10 +244,24 @@ export async function evaluateInSubprocess(
   evaluatorScript: string,
   runtime: EvalRuntime,
   timeoutSecs: number,
+  opts?: TierEvalOpts,
 ): Promise<DockerEvalResult> {
   const evaluatorFilename =
     runtime === "python" ? "evaluator.py" : "evaluator.js";
   let dir: string | undefined;
+
+  const tier = opts?.tier ?? "sandboxed";
+  if (tier !== "sandboxed") {
+    console.warn(`evaluateInSubprocess: tier "${tier}" requested but subprocess mode does not enforce Docker-level isolation`);
+  }
+
+  // Pass env vars to subprocess
+  const env = { ...process.env };
+  if (opts?.envVars) {
+    for (const [key, value] of Object.entries(opts.envVars)) {
+      env[key] = value;
+    }
+  }
 
   try {
     dir = await prepareWorkdir(
@@ -223,6 +277,7 @@ export async function evaluateInSubprocess(
         timeout: timeoutSecs * 1000,
         maxBuffer: 1024 * 1024,
         cwd: dir,
+        env,
       });
       return parseEvalOutput(stdout, stderr, 0);
     } catch (err: any) {

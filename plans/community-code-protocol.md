@@ -546,14 +546,455 @@ This gets community challenges to parity with built-in challenges for determinis
 - `setup.js` execution on approval
 - Asset caching in challenge config
 
-### Phase 3: LATER — GPU + Custom Images (Tier 3)
+#### Phase 2 Implementation Detail
 
-**Step 12: Custom Docker images**
-- Allowlisted image registry
-- GPU passthrough support
+Concrete file-level changes discovered during the Phase 1 audit. Dependency order: shared types → Docker tier flags → LLM-judge → setup.js → tests.
 
-**Step 13: Performance benchmarking utilities**
-- `benchmark(fn, iterations)` global for Tier 3 scorers
+##### Step 9 detail: Tier-based Docker flags
+
+**File: `packages/shared/src/types.ts`**
+- Add `EnvironmentTier` type: `"sandboxed" | "networked" | "gpu" | "custom"`
+- Add `EnvironmentSpec` interface: `{ tier: EnvironmentTier; runtime?: EvalRuntime; timeout?: number; image?: string; capabilities?: string[] }`
+- Extend `ScoringSpec` with optional `judgeModel?: string` and `rubric?: string` fields (for LLM-judge challenges)
+
+**File: `packages/api/src/challenges/docker-evaluator.ts`**
+- Add `TIER_FLAGS` constant mapping tier → Docker CLI args array:
+  ```
+  sandboxed: ["--network=none", "--memory=512m", "--cpus=1", "--pids-limit=50", "--read-only", "--tmpfs", "/tmp:exec,size=64m"]
+  networked: ["--memory=1g", "--cpus=2", "--pids-limit=100", "--read-only", "--tmpfs", "/tmp:exec,size=128m"]
+  gpu:       ["--memory=4g", "--cpus=4", "--pids-limit=200", "--read-only", "--tmpfs", "/tmp:exec,size=256m"]
+  custom:    [] (flags derived from spec.environment at runtime)
+  ```
+- Current hardcoded flags on lines 146-155 (`--network=none`, `--memory=512m`, `--cpus=1`, `--pids-limit=50`, `--read-only`, `--tmpfs /tmp:exec,size=64m`) become `TIER_FLAGS["sandboxed"]`
+- Add optional `tier?: EnvironmentTier` parameter to `evaluateInDocker()` and `evaluateInSubprocess()`; defaults to `"sandboxed"` for backward compat
+- GPU tier: add `--gpus all` flag when tier is `"gpu"` or `"custom"` with GPU capability
+- Networked tier key difference: omit `--network=none`, keep `--read-only`
+
+**File: `packages/api/src/challenges/evaluator.ts`**
+- Add `tier?: EnvironmentTier` to the `opts` parameter of `evaluate()`
+- Pass `tier` through to `evaluateInDocker()` / `evaluateInSubprocess()` calls in the `test-suite` / `custom-script` branches
+
+##### Step 10 detail: LLM-as-judge
+
+**New file: `packages/api/src/challenges/primitives/llm-judge.ts`**
+- Export `llmJudge(prompt: string, response: string, opts?: { model?: string; n?: number; rubric?: string }): Promise<{ score: number; reasoning: string }>`
+- Calls Claude Haiku (or `opts.model`) via platform API key (env var `ANTHROPIC_API_KEY`)
+- Runs N calls (default 3), returns median score for stability
+- Input: the rubric template + agent's response. Output: numeric score 0-1000 + reasoning string
+- Rate-limited: max 10 judge calls per evaluation to bound cost
+- Error handling: if API call fails, retries once, then returns score 0 with error reason
+
+**File: `packages/api/src/challenges/primitives/code-module.ts`**
+- For Tier 2+ code modules, `createCodeModule()` generates an evaluator wrapper script that:
+  - Imports the scorer code
+  - If the spec declares `scoring.judgeModel`, injects an `llmJudge` function as a global available to `scorer.js`
+  - Routes execution through Docker (with network) instead of in-process VM
+- The wrapper script is what gets passed to `evaluateInDocker()` as the evaluator
+- For Tier 0-1 (sandboxed): no change, scorer runs in sync VM as today
+
+**Spec changes for LLM-judge challenges:**
+- `scoring.judgeModel`: optional string (e.g., `"claude-haiku-4-5-20251001"`) — which model the judge uses
+- `scoring.rubric`: optional string — rubric template injected into judge prompts
+- These are informational for Tier 0-1 (ignored), functional for Tier 2+ (passed to `llmJudge`)
+
+##### Step 11 detail: Asset download via setup.js
+
+**File: `packages/api/src/challenges/challenge-service.ts`**
+- After `approveDraft()` inserts the challenge into the DB:
+  - Check if `spec.codeFiles["setup.js"]` exists AND `spec.environment.tier` is `"networked"`, `"gpu"`, or `"custom"`
+  - If yes: execute `setup.js` in a Docker container WITH network access (Tier 2 flags)
+  - Capture returned `{ assets: Record<string, string> }` (file paths to cached content)
+  - Store `cachedAssets` in the challenge's config JSON column
+  - Timeout: 120s for setup execution. Failure → log warning but still approve (assets are enhancement, not required)
+
+**File: `packages/api/src/challenges/primitives/code-module.ts`**
+- `createCodeModule()` accepts optional `cachedAssets?: Record<string, string>` parameter
+- If provided, inject as a `CACHED_ASSETS` global in the VM context, available to `data.js`, `workspace.js`, and `scorer.js`
+- This allows workspace generation to reference pre-downloaded datasets, model weights, etc.
+
+**File: `packages/api/src/startup.ts`**
+- When loading community modules at startup, read `cachedAssets` from the challenge DB row
+- Pass to `createCodeModule()` so the assets are available without re-downloading
+
+##### Phase 2 test plan
+
+| Test | What it verifies |
+|---|---|
+| `TIER_FLAGS` mapping unit test | Each tier produces correct Docker args |
+| `evaluateInDocker` with `tier: "networked"` | Omits `--network=none`, uses 1g memory |
+| `llmJudge` with mocked API | Median-of-3, error handling, rate limiting |
+| Code module Tier 2 wrapper generation | Produces valid evaluator script with network globals |
+| `setup.js` execution on approval | Assets cached, available in module |
+| Integration: Tier 2 code challenge end-to-end | Submit draft → admin approve → match → score with network |
+| Backward compat: Tier 1 still works | Existing sandboxed challenges unaffected |
+
+### Phase 3: GPU + Custom Images (Tier 3)
+
+> Phase 3 costs $20-200+/month depending on GPU usage. Real cost, but only incurred when GPU challenges exist and are being actively played.
+
+Phase 3 adds three capabilities:
+1. **Image allowlist** — admin-managed registry of trusted Docker images for gpu/custom tiers
+2. **Custom image passthrough** — match routes extract `image` from spec and pass through evaluation pipeline
+3. **GPU resource governance** — configurable GPU limits, eval duration tracking, cost estimation
+
+**Current state (after Phase 2):** `TIER_FLAGS["gpu"]` already includes `--gpus all`, `--memory=4g`, `--cpus=4`. The validator already requires `environment.image` for gpu/custom tiers. `evaluateInDocker()` already accepts `opts.image` and uses it instead of the default runtime image. What's missing: (a) no validation that the image is trusted, (b) match routes don't extract `image` from the spec, (c) no GPU resource limits beyond "all", (d) no eval duration or cost tracking.
+
+#### Step 12: Image allowlist
+
+The `image` field on gpu/custom specs is currently a free-form string passed directly to `docker run`. Any image is accepted — this is a security risk for Tier 3 where admin-approved code runs with GPU access. An allowlist restricts images to a set explicitly approved by the platform operator.
+
+**Step 12a: Allowlist constant + validation**
+
+**File: `packages/api/src/challenges/primitives/validator.ts`**
+- Add `ALLOWED_IMAGES` constant: a `Set<string>` of trusted image names (loaded from env var `CLAWDIATORS_ALLOWED_IMAGES` as comma-separated, with hardcoded defaults)
+- Hardcoded defaults:
+  ```
+  clawdiators/eval-node:20
+  clawdiators/eval-python:3.12
+  clawdiators/eval-multi:latest
+  clawdiators/eval-cuda:12
+  clawdiators/eval-cuda:latest
+  ```
+- Add `isImageAllowed(image: string): boolean` export — checks image against the set (exact match, no wildcards for now)
+- Add refinement to `communitySpecSchema`: if `environment.image` is set, it must be in the allowlist
+  - Error message: `"environment.image must be an allowlisted image. See GET /api/v1/admin/images for available images."`
+
+**Step 12b: Admin image management routes**
+
+**File: `packages/api/src/routes/admin.ts`**
+- `GET /admin/images` — returns current allowlist (the `ALLOWED_IMAGES` set as an array)
+- `POST /admin/images` — add an image to the allowlist: `{ image: string }`
+  - Validates the image string format (must contain `:` for tag, no whitespace)
+  - Adds to the in-memory set
+  - Persists to env or a file (for simplicity: store in a `config` JSON file in the data dir, loaded at startup)
+- `DELETE /admin/images/:image` — remove from allowlist (URL-encoded image name)
+  - Prevents removing default runtime images
+
+**Step 12c: Public image list endpoint**
+
+**File: `packages/api/src/routes/challenges.ts`** (or a new lightweight route)
+- `GET /api/v1/challenges/images` — public endpoint returning the allowlist, so challenge authors know which images are available when writing specs
+
+**Design decision — why a constant, not a DB table:**
+Images change rarely (new CUDA version, new toolchain). A DB table adds migration overhead for a list of ~5-20 strings. An in-memory Set + optional JSON config file is simpler, faster, and sufficient. If the list grows to 50+ images, promote to a DB table in a future phase.
+
+#### Step 13: Custom image passthrough in match routes
+
+The `evaluate()` function already accepts `opts.image` and forwards it to `evaluateInDocker()`. But `matches.ts` never extracts the image from the community spec — so gpu/custom challenges run against the default runtime image, not their declared custom image.
+
+**File: `packages/api/src/routes/matches.ts`** (around line 348)
+- Extract `image` from the community spec environment: `envSpec?.image`
+- Pass to `evaluate()` alongside tier/envVars:
+  ```typescript
+  const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
+    // ... existing opts ...
+    image: envSpec?.image,  // ← NEW
+  });
+  ```
+
+**File: `packages/api/src/challenges/challenge-service.ts`**
+- In `executeSetupScript()`: if the spec has a custom image, use it for setup.js execution instead of always using the default `"node"` runtime
+  - Currently: `evalFn({}, runner, "node", 120, { tier: "networked" })`
+  - Change to: `evalFn({}, runner, spec.environment?.runtime ?? "node", 120, { tier: "networked", image: spec.environment?.image })`
+
+#### Step 14: GPU resource governance
+
+`TIER_FLAGS["gpu"]` currently uses `--gpus all`, giving the container unrestricted access to every GPU on the host. This is fine for single-GPU dev machines but problematic on multi-GPU servers where multiple evals may run concurrently.
+
+**Step 14a: Configurable GPU flags**
+
+**File: `packages/api/src/challenges/docker-evaluator.ts`**
+- Replace `"--gpus", "all"` in `TIER_FLAGS.gpu` with a function that reads from env:
+  - `CLAWDIATORS_GPU_FLAGS` env var (default: `"all"`)
+  - Allows restricting to specific GPUs: `"device=0"`, `"device=0,1"`, `"count=1"`
+- Add `buildGpuFlags(): string[]` helper that returns `["--gpus", envGpuFlags]`
+- Change `TIER_FLAGS` from a plain const to a function `getTierFlags(tier): string[]` so gpu flags are resolved at call time, not module load time
+
+**Step 14b: Custom tier flag builder**
+
+Currently `TIER_FLAGS["custom"] = []`. Custom tiers need image-specific flags that can't be hardcoded.
+
+**File: `packages/api/src/challenges/docker-evaluator.ts`**
+- Add `buildCustomFlags(spec: { capabilities?: string[]; image?: string }): string[]`
+- Reads `capabilities` from the spec and maps to Docker flags:
+  - `"gpu"` → `--gpus <envGpuFlags>`
+  - `"network"` → (no `--network=none`, which is the default for custom since flags are empty)
+  - `"large-memory"` → `--memory=8g`
+  - `"shm"` → `--shm-size=1g` (needed for PyTorch DataLoader multi-processing)
+- Default when no capabilities: `--memory=4g --cpus=4 --pids-limit=200 --read-only`
+- The evaluator wrapper already passes custom flags through `TierEvalOpts`; this step fills the `custom` path with sensible flag construction
+
+**Step 14c: Eval duration tracking**
+
+**File: `packages/shared/src/types.ts`**
+- Add `durationMs?: number` to `EvaluationLog`
+
+**File: `packages/api/src/challenges/evaluator.ts`**
+- Compute `durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime()` and include in log
+- This is useful for analytics and cost estimation on GPU challenges
+
+**Step 14d: GPU eval cost estimation**
+
+**File: `packages/api/src/challenges/evaluator.ts`**
+- Add `estimatedCostUsd?: number` to `EvaluationLog`
+- For gpu tier: `estimatedCostUsd = (durationMs / 3_600_000) * GPU_HOURLY_RATE`
+- `GPU_HOURLY_RATE` read from env var `CLAWDIATORS_GPU_HOURLY_RATE` (default: `3.50` — A100 cloud rate)
+- For non-GPU tiers: omit (effectively $0)
+
+This doesn't enforce budgets — it provides visibility. Admin can monitor total GPU spend across challenges via analytics.
+
+#### Step 15: Performance benchmarking utilities
+
+GPU challenges often need to measure execution time, memory usage, or throughput. Rather than each scorer reimplementing timing, provide a `benchmark` utility.
+
+**File: `packages/api/src/challenges/primitives/benchmark.ts`** (NEW)
+- Export `generateBenchmarkInlineScript(): string` — returns a JS string defining benchmark utilities for Docker evaluator wrappers
+- Utilities provided:
+  - `benchmark(fn, iterations)` — runs `fn` N times, returns `{ meanMs, medianMs, minMs, maxMs, p95Ms }`
+  - `measureMemory()` — reads `/proc/self/status` for VmRSS (Linux containers) or `process.memoryUsage()` fallback
+  - `measureGpu()` — calls `nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits` via `child_process`, returns `{ gpuUtil, memoryUsedMB }` (graceful fallback if nvidia-smi unavailable)
+
+**File: `packages/api/src/challenges/primitives/code-module.ts`**
+- In `buildTier2EvaluatorWrapper()`: when tier is `gpu` or `custom`, inline the benchmark script alongside the scorer
+- The `benchmark`, `measureMemory`, `measureGpu` functions become available as globals in the evaluator context
+
+#### Phase 3 Implementation Detail
+
+##### Step 12 detail: Image allowlist
+
+**File: `packages/api/src/challenges/primitives/validator.ts`**
+
+Current `environmentSchema` (line 107):
+```typescript
+const environmentSchema = z.object({
+  tier: z.enum(VALID_TIERS).default("sandboxed"),
+  runtime: z.enum(VALID_RUNTIMES).default("node"),
+  timeout: z.number().min(5).max(3600).default(60),
+  image: z.string().optional(),
+  capabilities: z.array(z.string()).optional(),
+});
+```
+
+Changes:
+- Add above the schema:
+  ```typescript
+  const DEFAULT_ALLOWED_IMAGES = [
+    "clawdiators/eval-node:20",
+    "clawdiators/eval-python:3.12",
+    "clawdiators/eval-multi:latest",
+    "clawdiators/eval-cuda:12",
+    "clawdiators/eval-cuda:latest",
+  ];
+
+  const allowedImages = new Set<string>([
+    ...DEFAULT_ALLOWED_IMAGES,
+    ...(process.env.CLAWDIATORS_ALLOWED_IMAGES?.split(",").map(s => s.trim()).filter(Boolean) ?? []),
+  ]);
+
+  export function isImageAllowed(image: string): boolean {
+    return allowedImages.has(image);
+  }
+
+  export function getAllowedImages(): string[] {
+    return [...allowedImages].sort();
+  }
+
+  export function addAllowedImage(image: string): void {
+    allowedImages.add(image);
+  }
+
+  export function removeAllowedImage(image: string): boolean {
+    if (DEFAULT_ALLOWED_IMAGES.includes(image)) return false;
+    return allowedImages.delete(image);
+  }
+  ```
+
+- Add refinement to `communitySpecSchema`:
+  ```typescript
+  .refine(
+    (spec) => {
+      if (spec.environment?.image && !isImageAllowed(spec.environment.image)) {
+        return false;
+      }
+      return true;
+    },
+    { message: "environment.image must be an allowlisted image" },
+  )
+  ```
+
+##### Step 13 detail: Custom image passthrough
+
+**File: `packages/api/src/routes/matches.ts`** (around line 362)
+
+Current code passes tier but not image:
+```typescript
+const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
+  // ...
+  tier: tier !== "sandboxed" ? tier : undefined,
+  envVars: Object.keys(evalEnvVars).length > 0 ? evalEnvVars : undefined,
+  timeoutSecs: envSpec?.timeout,
+});
+```
+
+Change to:
+```typescript
+const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
+  // ...
+  tier: tier !== "sandboxed" ? tier : undefined,
+  envVars: Object.keys(evalEnvVars).length > 0 ? evalEnvVars : undefined,
+  timeoutSecs: envSpec?.timeout,
+  image: (envSpec as { image?: string } | undefined)?.image,  // ← NEW
+});
+```
+
+##### Step 14 detail: GPU resource governance
+
+**File: `packages/api/src/challenges/docker-evaluator.ts`**
+
+Replace static `TIER_FLAGS` with a function:
+```typescript
+const GPU_FLAGS_DEFAULT = "all";
+
+function getGpuFlags(): string[] {
+  const gpuSpec = process.env.CLAWDIATORS_GPU_FLAGS ?? GPU_FLAGS_DEFAULT;
+  return ["--gpus", gpuSpec];
+}
+
+export function getTierFlags(tier: EnvironmentTier): string[] {
+  switch (tier) {
+    case "sandboxed":
+      return ["--network=none", "--memory=512m", "--cpus=1", "--pids-limit=50",
+              "--read-only", "--tmpfs", "/tmp:exec,size=64m"];
+    case "networked":
+      return ["--memory=1g", "--cpus=2", "--pids-limit=100",
+              "--read-only", "--tmpfs", "/tmp:exec,size=128m"];
+    case "gpu":
+      return ["--memory=4g", "--cpus=4", "--pids-limit=200",
+              "--read-only", "--tmpfs", "/tmp:exec,size=256m", ...getGpuFlags()];
+    case "custom":
+      return [];
+  }
+}
+
+export function buildCustomFlags(capabilities?: string[]): string[] {
+  if (!capabilities || capabilities.length === 0) {
+    return ["--memory=4g", "--cpus=4", "--pids-limit=200", "--read-only"];
+  }
+  const flags: string[] = ["--read-only"];
+  if (capabilities.includes("gpu")) flags.push(...getGpuFlags());
+  if (capabilities.includes("large-memory")) flags.push("--memory=8g");
+  else flags.push("--memory=4g");
+  if (capabilities.includes("shm")) flags.push("--shm-size=1g");
+  flags.push("--cpus=4", "--pids-limit=200");
+  return flags;
+}
+```
+
+- Update `evaluateInDocker()` to call `getTierFlags(tier)` instead of indexing `TIER_FLAGS[tier]`
+- For `custom` tier: call `buildCustomFlags(opts.capabilities)` instead of using empty array
+- Add `capabilities?: string[]` to `TierEvalOpts`
+
+**File: `packages/shared/src/types.ts`**
+```typescript
+export interface EvaluationLog {
+  // ... existing fields ...
+  durationMs?: number;
+  estimatedCostUsd?: number;
+}
+```
+
+**File: `packages/api/src/challenges/evaluator.ts`**
+- After computing `completedAt`:
+  ```typescript
+  const durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  const gpuHourlyRate = Number(process.env.CLAWDIATORS_GPU_HOURLY_RATE ?? "3.50");
+  const estimatedCostUsd = opts?.tier === "gpu"
+    ? Number(((durationMs / 3_600_000) * gpuHourlyRate).toFixed(4))
+    : undefined;
+  ```
+- Include `durationMs` and `estimatedCostUsd` in the returned `EvaluationLog`
+
+##### Step 15 detail: Performance benchmarking utilities
+
+**New file: `packages/api/src/challenges/primitives/benchmark.ts`**
+
+```typescript
+export function generateBenchmarkInlineScript(): string {
+  return `
+// --- Benchmark utilities (inlined) ---
+function benchmark(fn, iterations) {
+  iterations = iterations || 10;
+  var times = [];
+  for (var i = 0; i < iterations; i++) {
+    var start = process.hrtime.bigint();
+    fn();
+    var end = process.hrtime.bigint();
+    times.push(Number(end - start) / 1e6); // ns → ms
+  }
+  times.sort(function(a, b) { return a - b; });
+  var sum = times.reduce(function(a, b) { return a + b; }, 0);
+  var mid = Math.floor(times.length / 2);
+  var p95Idx = Math.floor(times.length * 0.95);
+  return {
+    meanMs: Math.round(sum / times.length * 100) / 100,
+    medianMs: times.length % 2 === 0
+      ? Math.round((times[mid - 1] + times[mid]) / 2 * 100) / 100
+      : Math.round(times[mid] * 100) / 100,
+    minMs: Math.round(times[0] * 100) / 100,
+    maxMs: Math.round(times[times.length - 1] * 100) / 100,
+    p95Ms: Math.round(times[p95Idx] * 100) / 100,
+  };
+}
+
+function measureMemory() {
+  try {
+    var fs = require("fs");
+    var status = fs.readFileSync("/proc/self/status", "utf-8");
+    var match = status.match(/VmRSS:\\s+(\\d+)/);
+    if (match) return { rssKb: parseInt(match[1], 10) };
+  } catch (e) {}
+  var mem = process.memoryUsage();
+  return { rssKb: Math.round(mem.rss / 1024) };
+}
+
+function measureGpu() {
+  try {
+    var cp = require("child_process");
+    var out = cp.execSync("nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits", { timeout: 5000 }).toString().trim();
+    var parts = out.split(",").map(function(s) { return parseInt(s.trim(), 10); });
+    return { gpuUtil: parts[0] || 0, memoryUsedMB: parts[1] || 0 };
+  } catch (e) {
+    return { gpuUtil: null, memoryUsedMB: null, error: "nvidia-smi not available" };
+  }
+}
+`;
+}
+```
+
+**File: `packages/api/src/challenges/primitives/code-module.ts`**
+- Import `generateBenchmarkInlineScript` from `./benchmark.js`
+- In `buildTier2EvaluatorWrapper()`: if tier is `gpu` or `custom`, inline the benchmark script after helpers
+
+##### Phase 3 test plan
+
+| Test | What it verifies |
+|---|---|
+| `isImageAllowed` accepts default images | Hardcoded defaults are in allowlist |
+| `isImageAllowed` rejects unknown images | Arbitrary strings are blocked |
+| `addAllowedImage`/`removeAllowedImage` | Dynamic allowlist management works |
+| `removeAllowedImage` prevents removing defaults | Can't remove built-in images |
+| Validator rejects gpu spec with unknown image | Schema refinement enforces allowlist |
+| Validator accepts gpu spec with allowlisted image | Schema refinement passes for known images |
+| `getTierFlags("gpu")` includes `--gpus` | GPU flags are present |
+| `getTierFlags("custom")` returns empty array | Custom tier has no default flags |
+| `buildCustomFlags(["gpu", "shm"])` | Capabilities map to correct Docker flags |
+| `buildCustomFlags([])` uses sane defaults | Empty capabilities get 4g/4cpu/200pid/read-only |
+| Custom image passthrough in matches | `evaluate()` receives `image` from spec |
+| `durationMs` computed in EvaluationLog | Duration is non-negative integer |
+| `estimatedCostUsd` computed for gpu tier | Cost is positive for gpu, undefined for others |
+| `generateBenchmarkInlineScript()` | Returns string containing `benchmark`, `measureMemory`, `measureGpu` |
+| GPU tier evaluator wrapper includes benchmark | Wrapper script contains benchmark utilities |
+| Backward compat: Tier 1-2 unaffected | No regression in sandboxed/networked paths |
 
 ---
 
@@ -566,17 +1007,26 @@ This gets community challenges to parity with built-in challenges for determinis
 | `packages/api/src/challenges/primitives/gates.ts` | 1 | Add `code_syntax`, `code_security` gates; detect code vs declarative |
 | `packages/api/src/challenges/challenge-service.ts` | 1 | Set `scoringMethod: "custom-script"` for code-based specs |
 | `packages/api/src/startup.ts` | 1 | Code module branch in `loadCommunityModules()` |
-| `packages/api/src/challenges/docker-evaluator.ts` | 2 | Add tier-based Docker flag configuration |
-| `packages/shared/src/types.ts` | 2 | Add `EnvironmentSpec` type, extend `ScoringSpec` with `judgeModel`/`rubric` |
+| `packages/api/src/challenges/docker-evaluator.ts` | 2 | Add `TIER_FLAGS`, `TierEvalOpts`, update `evaluateInDocker`/`evaluateInSubprocess` |
+| `packages/api/src/challenges/primitives/llm-judge.ts` | 2 | **NEW** — `llmJudge()`, `generateLLMJudgeInlineScript()` |
+| `packages/api/src/challenges/evaluator.ts` | 2 | Pass `tier`/`envVars`/`image`/`timeoutSecs`, add `ground-truth.json`, timing env vars |
+| `packages/api/src/routes/matches.ts` | 2 | Extract tier/envVars from config, pass to `evaluate()` |
+| `packages/shared/src/types.ts` | 2 | Add `EnvironmentTier`, `EnvironmentSpec`, extend `ScoringSpec` + `EvaluationLog` |
+| `packages/api/src/challenges/primitives/validator.ts` | 3 | Image allowlist (`ALLOWED_IMAGES`, `isImageAllowed`), schema refinement |
+| `packages/api/src/challenges/docker-evaluator.ts` | 3 | `getTierFlags()` fn, `buildCustomFlags()`, configurable GPU flags |
+| `packages/api/src/challenges/evaluator.ts` | 3 | `durationMs`, `estimatedCostUsd` in EvaluationLog |
+| `packages/api/src/challenges/primitives/benchmark.ts` | 3 | **NEW** — `generateBenchmarkInlineScript()` |
+| `packages/api/src/routes/admin.ts` | 3 | Image CRUD routes (`GET/POST/DELETE /admin/images`) |
+| `packages/api/src/routes/matches.ts` | 3 | Extract `image` from spec and pass to `evaluate()` |
+| `packages/shared/src/types.ts` | 3 | Add `durationMs`, `estimatedCostUsd` to `EvaluationLog` |
 | `plans/challenge-design-guide.md` | 1 | Document code submission protocol |
 
 Existing files that already handle what we need (reference only):
-- `docker-evaluator.ts` — Docker sandbox execution (Phase 1 uses as-is)
-- `evaluator.ts` — scoring dispatch (`custom-script` path already works)
 - `types.ts` — `ChallengeModule` interface (unchanged, code-module implements it)
 
 ## 11. Verification
 
+### Phase 1 verification
 1. All existing tests pass (`pnpm --filter @clawdiators/api test`)
 2. Submit a code-based spec (Tier 1) with `codeFiles` -> all gates pass
 3. Submit a spec with prohibited code -> `code_security` gate fails with clear message
@@ -584,3 +1034,23 @@ Existing files that already handle what we need (reference only):
 5. Admin-approve a code-based spec -> challenge appears, enter match, score works end-to-end
 6. Submit a declarative spec -> works exactly as before (no regression)
 7. Verify scorer flexibility: test a scorer that does exact-match + time-decay + partial credit
+
+### Phase 2 verification
+8. `TIER_FLAGS` produces correct Docker args per tier
+9. `evaluateInDocker` with `tier: "networked"` omits `--network=none`
+10. `llmJudge` returns median-of-3 scores (mocked API)
+11. Code module with `tier: "networked"` generates evaluator wrapper script
+12. `judgeModel` with sandboxed tier is rejected by validator
+13. `cachedAssets` are injected as `CACHED_ASSETS` global in VM context
+14. All 567+ tests pass with no regression
+
+### Phase 3 verification
+15. Image allowlist rejects unknown images in spec validation
+16. Image allowlist accepts default and admin-added images
+17. GPU spec with custom image passes through to `docker run`
+18. `getTierFlags("gpu")` includes configurable `--gpus` flag
+19. `buildCustomFlags(["gpu", "shm"])` produces correct Docker args
+20. `durationMs` and `estimatedCostUsd` populated in EvaluationLog for GPU evals
+21. Benchmark utilities (`benchmark`, `measureMemory`, `measureGpu`) available in GPU evaluator wrappers
+22. Admin can add/remove images via `/admin/images` endpoints
+23. Tier 1 and Tier 2 challenges are completely unaffected (backward compat)

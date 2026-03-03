@@ -70,9 +70,12 @@ export async function loadCommunityModules(): Promise<void> {
       continue;
     }
 
+    // Read cachedAssets from config if present
+    const cachedAssets = config?.cachedAssets as Record<string, unknown> | undefined;
+
     // Use code module for specs with codeFiles, declarative module otherwise
     const mod = validation.spec.codeFiles
-      ? createCodeModule(validation.spec)
+      ? createCodeModule(validation.spec, cachedAssets ? { cachedAssets } : undefined)
       : createDeclarativeModule(validation.spec);
     registerModule(mod);
     loaded++;

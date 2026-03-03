@@ -8,6 +8,7 @@ import { validateSpec, verifyDeterminism } from "./primitives/validator.js";
 import { createDeclarativeModule } from "./primitives/declarative-module.js";
 import { createCodeModule } from "./primitives/code-module.js";
 import { registerModule } from "./registry.js";
+import { isDockerAvailable, evaluateInDocker, evaluateInSubprocess } from "./docker-evaluator.js";
 
 /**
  * Approve a community challenge draft:
@@ -109,6 +110,29 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
   // Register the module at runtime
   registerModule(mod);
 
+  // Execute setup.js for Tier 2+ if present (downloads assets, etc.)
+  const tier = spec.environment?.tier ?? "sandboxed";
+  if (isCodeBased && spec.codeFiles?.["setup.js"] && tier !== "sandboxed") {
+    try {
+      const cachedAssets = await executeSetupScript(spec);
+      if (cachedAssets && Object.keys(cachedAssets).length > 0) {
+        // Store cachedAssets in challenge config and re-register module
+        const updatedConfig = { communitySpec: draft.spec, cachedAssets };
+        await db
+          .update(challenges)
+          .set({ config: updatedConfig })
+          .where(eq(challenges.id, inserted[0].id));
+
+        // Re-create and re-register module with cached assets
+        const updatedMod = createCodeModule(spec, { cachedAssets });
+        registerModule(updatedMod);
+      }
+    } catch (err: any) {
+      console.warn(`setup.js execution failed for ${spec.slug}: ${err.message}`);
+      // Non-fatal — don't block approval
+    }
+  }
+
   // Update draft status
   await db
     .update(challengeDrafts)
@@ -116,4 +140,72 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
     .where(eq(challengeDrafts.id, draftId));
 
   return { id: draftId, slug: spec.slug, status: "approved" };
+}
+
+/**
+ * Execute a setup.js script inside Docker (or subprocess fallback).
+ * Returns parsed assets from stdout.
+ */
+async function executeSetupScript(
+  spec: import("./primitives/validator.js").CommunitySpec,
+): Promise<Record<string, unknown> | null> {
+  const setupCode = spec.codeFiles?.["setup.js"];
+  if (!setupCode) return null;
+
+  // Build a self-contained setup runner script
+  const runner = [
+    `"use strict";`,
+    `var fs = require("fs");`,
+    ``,
+    `// --- setup.js ---`,
+    setupCode,
+    ``,
+    `// --- runner ---`,
+    `(async function() {`,
+    `  try {`,
+    `    var setupFn = module.exports.setup || exports.setup;`,
+    `    if (typeof setupFn !== "function") {`,
+    `      console.log(JSON.stringify({ scores: {}, assets: {} }));`,
+    `      return;`,
+    `    }`,
+    `    var result = await Promise.resolve(setupFn());`,
+    `    var assets = (result && result.assets) || {};`,
+    `    console.log(JSON.stringify({ scores: {}, assets: assets }));`,
+    `  } catch (err) {`,
+    `    console.error("setup.js error:", err.message || err);`,
+    `    console.log(JSON.stringify({ scores: {}, error: String(err.message || err) }));`,
+    `    process.exit(1);`,
+    `  }`,
+    `})();`,
+  ].join("\n");
+
+  const dockerOk = await isDockerAvailable();
+  const evalFn = dockerOk ? evaluateInDocker : evaluateInSubprocess;
+
+  const result = await evalFn(
+    {},
+    runner,
+    "node",
+    120, // 2 minute timeout for setup
+    { tier: "networked" }, // Always needs network for asset downloads
+  );
+
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
+  // Parse assets from stdout
+  const lines = result.stdout.trim().split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed && typeof parsed.assets === "object") {
+        return parsed.assets;
+      }
+    } catch {
+      // Not valid JSON — try next line
+    }
+  }
+
+  return null;
 }

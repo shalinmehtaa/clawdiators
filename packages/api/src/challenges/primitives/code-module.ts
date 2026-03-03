@@ -8,6 +8,7 @@
 import { createContext, runInContext, Script } from "node:vm";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult, SubmissionWarning } from "../types.js";
 import type { CommunitySpec, CodeFiles } from "./validator.js";
+import { generateLLMJudgeInlineScript } from "./llm-judge.js";
 
 /** Mulberry32 PRNG source — inlined into every code execution context. */
 const MULBERRY32_SOURCE = `
@@ -86,13 +87,103 @@ function buildSource(mainCode: string, helpersCode?: string): string {
   return parts.join("\n\n");
 }
 
+/** Options for createCodeModule. */
+export interface CreateCodeModuleOpts {
+  cachedAssets?: Record<string, unknown>;
+}
+
+/**
+ * Build a self-contained evaluator wrapper script for Tier 2+ challenges.
+ * This script is executed inside Docker with network access (and optionally LLM judge).
+ * It inlines: mulberry32 PRNG, helpers.js, scorer.js, and reads submission/ground-truth from /workspace.
+ */
+function buildTier2EvaluatorWrapper(spec: CommunitySpec): string {
+  const codeFiles = spec.codeFiles!;
+  const helpersCode = codeFiles["helpers.js"] ?? "";
+  const scorerCode = codeFiles["scorer.js"];
+
+  const parts: string[] = [];
+
+  // Header
+  parts.push(`"use strict";`);
+  parts.push(`var fs = require("fs");`);
+  parts.push(``);
+
+  // Inline mulberry32 PRNG
+  parts.push(MULBERRY32_SOURCE);
+
+  // Inline helpers
+  if (helpersCode) {
+    parts.push(`// --- helpers.js ---`);
+    parts.push(helpersCode);
+    parts.push(``);
+  }
+
+  // Inline LLM judge if judgeModel is set
+  if (spec.scoring.judgeModel) {
+    parts.push(generateLLMJudgeInlineScript(
+      spec.scoring.judgeModel,
+      spec.scoring.rubric ?? "Score the response quality on correctness, completeness, and clarity.",
+    ));
+    parts.push(``);
+  }
+
+  // Inline scorer
+  parts.push(`// --- scorer.js ---`);
+  parts.push(scorerCode);
+  parts.push(``);
+
+  // Main: read files and call score()
+  parts.push(`// --- evaluator main ---`);
+  parts.push(`(async function() {`);
+  parts.push(`  try {`);
+  parts.push(`    var submission = JSON.parse(fs.readFileSync("/workspace/submission.json", "utf-8"));`);
+  parts.push(`    var groundTruth = JSON.parse(fs.readFileSync("/workspace/ground-truth.json", "utf-8"));`);
+  parts.push(`    var startedAt = process.env.STARTED_AT || new Date().toISOString();`);
+  parts.push(`    var submittedAt = process.env.SUBMITTED_AT || new Date().toISOString();`);
+  parts.push(`    var apiCallCount = parseInt(process.env.API_CALL_COUNT || "0", 10);`);
+  parts.push(`    var checkpoints = process.env.CHECKPOINTS ? JSON.parse(process.env.CHECKPOINTS) : [];`);
+  parts.push(`    var input = {`);
+  parts.push(`      submission: submission,`);
+  parts.push(`      groundTruth: groundTruth,`);
+  parts.push(`      startedAt: startedAt,`);
+  parts.push(`      submittedAt: submittedAt,`);
+  parts.push(`      apiCallCount: apiCallCount,`);
+  parts.push(`      checkpoints: checkpoints,`);
+  parts.push(`    };`);
+  parts.push(`    var scoreFn = module.exports.score || exports.score;`);
+  parts.push(`    var result = await Promise.resolve(scoreFn(input));`);
+  parts.push(`    console.log(JSON.stringify({ scores: result.breakdown }));`);
+  parts.push(`  } catch (err) {`);
+  parts.push(`    console.error("Evaluator error:", err.message || err);`);
+  parts.push(`    console.log(JSON.stringify({ scores: {}, error: String(err.message || err) }));`);
+  parts.push(`    process.exit(1);`);
+  parts.push(`  }`);
+  parts.push(`})();`);
+
+  return parts.join("\n");
+}
+
 /**
  * Create a ChallengeModule from community-submitted code files.
  * Executes data.js / scorer.js / workspace.js / validator.js in Node.js VM contexts.
+ *
+ * For Tier 2+ (networked/gpu/custom), also generates a self-contained evaluator
+ * wrapper script that runs inside Docker with appropriate isolation.
  */
-export function createCodeModule(spec: CommunitySpec): ChallengeModule {
+export function createCodeModule(spec: CommunitySpec, opts?: CreateCodeModuleOpts): ChallengeModule {
   const codeFiles = spec.codeFiles!;
   const helpersCode = codeFiles["helpers.js"];
+  const cachedAssets = opts?.cachedAssets;
+
+  // Determine tier and whether we need an evaluator wrapper
+  const tier = spec.environment?.tier ?? "sandboxed";
+  const needsEvaluatorWrapper = tier !== "sandboxed";
+
+  // Build evaluator wrapper for Tier 2+
+  const evaluatorScript = needsEvaluatorWrapper
+    ? buildTier2EvaluatorWrapper(spec)
+    : spec.scoring.evaluator;
 
   return {
     slug: spec.slug,
@@ -115,13 +206,17 @@ export function createCodeModule(spec: CommunitySpec): ChallengeModule {
       method: "custom-script",
       dimensions: spec.scoring.dimensions,
       maxScore: spec.scoring.maxScore,
-      evaluator: spec.scoring.evaluator,
-      runtime: spec.scoring.runtime,
+      evaluator: evaluatorScript,
+      runtime: spec.scoring.runtime ?? (spec.environment?.runtime as any),
+      judgeModel: spec.scoring.judgeModel,
+      rubric: spec.scoring.rubric,
     },
 
     generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
       const source = buildSource(codeFiles["data.js"], helpersCode);
-      const exports = executeInVM(source);
+      const vmGlobals: Record<string, unknown> = {};
+      if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
+      const exports = executeInVM(source, vmGlobals);
 
       const generateData = exports.generateData as
         | ((seed: number) => { objective: string; groundTruth: Record<string, unknown>; [key: string]: unknown })
@@ -148,7 +243,9 @@ export function createCodeModule(spec: CommunitySpec): ChallengeModule {
 
     score(input: ScoringInput): ScoreResult {
       const source = buildSource(codeFiles["scorer.js"], helpersCode);
-      const exports = executeInVM(source);
+      const vmGlobals: Record<string, unknown> = {};
+      if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
+      const exports = executeInVM(source, vmGlobals);
 
       const scoreFn = exports.score as
         | ((input: Record<string, unknown>) => { breakdown: Record<string, number> })
@@ -200,7 +297,9 @@ export function createCodeModule(spec: CommunitySpec): ChallengeModule {
       if (!codeFiles["validator.js"]) return [];
 
       const source = buildSource(codeFiles["validator.js"], helpersCode);
-      const exports = executeInVM(source);
+      const vmGlobals: Record<string, unknown> = {};
+      if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
+      const exports = executeInVM(source, vmGlobals);
 
       const validateFn = exports.validate as
         | ((submission: Record<string, unknown>, groundTruth: Record<string, unknown>) => SubmissionWarning[])
@@ -226,7 +325,9 @@ export function createCodeModule(spec: CommunitySpec): ChallengeModule {
         // Also make generateData available in workspace context
         const dataSource = buildSource(codeFiles["data.js"], helpersCode);
         const fullSource = `${dataSource}\n\n${source}`;
-        const exports = executeInVM(fullSource);
+        const vmGlobals: Record<string, unknown> = {};
+        if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
+        const exports = executeInVM(fullSource, vmGlobals);
 
         const genWorkspace = exports.generateWorkspace as
           | ((seed: number) => Record<string, string>)

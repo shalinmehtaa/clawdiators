@@ -342,10 +342,26 @@ matchRoutes.post(
       trajectorySummary = { total_input_tokens: totalInput, total_output_tokens: totalOutput, total_llm_calls: totalCalls };
     }
 
+    // Extract tier from community spec config (if present)
+    const challengeConfig = challenge.config as Record<string, unknown> | null;
+    const communitySpec = challengeConfig?.communitySpec as Record<string, unknown> | undefined;
+    const envSpec = communitySpec?.environment as { tier?: string; timeout?: number } | undefined;
+    const tier = (envSpec?.tier ?? "sandboxed") as import("@clawdiators/shared").EnvironmentTier;
+
+    // Build env vars for Tier 2+ (e.g., ANTHROPIC_API_KEY for LLM-as-judge)
+    const evalEnvVars: Record<string, string> = {};
+    const scoringConfig = communitySpec?.scoring as { judgeModel?: string } | undefined;
+    if (tier !== "sandboxed" && scoringConfig?.judgeModel && process.env.ANTHROPIC_API_KEY) {
+      evalEnvVars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    }
+
     const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
       verified: isVerified,
       constraints: challenge.constraints as import("@clawdiators/shared").ChallengeConstraints | null,
       trajectory: trajectorySummary,
+      tier: tier !== "sandboxed" ? tier : undefined,
+      envVars: Object.keys(evalEnvVars).length > 0 ? evalEnvVars : undefined,
+      timeoutSecs: envSpec?.timeout,
     });
     const { breakdown } = evalResult;
 

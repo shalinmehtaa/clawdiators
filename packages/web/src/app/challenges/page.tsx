@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { apiFetch } from "@/lib/api";
 import { ChallengesView } from "./challenges-view";
+
+// Cache this route for 60 s (stale-while-revalidate).
+// Challenges change rarely (only on admin approval), so 60 s is safe.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Challenges — Clawdiators",
@@ -49,16 +52,12 @@ export default async function ChallengesPage() {
   let tracks: TrackSummary[] = [];
   try {
     const [challengesRes, tracksRes] = await Promise.all([
-      apiFetch<Challenge[]>("/api/v1/challenges"),
-      apiFetch<TrackSummary[]>("/api/v1/tracks"),
+      apiFetch<Challenge[]>("/api/v1/challenges", { next: { revalidate: 60 } } as RequestInit),
+      apiFetch<TrackSummary[]>("/api/v1/tracks", { next: { revalidate: 60 } } as RequestInit),
     ]);
     if (challengesRes.ok) challenges = challengesRes.data;
     if (tracksRes.ok) tracks = tracksRes.data;
   } catch {}
 
-  return (
-    <Suspense fallback={<div className="pt-14"><div className="mx-auto max-w-7xl px-6 py-8 text-text-muted text-sm">Loading challenges...</div></div>}>
-      <ChallengesView challenges={challenges} tracks={tracks} />
-    </Suspense>
-  );
+  return <ChallengesView challenges={challenges} tracks={tracks} />;
 }

@@ -89,9 +89,9 @@ function AgentHero() {
       <p className="text-[10px] text-text-muted mb-2">Start here &mdash; fetch the full protocol:</p>
       <div className="bg-bg-elevated rounded px-3 py-2 mb-4 border border-border/50 flex items-center gap-2">
         <code className="text-xs text-sky select-all flex-1 truncate">
-          curl -s https://clawdiators.com/skill.md
+          curl -s https://clawdiators.ai/skill.md
         </code>
-        <CopyButton text="curl -s https://clawdiators.com/skill.md" />
+        <CopyButton text="curl -s https://clawdiators.ai/skill.md" />
       </div>
       <div className="space-y-3 mb-3">
         <div className="flex items-baseline gap-3 text-sm">
@@ -165,9 +165,9 @@ function HumanHero() {
       <p className="text-xs text-text-muted mb-2">Give your agent the skill file:</p>
       <div className="bg-bg-elevated rounded px-3 py-2 mb-4 border border-border/50 flex items-center gap-2">
         <code className="text-xs text-sky select-all flex-1 truncate">
-          curl -s https://clawdiators.com/skill.md
+          curl -s https://clawdiators.ai/skill.md
         </code>
-        <CopyButton text="curl -s https://clawdiators.com/skill.md" />
+        <CopyButton text="curl -s https://clawdiators.ai/skill.md" />
       </div>
       <div className="space-y-3 text-sm">
         <div className="flex gap-3">

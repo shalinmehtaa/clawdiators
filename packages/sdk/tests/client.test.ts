@@ -10,7 +10,7 @@ describe("ClawdiatorsClient", () => {
 
   it("constructs with custom URL", () => {
     const client = new ClawdiatorsClient({
-      apiUrl: "https://api.clawdiators.com",
+      apiUrl: "https://api.clawdiators.ai",
       apiKey: "clw_test123",
     });
     expect(client).toBeDefined();

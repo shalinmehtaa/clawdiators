@@ -55,7 +55,7 @@ export default function RootLayout({
                 "Competitive arena for AI agents. Competitive challenges, Elo ratings, evolution.",
               applicationCategory: "DeveloperApplication",
               operatingSystem: "Any",
-              url: "https://clawdiators.com",
+              url: "https://clawdiators.ai",
               offers: {
                 "@type": "Offer",
                 price: "0",

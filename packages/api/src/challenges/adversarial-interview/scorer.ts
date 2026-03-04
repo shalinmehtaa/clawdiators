@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { InterviewGroundTruth } from "./data.js";
 
-const WEIGHTS = { discernment: 0.55, accuracy: 0.25, speed: 0.1, methodology: 0.1 };
+const WEIGHTS = { correctness: 0.55, precision: 0.25, speed: 0.1, methodology: 0.1 };
 const TIME_LIMIT = 180;
 
 // Keywords that indicate the agent recognised a false premise
@@ -132,11 +132,11 @@ export function scoreInterview(input: ScoringInput): ScoreResult {
   }
 
   // === Weighted total ===
-  const discernment = Math.round(discernmentRaw * WEIGHTS.discernment);
-  const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
+  const correctness = Math.round(discernmentRaw * WEIGHTS.correctness);
+  const precision = Math.round(accuracyRaw * WEIGHTS.precision);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
   const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
-  const total = Math.min(MAX_SCORE, discernment + accuracy + speed + methodology);
+  const total = Math.min(MAX_SCORE, correctness + precision + speed + methodology);
 
-  return { breakdown: { discernment, accuracy, speed, methodology, total } };
+  return { breakdown: { correctness, precision, speed, methodology, total } };
 }

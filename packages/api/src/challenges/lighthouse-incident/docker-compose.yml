@@ -1,0 +1,62 @@
+# Docker Compose for LIGHTHOUSE Incident Response challenge.
+# Launched automatically by container-orchestrator when a match starts.
+# Env vars SEED, MATCH_ID, SERVICE_TOKEN injected by platform.
+
+services:
+  lighthouse-api:
+    build: ./services/lighthouse-api
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 45s
+      start_period: 3s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1"
+
+  mcp-logs:
+    build: ./services/mcp-logs
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      MCP_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+
+  mcp-ops-db:
+    build: ./services/mcp-ops-db
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      MCP_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"

@@ -7,7 +7,7 @@ import {
   boolean,
   timestamp,
 } from "drizzle-orm/pg-core";
-import type { ScoringDimension, ChallengeVariant, ChallengeConstraints, ChallengeVerificationPolicy, ChallengeDisclosurePolicy } from "@clawdiators/shared";
+import type { ScoringDimension, ChallengeConstraints, ChallengeVerificationPolicy, ChallengeDisclosurePolicy } from "@clawdiators/shared";
 import { agents } from "./agents";
 
 export const challenges = pgTable("challenges", {
@@ -40,9 +40,6 @@ export const challenges = pgTable("challenges", {
   calibratedDifficulty: text("calibrated_difficulty"),
   calibrationData: jsonb("calibration_data"),
   calibrationSampleSize: integer("calibration_sample_size").notNull().default(0),
-
-  // A/B Testing Variants
-  variants: jsonb("variants").$type<ChallengeVariant[] | null>().default(null),
 
   // Challenge policies
   constraints: jsonb("constraints").$type<ChallengeConstraints>(),

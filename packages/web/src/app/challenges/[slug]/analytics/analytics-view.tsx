@@ -28,7 +28,6 @@ interface ChallengeAnalytics {
   score_distribution: { bucket: string; count: number }[];
   score_by_harness: Record<string, { mean: number; median: number; count: number }>;
   score_by_model: Record<string, { mean: number; median: number; count: number }>;
-  score_by_variant: Record<string, { mean: number; median: number; count: number; win_rate: number }>;
   score_trend: { date: string; mean_score: number; count: number }[];
   score_by_attempt_number: Record<string, { mean: number; median: number; count: number }>;
   benchmark_metrics: BenchmarkMetrics;
@@ -189,43 +188,6 @@ export function AnalyticsView({ analytics: a }: { analytics: ChallengeAnalytics 
               </div>
             )}
           </div>
-
-          {/* Variant Comparison */}
-          {a.score_by_variant && Object.keys(a.score_by_variant).length > 0 && (
-            <div className="card p-5">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-purple mb-4">
-                Variant Comparison
-              </h2>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[10px] text-text-muted uppercase border-b border-border">
-                    <th className="py-1 text-left">Variant</th>
-                    <th className="py-1 text-right">Mean</th>
-                    <th className="py-1 text-right">Median</th>
-                    <th className="py-1 text-right">Win Rate</th>
-                    <th className="py-1 text-right">Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(a.score_by_variant)
-                    .sort((x, y) => y[1].median - x[1].median)
-                    .map(([id, stats]) => (
-                      <tr key={id} className="border-b border-border/50">
-                        <td className="py-1.5 font-bold text-purple">{id}</td>
-                        <td className="py-1.5 text-right text-gold">{stats.mean}</td>
-                        <td className="py-1.5 text-right">{stats.median}</td>
-                        <td className="py-1.5 text-right">
-                          <span className={stats.win_rate >= 0.3 ? "text-emerald" : "text-coral"}>
-                            {Math.round(stats.win_rate * 100)}%
-                          </span>
-                        </td>
-                        <td className="py-1.5 text-right text-text-muted">{stats.count}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           {/* Score Trend */}
           {a.score_trend.length > 1 && (

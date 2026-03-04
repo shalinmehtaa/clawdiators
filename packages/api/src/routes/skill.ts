@@ -2,53 +2,44 @@ import { Hono } from "hono";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Context } from "hono";
 
 export const skillFile = new Hono();
 
 // Read once at startup
 const thisDir = dirname(fileURLToPath(import.meta.url));
-const skillPath = resolve(thisDir, "../../../../static/skill.md");
-const authoringPath = resolve(thisDir, "../../../../static/authoring.md");
-let skillTemplate: string;
-let authoringTemplate: string;
-try {
-  skillTemplate = readFileSync(skillPath, "utf-8");
-} catch {
-  skillTemplate = "";
-}
-try {
-  authoringTemplate = readFileSync(authoringPath, "utf-8");
-} catch {
-  authoringTemplate = "";
+
+function tryRead(name: string): string {
+  try { return readFileSync(resolve(thisDir, "../../../../static", name), "utf-8"); } catch { return ""; }
 }
 
-// Serve skill.md at /skill.md with {BASE_URL} resolved to the actual origin
+const skillTemplate = tryRead("skill.md");
+const apiAuthoringTemplate = tryRead("api-authoring.md");
+const prAuthoringTemplate = tryRead("pr-authoring.md");
+
+function resolveBaseUrl(c: Context): string {
+  const proto = c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "");
+  const host = c.req.header("x-forwarded-host") ?? c.req.header("host") ?? "localhost:3001";
+  return `${proto}://${host}`;
+}
+
 skillFile.get("/skill.md", (c) => {
-  if (!skillTemplate) {
-    return c.text("skill.md not found", 404);
-  }
-
-  // Derive base URL from the incoming request
-  const proto = c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "");
-  const host = c.req.header("x-forwarded-host") ?? c.req.header("host") ?? "localhost:3001";
-  const baseUrl = `${proto}://${host}`;
-
-  const content = skillTemplate.replaceAll("{BASE_URL}", baseUrl);
+  if (!skillTemplate) return c.text("skill.md not found", 404);
   c.header("Content-Type", "text/markdown; charset=utf-8");
-  return c.body(content);
+  return c.body(skillTemplate.replaceAll("{BASE_URL}", resolveBaseUrl(c)));
 });
 
-// Serve authoring.md at /authoring.md with {BASE_URL} resolved to the actual origin
-skillFile.get("/authoring.md", (c) => {
-  if (!authoringTemplate) {
-    return c.text("authoring.md not found", 404);
-  }
-
-  const proto = c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "");
-  const host = c.req.header("x-forwarded-host") ?? c.req.header("host") ?? "localhost:3001";
-  const baseUrl = `${proto}://${host}`;
-
-  const content = authoringTemplate.replaceAll("{BASE_URL}", baseUrl);
+skillFile.get("/api-authoring.md", (c) => {
+  if (!apiAuthoringTemplate) return c.text("api-authoring.md not found", 404);
   c.header("Content-Type", "text/markdown; charset=utf-8");
-  return c.body(content);
+  return c.body(apiAuthoringTemplate.replaceAll("{BASE_URL}", resolveBaseUrl(c)));
 });
+
+skillFile.get("/pr-authoring.md", (c) => {
+  if (!prAuthoringTemplate) return c.text("pr-authoring.md not found", 404);
+  c.header("Content-Type", "text/markdown; charset=utf-8");
+  return c.body(prAuthoringTemplate.replaceAll("{BASE_URL}", resolveBaseUrl(c)));
+});
+
+// Redirect old path for backward compatibility
+skillFile.get("/authoring.md", (c) => c.redirect("/api-authoring.md", 301));

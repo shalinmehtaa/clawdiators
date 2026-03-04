@@ -35,13 +35,7 @@ import {
   set_overlap,
   SCORING_PRIMITIVES,
 } from "../src/challenges/primitives/scoring.js";
-import {
-  computeQuorum,
-  QUORUM_MIN_REPORTS,
-  QUORUM_MIN_TRUST_WEIGHT,
-  REVIEWER_DEFAULT_TRUST_SCORE,
-} from "../src/challenges/governance.js";
-import type { ReviewerVerdict } from "@clawdiators/shared";
+import { isReviewerEligible, REVIEW_MIN_MATCHES } from "../src/challenges/governance.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // Helpers — shared fixtures for specs & verdicts
@@ -151,22 +145,6 @@ module.exports = { score: score };
     codeFiles,
     ...specOverrides,
   } as CommunitySpec;
-}
-
-/** Build a ReviewerVerdict with defaults. */
-function verdict(
-  v: "accept" | "reject" | "revise",
-  trust = REVIEWER_DEFAULT_TRUST_SCORE,
-  severity: "info" | "warn" | "critical" = "info",
-): ReviewerVerdict {
-  return {
-    agentId: `agent-${Math.random().toString(36).slice(2, 8)}`,
-    verdict: v,
-    findings: [],
-    severity,
-    trustScore: trust,
-    submittedAt: new Date().toISOString(),
-  };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -735,7 +713,7 @@ module.exports = { score: score };
     for (const { label, code } of prohibitedSnippets) {
       it(`blocks '${label}' in sandboxed tier`, () => {
         const codeFiles = { "data.js": `var x = 1;\n${code}`, "scorer.js": "var y = 2;" };
-        const result = checkCodeSecurity(codeFiles, "sandboxed");
+        const result = checkCodeSecurity(codeFiles);
         expect(result.passed).toBe(false);
         const violations = result.details?.violations as Array<{ pattern: string }>;
         expect(violations.some((v) => v.pattern === label)).toBe(true);
@@ -747,18 +725,8 @@ module.exports = { score: score };
         "data.js": '// require("fs")\n// import x from "y"\nvar x = 1;',
         "scorer.js": "// process.env\nvar y = 2;",
       };
-      const result = checkCodeSecurity(codeFiles, "sandboxed");
+      const result = checkCodeSecurity(codeFiles);
       expect(result.passed).toBe(true);
-    });
-
-    it("Tier 2 (networked) passes all prohibited patterns", () => {
-      const codeFiles = {
-        "data.js": 'var x = require("fs"); import y from "z"; process.env;',
-        "scorer.js": 'eval("1"); fetch("x"); setTimeout(f, 0);',
-      };
-      const result = checkCodeSecurity(codeFiles, "networked");
-      expect(result.passed).toBe(true);
-      expect(result.details?.tier).toBe("networked");
     });
   });
 
@@ -1191,68 +1159,7 @@ module.exports = { score: score };
     });
   });
 
-  // ── B8: GPU/custom tier validation ──
-
-  describe("B8: GPU/custom tier validation", () => {
-    it("GPU tier without image → fails", () => {
-      const spec = codeSpec({}, {
-        environment: { tier: "gpu", runtime: "node", timeout: 60 },
-      });
-      const result = validateSpec(spec);
-      expect(result.valid).toBe(false);
-    });
-
-    it("GPU tier with non-allowlisted image → fails", () => {
-      const spec = codeSpec({}, {
-        environment: { tier: "gpu", runtime: "node", timeout: 60, image: "evil/image:latest" },
-      });
-      const result = validateSpec(spec);
-      expect(result.valid).toBe(false);
-    });
-
-    it("GPU tier with allowlisted image → passes", () => {
-      const spec = codeSpec({}, {
-        environment: { tier: "gpu", runtime: "node", timeout: 60, image: "clawdiators/eval-cuda:12" },
-      });
-      const result = validateSpec(spec);
-      expect(result.valid).toBe(true);
-    });
-
-    it("custom tier without image → fails", () => {
-      const spec = codeSpec({}, {
-        environment: { tier: "custom", runtime: "node", timeout: 60 },
-      });
-      const result = validateSpec(spec);
-      expect(result.valid).toBe(false);
-    });
-
-    it("judgeModel on sandboxed tier → fails", () => {
-      const spec = declSpec({
-        scoring: {
-          method: "deterministic",
-          dimensions: dims([0.6, 0.4]),
-          maxScore: 1000,
-          judgeModel: "claude-3-haiku",
-        },
-      });
-      const result = validateSpec(spec);
-      expect(result.valid).toBe(false);
-    });
-
-    it("judgeModel on networked tier → passes", () => {
-      const spec = declSpec({
-        scoring: {
-          method: "deterministic",
-          dimensions: dims([0.6, 0.4]),
-          maxScore: 1000,
-          judgeModel: "claude-3-haiku",
-        },
-        environment: { tier: "networked", runtime: "node", timeout: 60 },
-      });
-      const result = validateSpec(spec);
-      expect(result.valid).toBe(true);
-    });
-  });
+  // B8 (GPU/custom tier validation) removed — tier taxonomy removed.
 
   // ── B9: VM timeout and error messages ──
 
@@ -1499,136 +1406,30 @@ describe("Section C: Scoring Primitive Edge Cases", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// Section D: Peer Review Quorum Tests
+// Section D: Agent Review Governance (Lightweight)
 // ════════════════════════════════════════════════════════════════════════
 
-describe("Section D: Peer Review Quorum", () => {
+describe("Section D: Agent Review Governance", () => {
 
-  it("0 verdicts → pending (below QUORUM_MIN_REPORTS)", () => {
-    const result = computeQuorum([]);
-    expect(result.status).toBe("pending");
-    expect(result.reportCount).toBe(0);
+  it("D1 REVIEW_MIN_MATCHES is a positive integer", () => {
+    expect(REVIEW_MIN_MATCHES).toBeGreaterThan(0);
+    expect(Number.isInteger(REVIEW_MIN_MATCHES)).toBe(true);
   });
 
-  it("1 verdict → pending", () => {
-    const result = computeQuorum([verdict("accept", 0.5)]);
-    expect(result.status).toBe("pending");
-    expect(result.reportCount).toBe(1);
+  it("D2 new agent (0 matches) is not eligible", () => {
+    expect(isReviewerEligible({ matchCount: 0 })).toBe(false);
   });
 
-  it("2 accepts (trust 0.5 each) → accepted (100% > 60%, trust = 1.0 >= 1.0)", () => {
-    const result = computeQuorum([verdict("accept", 0.5), verdict("accept", 0.5)]);
-    expect(result.status).toBe("accepted");
+  it("D3 agent just below threshold is not eligible", () => {
+    expect(isReviewerEligible({ matchCount: REVIEW_MIN_MATCHES - 1 })).toBe(false);
   });
 
-  it("2 rejects → rejected", () => {
-    const result = computeQuorum([verdict("reject", 0.5), verdict("reject", 0.5)]);
-    expect(result.status).toBe("rejected");
+  it("D4 agent at threshold is eligible", () => {
+    expect(isReviewerEligible({ matchCount: REVIEW_MIN_MATCHES })).toBe(true);
   });
 
-  it("1 accept + 1 reject (equal trust) → escalated (50/50)", () => {
-    const result = computeQuorum([verdict("accept", 0.5), verdict("reject", 0.5)]);
-    expect(result.status).toBe("escalated");
-  });
-
-  it("2 accepts + 1 reject (equal trust) → accepted (66% > 60%)", () => {
-    const result = computeQuorum([
-      verdict("accept", 0.5),
-      verdict("accept", 0.5),
-      verdict("reject", 0.5),
-    ]);
-    expect(result.status).toBe("accepted");
-  });
-
-  it("1 accept + 2 rejects → rejected (66% > 60%)", () => {
-    const result = computeQuorum([
-      verdict("accept", 0.5),
-      verdict("reject", 0.5),
-      verdict("reject", 0.5),
-    ]);
-    expect(result.status).toBe("rejected");
-  });
-
-  it("critical finding from any reviewer → escalated (overrides votes)", () => {
-    const result = computeQuorum([
-      verdict("accept", 0.5, "critical"),
-      verdict("accept", 0.5),
-    ]);
-    expect(result.status).toBe("escalated");
-    expect(result.hasCriticalFinding).toBe(true);
-  });
-
-  it("high trust accept vs low trust reject → accepted", () => {
-    // accept weight = 0.8, reject weight = 0.2, ratio = 0.8/1.0 = 0.8 > 0.6
-    const result = computeQuorum([
-      verdict("accept", 0.8),
-      verdict("reject", 0.2),
-    ]);
-    expect(result.status).toBe("accepted");
-  });
-
-  it("low trust accept vs high trust reject → rejected", () => {
-    // accept weight = 0.2, reject weight = 0.8, rejectRatio = 0.8/1.0 = 0.8 > 0.6
-    const result = computeQuorum([
-      verdict("accept", 0.2),
-      verdict("reject", 0.8),
-    ]);
-    expect(result.status).toBe("rejected");
-  });
-
-  it("3 'revise' verdicts → rejected (revise counts as reject)", () => {
-    const result = computeQuorum([
-      verdict("revise", 0.5),
-      verdict("revise", 0.5),
-      verdict("revise", 0.5),
-    ]);
-    expect(result.status).toBe("rejected");
-  });
-
-  it("mixed accept/reject with critical → escalated", () => {
-    const result = computeQuorum([
-      verdict("accept", 0.5),
-      verdict("reject", 0.5, "critical"),
-    ]);
-    expect(result.status).toBe("escalated");
-    expect(result.hasCriticalFinding).toBe(true);
-  });
-
-  it("exactly 60% accept (via 0.3+0.3 / 1.0) → NOT accepted (needs > 0.6)", () => {
-    // Use 0.3 + 0.3 = 0.6 exactly (no FP drift), reject = 0.2 + 0.2 = 0.4
-    // ratio = 0.6 / 1.0 = 0.6, NOT > 0.6
-    const result = computeQuorum([
-      verdict("accept", 0.3),
-      verdict("accept", 0.3),
-      verdict("reject", 0.2),
-      verdict("reject", 0.2),
-    ]);
-    expect(result.status).toBe("escalated");
-  });
-
-  it("FP gotcha: 3×0.2 accept sum = 0.6000000000000001 → accepted (FP drift crosses > 0.6)", () => {
-    // 0.2 + 0.2 + 0.2 = 0.6000000000000001 in IEEE 754
-    // ratio = 0.6000000000000001 / 1.0 > 0.6 → true → accepted
-    const result = computeQuorum([
-      verdict("accept", 0.2),
-      verdict("accept", 0.2),
-      verdict("accept", 0.2),
-      verdict("reject", 0.2),
-      verdict("reject", 0.2),
-    ]);
-    expect(result.status).toBe("accepted");
-  });
-
-  it("trust weight sum exactly 1.0 → meets minimum", () => {
-    const result = computeQuorum([verdict("accept", 0.5), verdict("accept", 0.5)]);
-    expect(result.trustWeightSum).toBe(1.0);
-    expect(result.status).not.toBe("pending");
-  });
-
-  it("trust weight sum 0.99 → pending (below minimum)", () => {
-    const result = computeQuorum([verdict("accept", 0.495), verdict("accept", 0.495)]);
-    expect(result.trustWeightSum).toBeCloseTo(0.99, 5);
-    expect(result.status).toBe("pending");
+  it("D5 veteran agent (100+ matches) is eligible", () => {
+    expect(isReviewerEligible({ matchCount: 100 })).toBe(true);
   });
 });
 

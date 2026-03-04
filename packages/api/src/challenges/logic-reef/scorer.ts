@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { LogicGroundTruth } from "./data.js";
 
-const WEIGHTS = { validity: 0.5, reasoning: 0.2, speed: 0.15, coverage: 0.15 };
+const WEIGHTS = { correctness: 0.5, methodology: 0.2, speed: 0.15, completeness: 0.15 };
 const TIME_LIMIT = 180;
 
 export function scoreLogic(input: ScoringInput): ScoreResult {
@@ -59,11 +59,11 @@ export function scoreLogic(input: ScoringInput): ScoreResult {
     ? Math.round((attempted / groundTruth.puzzles.length) * 1000)
     : 0;
 
-  const validity = Math.round(validityRaw * WEIGHTS.validity);
-  const reasoning = Math.round(reasoningRaw * WEIGHTS.reasoning);
+  const correctness = Math.round(validityRaw * WEIGHTS.correctness);
+  const methodology = Math.round(reasoningRaw * WEIGHTS.methodology);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const coverage = Math.round(coverageRaw * WEIGHTS.coverage);
-  const total = Math.min(MAX_SCORE, validity + reasoning + speed + coverage);
+  const completeness = Math.round(coverageRaw * WEIGHTS.completeness);
+  const total = Math.min(MAX_SCORE, correctness + methodology + speed + completeness);
 
-  return { breakdown: { validity, reasoning, speed, coverage, total } };
+  return { breakdown: { correctness, methodology, speed, completeness, total } };
 }

@@ -360,18 +360,13 @@ export function checkCodeSyntax(codeFiles: Record<string, string>): GateResult {
 }
 
 /**
- * Scan code files for prohibited patterns (Tier 0-1 sandboxed).
+ * Scan code files for prohibited patterns.
  * Blocks require/import, process access, eval, network, timers, etc.
+ * Runs unconditionally on all API-submitted code.
  */
 export function checkCodeSecurity(
   codeFiles: Record<string, string>,
-  tier: string = "sandboxed",
 ): GateResult {
-  // Tier 2+ (networked, gpu, custom) relaxes restrictions — admin review handles safety
-  if (tier !== "sandboxed") {
-    return { passed: true, details: { tier, note: "Tier 2+ — code security relaxed, admin review required" } };
-  }
-
   const violations: Array<{ file: string; pattern: string; line: number }> = [];
 
   for (const [filename, code] of Object.entries(codeFiles)) {
@@ -390,7 +385,7 @@ export function checkCodeSecurity(
   }
 
   if (violations.length === 0) {
-    return { passed: true, details: { tier, files_scanned: Object.keys(codeFiles) } };
+    return { passed: true, details: { files_scanned: Object.keys(codeFiles) } };
   }
   return {
     passed: false,
@@ -523,8 +518,7 @@ export async function runAllGates(
     }
 
     // Gate: code_security — prohibited pattern scan
-    const tier = spec.environment?.tier ?? "sandboxed";
-    codeSecurityResult = checkCodeSecurity(spec.codeFiles!, tier);
+    codeSecurityResult = checkCodeSecurity(spec.codeFiles!);
     if (!codeSecurityResult.passed) {
       return {
         gates: {

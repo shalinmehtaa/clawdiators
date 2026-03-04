@@ -513,15 +513,6 @@ describe("checkCodeSecurity", () => {
     expect(result.passed).toBe(true);
   });
 
-  it("passes for Tier 2+ (networked) — relaxed restrictions", () => {
-    const result = checkCodeSecurity({
-      "data.js": `var fs = require('fs');\nfunction generateData(s) { return { objective: "x", groundTruth: {} }; }\nmodule.exports = { generateData: generateData };`,
-      "scorer.js": validScorerJs,
-    }, "networked");
-    expect(result.passed).toBe(true);
-    expect(result.details.note).toContain("relaxed");
-  });
-
   it("includes violation details with file, pattern, and line number", () => {
     const result = checkCodeSecurity({
       "scorer.js": `function score(input) {\n  var x = eval("1");\n  return { breakdown: { total: 0 } };\n}\nmodule.exports = { score: score };`,
@@ -789,45 +780,6 @@ describe("communitySpecSchema codeFiles validation", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("rejects gpu tier without image", () => {
-    const result = validateSpec({
-      ...codeBasedSpec,
-      environment: { tier: "gpu" },
-    });
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.errors.some((e) => e.includes("image"))).toBe(true);
-    }
-  });
-
-  it("accepts gpu tier with image", () => {
-    const result = validateSpec({
-      ...codeBasedSpec,
-      environment: { tier: "gpu", image: "clawdiators/eval-cuda:latest" },
-    });
-    expect(result.valid).toBe(true);
-  });
-
-  it("rejects assets with sandboxed tier", () => {
-    const result = validateSpec({
-      ...codeBasedSpec,
-      assets: [{ url: "https://example.com/data.bin", sha256: "a".repeat(64), filename: "data.bin", size: 1000 }],
-    });
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.errors.some((e) => e.includes("assets"))).toBe(true);
-    }
-  });
-
-  it("accepts assets with networked tier", () => {
-    const result = validateSpec({
-      ...codeBasedSpec,
-      environment: { tier: "networked" },
-      assets: [{ url: "https://example.com/data.bin", sha256: "a".repeat(64), filename: "data.bin", size: 1000 }],
-    });
-    expect(result.valid).toBe(true);
-  });
-
   it("still allows scorer-less declarative specs at maxScore <= 1000", () => {
     const result = validateSpec({
       ...codeBasedSpec,
@@ -847,25 +799,6 @@ describe("communitySpecSchema codeFiles validation", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("rejects judgeModel with sandboxed tier", () => {
-    const result = validateSpec({
-      ...codeBasedSpec,
-      scoring: { ...codeBasedSpec.scoring, judgeModel: "claude-haiku-4-5-20251001" },
-    });
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.errors.some((e) => e.includes("judgeModel"))).toBe(true);
-    }
-  });
-
-  it("accepts judgeModel with networked tier", () => {
-    const result = validateSpec({
-      ...codeBasedSpec,
-      scoring: { ...codeBasedSpec.scoring, judgeModel: "claude-haiku-4-5-20251001", rubric: "Score quality" },
-      environment: { tier: "networked" },
-    });
-    expect(result.valid).toBe(true);
-  });
 
   it("accepts rubric without judgeModel (rubric is optional standalone)", () => {
     const result = validateSpec({
@@ -873,89 +806,6 @@ describe("communitySpecSchema codeFiles validation", () => {
       scoring: { ...codeBasedSpec.scoring, rubric: "Quality rubric text" },
     });
     expect(result.valid).toBe(true);
-  });
-});
-
-// ── Tier 2+ evaluator wrapper ───────────────────────────────────────
-
-describe("createCodeModule Tier 2+ evaluator wrapper", () => {
-  const networkedSpec: CommunitySpec = {
-    ...codeBasedSpec,
-    environment: { tier: "networked" },
-  };
-
-  it("sandboxed tier does NOT set evaluator script", () => {
-    const mod = createCodeModule(codeBasedSpec);
-    expect(mod.scoringSpec?.evaluator).toBeUndefined();
-  });
-
-  it("networked tier sets evaluator script", () => {
-    const mod = createCodeModule(networkedSpec);
-    expect(mod.scoringSpec?.evaluator).toBeDefined();
-    expect(typeof mod.scoringSpec?.evaluator).toBe("string");
-  });
-
-  it("evaluator wrapper contains scorer.js code", () => {
-    const mod = createCodeModule(networkedSpec);
-    const wrapper = mod.scoringSpec?.evaluator!;
-    // scorer.js has a "score" function
-    expect(wrapper).toContain("function score(input)");
-  });
-
-  it("evaluator wrapper reads submission.json and ground-truth.json", () => {
-    const mod = createCodeModule(networkedSpec);
-    const wrapper = mod.scoringSpec?.evaluator!;
-    expect(wrapper).toContain("submission.json");
-    expect(wrapper).toContain("ground-truth.json");
-  });
-
-  it("evaluator wrapper reads timing metadata from env vars", () => {
-    const mod = createCodeModule(networkedSpec);
-    const wrapper = mod.scoringSpec?.evaluator!;
-    expect(wrapper).toContain("STARTED_AT");
-    expect(wrapper).toContain("SUBMITTED_AT");
-    expect(wrapper).toContain("API_CALL_COUNT");
-  });
-
-  it("mod.score() still works in-process for Tier 2+ specs (gate checking)", () => {
-    const mod = createCodeModule(networkedSpec);
-    const data = mod.generateData(42, {});
-    const now = new Date();
-    const result = mod.score({
-      submission: { answer: data.groundTruth.answer },
-      groundTruth: data.groundTruth,
-      startedAt: new Date(now.getTime() - 1000),
-      submittedAt: now,
-      apiCallCount: 0,
-    });
-    expect(result.breakdown.accuracy).toBe(700);
-    expect(result.breakdown.total).toBeGreaterThan(0);
-  });
-
-  it("evaluator wrapper includes LLM judge when judgeModel is set", () => {
-    const specWithJudge: CommunitySpec = {
-      ...codeBasedSpec,
-      environment: { tier: "networked" },
-      scoring: {
-        ...codeBasedSpec.scoring,
-        judgeModel: "claude-haiku-4-5-20251001",
-        rubric: "Score on clarity and correctness",
-      },
-    };
-    const mod = createCodeModule(specWithJudge);
-    const wrapper = mod.scoringSpec?.evaluator!;
-    expect(wrapper).toContain("llmJudge");
-    expect(wrapper).toContain("claude-haiku-4-5-20251001");
-    expect(wrapper).toContain("Score on clarity and correctness");
-  });
-
-  it("gpu tier also generates evaluator wrapper", () => {
-    const gpuSpec: CommunitySpec = {
-      ...codeBasedSpec,
-      environment: { tier: "gpu", image: "clawdiators/eval-cuda:latest" },
-    };
-    const mod = createCodeModule(gpuSpec);
-    expect(mod.scoringSpec?.evaluator).toBeDefined();
   });
 });
 

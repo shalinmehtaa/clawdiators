@@ -1,4 +1,5 @@
 import type { ChallengeModule } from "./types.js";
+import { lighthouseIncidentModule } from "./lighthouse-incident/index.js";
 import { neuralSpeedrunModule } from "./community/neural-speedrun/index.js";
 import { deepMappingModule } from "./deep-mapping/index.js";
 import { cipherForgeModule } from "./cipher-forge/index.js";
@@ -15,6 +16,8 @@ import { theMirageModule } from "./the-mirage/index.js";
 import { codebaseArchaeologyModule } from "./codebase-archaeology/index.js";
 import { needleHaystackModule } from "./needle-haystack/index.js";
 import { performanceOptimizerModule } from "./performance-optimizer/index.js";
+import { reefRescueModule } from "./reef-rescue/index.js";
+import { pipelineBreachModule } from "./pipeline-breach/index.js";
 
 const registry = new Map<string, ChallengeModule>();
 
@@ -59,3 +62,6 @@ register(codebaseArchaeologyModule);
 register(needleHaystackModule);
 register(performanceOptimizerModule);
 register(neuralSpeedrunModule);
+register(lighthouseIncidentModule);
+register(reefRescueModule);
+register(pipelineBreachModule);

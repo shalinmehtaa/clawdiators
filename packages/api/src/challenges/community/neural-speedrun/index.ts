@@ -117,18 +117,18 @@ const NAIVE_TRAINER_TEMPLATE = [
 
 const DIMENSIONS = [
   {
-    key: "speedup",
-    label: "Speedup",
+    key: "code_quality",
+    label: "Code Quality",
     weight: 0.8,
     description: "Steps ratio vs naive baseline (20x = max 800pts)",
-    color: "emerald",
+    color: "coral",
   },
   {
-    key: "loss_improvement",
-    label: "Loss Quality",
+    key: "precision",
+    label: "Precision",
     weight: 0.2,
     description: "MSE \u2264 1.05\u00d7 baseline = full 200pts",
-    color: "gold",
+    color: "coral",
   },
 ];
 
@@ -314,7 +314,7 @@ export const neuralSpeedrunModule: ChallengeModule = {
 
     const optimizedCode = sub.optimized_trainer;
     if (typeof optimizedCode !== "string" || optimizedCode.length < 100) {
-      return { breakdown: { speedup: 0, loss_improvement: 0, total: 0 } };
+      return { breakdown: { code_quality: 0, precision: 0, total: 0 } };
     }
 
     const dataStr = JSON.stringify(gt.data);
@@ -337,7 +337,7 @@ export const neuralSpeedrunModule: ChallengeModule = {
       const optimizedResult = runTrainer("optimized.js", dir);
 
       if (!originalResult || !optimizedResult) {
-        return { breakdown: { speedup: 0, loss_improvement: 0, total: 0 } };
+        return { breakdown: { code_quality: 0, precision: 0, total: 0 } };
       }
 
       const stepsRatio =
@@ -355,7 +355,7 @@ export const neuralSpeedrunModule: ChallengeModule = {
       }
 
       const total = Math.min(1000, speedupScore + lossScore);
-      return { breakdown: { speedup: speedupScore, loss_improvement: lossScore, total } };
+      return { breakdown: { code_quality: speedupScore, precision: lossScore, total } };
     } finally {
       if (dir) {
         try {

@@ -1,18 +1,14 @@
 import { Hono } from "hono";
-import { eq, and, ne } from "drizzle-orm";
-import { db, challengeDrafts } from "@clawdiators/db";
+import { eq, and, ne, sql } from "drizzle-orm";
+import { db, challengeDrafts, agents } from "@clawdiators/db";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { validateSpec } from "../challenges/primitives/validator.js";
 import { runAllGates } from "../challenges/primitives/gates.js";
 import { getDesignGuideHash } from "../startup.js";
-import {
-  computeQuorum,
-  isReviewerEligible,
-  getOrInitTrustScore,
-} from "../challenges/governance.js";
 import { approveDraft } from "../challenges/challenge-service.js";
-import type { DraftProtocolMetadata, ReviewerVerdict } from "@clawdiators/shared";
+import { isReviewerEligible, REVIEW_MIN_MATCHES } from "../challenges/governance.js";
+import type { DraftProtocolMetadata } from "@clawdiators/shared";
 
 export const challengeDraftRoutes = new Hono();
 
@@ -24,7 +20,7 @@ challengeDraftRoutes.use("*", authMiddleware);
 /**
  * Runs all machine gates in the background.
  * On completion, writes gate_report and updates gate_status.
- * On auto-accept (quorum already met from gates pass), triggers approveDraft.
+ * When gates pass, advances the draft to pending_review.
  */
 async function runGatesInBackground(
   draftId: string,
@@ -50,7 +46,7 @@ async function runGatesInBackground(
         gateReport: report,
         gateStatus,
         ...(protocolMetadata && { protocolMetadata }),
-        // When gates pass, advance status to pending_review so reviewers can see it
+        // When gates pass, advance status to pending_review for agent review
         ...(gateStatus === "passed" && { status: "pending_review" }),
       })
       .where(eq(challengeDrafts.id, draftId));
@@ -168,25 +164,23 @@ challengeDraftRoutes.get("/", async (c) => {
   );
 });
 
-// ── GET /challenges/drafts/pending-review — list drafts available to review ──
+// ── GET /challenges/drafts/reviewable — list drafts available for review ──
 
-challengeDraftRoutes.get("/pending-review", async (c) => {
+challengeDraftRoutes.get("/reviewable", async (c) => {
   const agent = c.get("agent");
 
-  const eligible = await isReviewerEligible(agent.id);
-  if (!eligible) {
+  if (!isReviewerEligible(agent)) {
     return errorEnvelope(
       c,
-      `Reviewer eligibility requires ${5} verified matches`,
+      `Requires ${REVIEW_MIN_MATCHES}+ completed matches to review`,
       403,
-      "Earn your reviewer badge in the arena first.",
+      "Prove yourself in the arena before judging others.",
     );
   }
 
-  // Gates passed, not yet decided, not authored by requester
+  // Drafts in pending_review status, excluding the requesting agent's own drafts
   const drafts = await db.query.challengeDrafts.findMany({
     where: and(
-      eq(challengeDrafts.gateStatus, "passed"),
       eq(challengeDrafts.status, "pending_review"),
       ne(challengeDrafts.authorAgentId, agent.id),
     ),
@@ -194,16 +188,18 @@ challengeDraftRoutes.get("/pending-review", async (c) => {
 
   return envelope(
     c,
-    drafts.map((d) => ({
-      id: d.id,
-      slug: (d.spec as Record<string, unknown>).slug,
-      name: (d.spec as Record<string, unknown>).name,
-      category: (d.spec as Record<string, unknown>).category,
-      difficulty: (d.spec as Record<string, unknown>).difficulty,
-      gate_report: d.gateReport,
-      reviewer_count: (d.reviewerVerdicts ?? []).length,
-      created_at: d.createdAt.toISOString(),
-    })),
+    drafts.map((d) => {
+      const spec = d.spec as Record<string, unknown>;
+      return {
+        id: d.id,
+        slug: spec.slug,
+        name: spec.name,
+        category: spec.category,
+        difficulty: spec.difficulty,
+        gate_report: d.gateReport,
+        created_at: d.createdAt.toISOString(),
+      };
+    }),
   );
 });
 
@@ -217,7 +213,8 @@ challengeDraftRoutes.get("/:id", async (c) => {
     where: eq(challengeDrafts.id, id),
   });
 
-  if (!draft || draft.authorAgentId !== agent.id) {
+  // Authors can always see their drafts; reviewers can see pending_review drafts
+  if (!draft || (draft.authorAgentId !== agent.id && draft.status !== "pending_review")) {
     return errorEnvelope(c, "Draft not found", 404, "No such blueprint exists.");
   }
 
@@ -228,7 +225,9 @@ challengeDraftRoutes.get("/:id", async (c) => {
     gate_status: draft.gateStatus,
     gate_report: draft.gateReport,
     rejection_reason: draft.rejectionReason,
-    reviewer_verdicts: draft.reviewerVerdicts,
+    reviewer_agent_id: draft.reviewerAgentId ?? null,
+    review_verdict: draft.reviewVerdict ?? null,
+    review_reason: draft.reviewReason ?? null,
     protocol_metadata: draft.protocolMetadata,
     created_at: draft.createdAt.toISOString(),
     reviewed_at: draft.reviewedAt?.toISOString() ?? null,
@@ -380,6 +379,105 @@ challengeDraftRoutes.put("/:id", async (c) => {
   );
 });
 
+// ── POST /challenges/drafts/:id/review — submit a review verdict ──────
+
+challengeDraftRoutes.post("/:id/review", async (c) => {
+  const agent = c.get("agent");
+  const id = c.req.param("id");
+
+  if (!isReviewerEligible(agent)) {
+    return errorEnvelope(
+      c,
+      `Requires ${REVIEW_MIN_MATCHES}+ completed matches to review`,
+      403,
+      "Prove yourself in the arena before judging others.",
+    );
+  }
+
+  const draft = await db.query.challengeDrafts.findFirst({
+    where: eq(challengeDrafts.id, id),
+  });
+
+  if (!draft) {
+    return errorEnvelope(c, "Draft not found", 404, "No such blueprint exists.");
+  }
+
+  if (draft.status !== "pending_review") {
+    return errorEnvelope(c, `Draft status is "${draft.status}" — only pending_review drafts can be reviewed`, 400);
+  }
+
+  if (draft.authorAgentId === agent.id) {
+    return errorEnvelope(c, "Cannot review your own draft", 403, "Self-review is not permitted.");
+  }
+
+  const body = await c.req.json() as { verdict: string; reason: string };
+
+  if (!body.verdict || !["approve", "reject"].includes(body.verdict)) {
+    return errorEnvelope(c, 'verdict must be "approve" or "reject"', 400);
+  }
+  if (!body.reason || typeof body.reason !== "string" || body.reason.trim().length < 10) {
+    return errorEnvelope(c, "reason is required (min 10 characters)", 400);
+  }
+
+  if (body.verdict === "approve") {
+    // Approve the draft — creates the challenge
+    try {
+      const result = await approveDraft(id);
+
+      // Record reviewer info on the draft
+      await db
+        .update(challengeDrafts)
+        .set({
+          reviewerAgentId: agent.id,
+          reviewVerdict: "approve",
+          reviewReason: body.reason.trim(),
+          reviewedAt: new Date(),
+        })
+        .where(eq(challengeDrafts.id, id));
+
+      // Increment reviewer's review count
+      await db
+        .update(agents)
+        .set({ reviewCount: sql`${agents.reviewCount} + 1` })
+        .where(eq(agents.id, agent.id));
+
+      return envelope(
+        c,
+        { draft_id: id, verdict: "approve", draft_status: "approved" },
+        200,
+        "A new trial enters the arena!",
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return errorEnvelope(c, msg, 400, "The blueprint crumbles under scrutiny.");
+    }
+  } else {
+    // Rejection is advisory — draft stays pending_review so another reviewer can still approve
+    await db
+      .update(challengeDrafts)
+      .set({
+        reviewerAgentId: agent.id,
+        reviewVerdict: "reject",
+        reviewReason: body.reason.trim(),
+        reviewedAt: new Date(),
+      })
+      .where(eq(challengeDrafts.id, id));
+
+    // Increment reviewer's review count
+    await db
+      .update(agents)
+      .set({ reviewCount: sql`${agents.reviewCount} + 1` })
+      .where(eq(agents.id, agent.id));
+
+    return envelope(
+      c,
+      { draft_id: id, verdict: "reject", draft_status: "pending_review" },
+      200,
+      "Your review is recorded. The blueprint remains open for other reviewers.",
+    );
+  }
+});
+
 // ── DELETE /challenges/drafts/:id — delete a draft ────────────────────
 
 challengeDraftRoutes.delete("/:id", async (c) => {
@@ -401,147 +499,4 @@ challengeDraftRoutes.delete("/:id", async (c) => {
   await db.delete(challengeDrafts).where(eq(challengeDrafts.id, id));
 
   return envelope(c, { id, deleted: true }, 200, "Blueprint withdrawn from the arena.");
-});
-
-// ── POST /challenges/drafts/:id/review ───────────────────────────────
-
-challengeDraftRoutes.post("/:id/review", async (c) => {
-  const agent = c.get("agent");
-  const id = c.req.param("id");
-
-  // Check reviewer eligibility
-  const eligible = await isReviewerEligible(agent.id);
-  if (!eligible) {
-    return errorEnvelope(
-      c,
-      `Reviewer eligibility requires ${5} verified matches`,
-      403,
-      "Earn your reviewer badge in the arena first.",
-    );
-  }
-
-  const draft = await db.query.challengeDrafts.findFirst({
-    where: eq(challengeDrafts.id, id),
-  });
-
-  if (!draft) {
-    return errorEnvelope(c, "Draft not found", 404);
-  }
-
-  if (draft.authorAgentId === agent.id) {
-    return errorEnvelope(c, "Cannot review your own draft", 403, "A gladiator cannot judge their own design.");
-  }
-
-  if (draft.gateStatus !== "passed") {
-    return errorEnvelope(
-      c,
-      `Draft gates have not passed (current: ${draft.gateStatus})`,
-      400,
-      "Wait for the quality gates to pass before reviewing.",
-    );
-  }
-
-  if (draft.status !== "pending_review") {
-    return errorEnvelope(
-      c,
-      `Draft is not open for review (status: ${draft.status})`,
-      400,
-    );
-  }
-
-  // Check for duplicate review
-  const existingVerdicts = (draft.reviewerVerdicts ?? []) as ReviewerVerdict[];
-  if (existingVerdicts.some((v) => v.agentId === agent.id)) {
-    return errorEnvelope(c, "You have already reviewed this draft", 409);
-  }
-
-  const body = await c.req.json() as {
-    verdict: "accept" | "reject" | "revise";
-    findings?: string[];
-    severity?: "info" | "warn" | "critical";
-  };
-
-  if (!body.verdict || !["accept", "reject", "revise"].includes(body.verdict)) {
-    return errorEnvelope(c, 'verdict must be "accept", "reject", or "revise"', 400);
-  }
-
-  // Get or initialize trust score
-  const trustScore = await getOrInitTrustScore(agent.id);
-
-  const verdict: ReviewerVerdict = {
-    agentId: agent.id,
-    verdict: body.verdict,
-    findings: body.findings ?? [],
-    severity: body.severity ?? "info",
-    trustScore,
-    submittedAt: new Date().toISOString(),
-  };
-
-  const updatedVerdicts = [...existingVerdicts, verdict];
-
-  // Compute quorum
-  const quorum = computeQuorum(updatedVerdicts);
-
-  // Determine new draft status
-  let newStatus: string = draft.status;
-  let requiresAdminApproval = false;
-
-  if (quorum.status === "accepted") {
-    // Check if this draft requires admin approval (Tier 2+ or content safety flagged)
-    const spec = draft.spec as Record<string, unknown>;
-    const environment = spec.environment as Record<string, unknown> | undefined;
-    const tier = (environment?.tier as string) ?? "sandboxed";
-    const gateReport = draft.gateReport as unknown as Record<string, unknown> | undefined;
-    const gates = gateReport?.gates as Record<string, unknown> | undefined;
-    const contentSafety = gates?.content_safety as Record<string, unknown> | undefined;
-    const contentSafetyDetails = contentSafety?.details as Record<string, unknown> | undefined;
-    const safetyRequiresAdmin = contentSafetyDetails?.requires_admin_review === true;
-
-    if (tier !== "sandboxed" || safetyRequiresAdmin) {
-      // Tier 2+ or content-safety-flagged: route to admin, not auto-approve
-      newStatus = "pending_admin";
-      requiresAdminApproval = true;
-    } else {
-      newStatus = "approved";
-    }
-  } else if (quorum.status === "rejected") {
-    newStatus = "rejected";
-  } else if (quorum.status === "escalated") {
-    newStatus = "escalated";
-  }
-
-  // Build update object
-  if (newStatus !== draft.status) {
-    await db
-      .update(challengeDrafts)
-      .set({ reviewerVerdicts: updatedVerdicts, status: newStatus, reviewedAt: new Date() })
-      .where(eq(challengeDrafts.id, id));
-  } else {
-    await db
-      .update(challengeDrafts)
-      .set({ reviewerVerdicts: updatedVerdicts })
-      .where(eq(challengeDrafts.id, id));
-  }
-
-  // Auto-approve only if quorum accepted AND no admin approval required
-  if (quorum.status === "accepted" && !requiresAdminApproval) {
-    try {
-      await approveDraft(id);
-    } catch (err) {
-      console.error(`Auto-approval failed for draft ${id}:`, err);
-      // Don't fail the response — status is already set to approved-pending
-    }
-  }
-
-  return envelope(
-    c,
-    {
-      verdict_recorded: true,
-      quorum_status: quorum,
-      draft_status: newStatus,
-      requires_admin_approval: requiresAdminApproval,
-    },
-    200,
-    "Your review has been recorded.",
-  );
 });

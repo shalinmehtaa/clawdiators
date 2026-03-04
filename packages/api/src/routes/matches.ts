@@ -13,11 +13,12 @@ import { getChallenge } from "../challenges/registry.js";
 import { evaluate } from "../challenges/evaluator.js";
 import { injectChallengeMdContext } from "../challenges/workspace.js";
 import { recalibrateChallenge } from "../services/calibration.js";
-import { selectVariant, mergeVariantConfig } from "../services/variants.js";
 import { computeTrackScore } from "../services/tracks.js";
 import { replayStepSchema } from "../schemas/replay.js";
 import { upsertChallengeMemory } from "../services/memory.js";
 import { validateTrajectory } from "../services/trajectory-validation.js";
+import { launchMatchContainers, stopMatchContainers } from "../services/container-orchestrator.js";
+import type { MatchContainerData } from "../services/container-orchestrator.js";
 
 export const matchRoutes = new Hono();
 
@@ -135,16 +136,7 @@ matchRoutes.post(
     const seed = Math.floor(Math.random() * 2147483647);
     const boutName = generateBoutName(seed);
 
-    // Select variant if challenge has A/B variants
-    let variantId: string | null = null;
-    let effectiveConfig = challenge.config;
-    if (challenge.variants && challenge.variants.length > 0) {
-      const selected = selectVariant(challenge.variants, seed);
-      variantId = selected.id;
-      effectiveConfig = mergeVariantConfig(challenge.config as Record<string, unknown>, selected) as typeof challenge.config;
-    }
-
-    const data = mod.generateData(seed, effectiveConfig);
+    const data = mod.generateData(seed, challenge.config);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + challenge.timeLimitSecs * 1000);
 
@@ -172,7 +164,6 @@ matchRoutes.post(
         objective: data.objective,
         startedAt: now,
         expiresAt,
-        variantId,
         attemptNumber,
         memoryless,
         verified: false,
@@ -185,6 +176,52 @@ matchRoutes.post(
     }
     if (challenge.matchType === "long-running") {
       extraUrls.heartbeat_url = `/api/v1/matches/${match.id}/heartbeat`;
+    }
+
+    // For "environment" type challenges: launch live service containers
+    let containerData: MatchContainerData | null = null;
+    let serviceUrls: Record<string, string> = {};
+    let mcpServerUrls: Record<string, { url: string; token: string }> = {};
+    let proxyUrl: string | undefined;
+
+    const wsSpec = mod.workspaceSpec;
+    if (wsSpec?.type === "environment" && (wsSpec.services?.length || wsSpec.mcpServers?.length)) {
+      try {
+        containerData = await launchMatchContainers(match.id, seed, {
+          services: wsSpec.services,
+          mcpServers: wsSpec.mcpServers,
+        }, challenge.timeLimitSecs);
+
+        // Store container data in DB for the proxy routes and cleanup
+        await db
+          .update(matches)
+          .set({ serviceData: containerData as unknown as Record<string, unknown> })
+          .where(eq(matches.id, match.id));
+
+        // Build agent-facing URLs (all routed through the API as proxy)
+        const platformBase = process.env.PLATFORM_URL ?? "";
+        for (const svc of containerData.services) {
+          serviceUrls[svc.name] = `${platformBase}/api/v1/matches/${match.id}/services/${svc.name}`;
+        }
+        for (const mcp of containerData.mcpServers) {
+          mcpServerUrls[mcp.name] = {
+            url: `${platformBase}/api/v1/matches/${match.id}/mcp/${mcp.name}`,
+            token: mcp.token,
+          };
+        }
+        if (wsSpec.proxy) {
+          proxyUrl = `${platformBase}/api/v1/matches/${match.id}/proxy`;
+        }
+      } catch (err: any) {
+        // Container launch failed — expire match and report error
+        await db.update(matches).set({ status: "expired" }).where(eq(matches.id, match.id));
+        return errorEnvelope(
+          c,
+          `Failed to launch challenge environment: ${err.message}`,
+          503,
+          "The arena's simulation infrastructure is temporarily unavailable. Try again shortly.",
+        );
+      }
     }
 
     return envelope(
@@ -212,6 +249,10 @@ matchRoutes.post(
               constraints: challenge.constraints as Record<string, unknown> | null ?? null,
               matchId: match.id,
               agentHarness: (agent.harness as HarnessInfo | null) ?? null,
+              serviceUrls: Object.keys(serviceUrls).length ? serviceUrls : undefined,
+              serviceToken: containerData?.serviceToken,
+              mcpServers: Object.keys(mcpServerUrls).length ? mcpServerUrls : undefined,
+              proxyUrl,
             })
           : null,
         submission_spec: mod.submissionSpec ?? null,
@@ -287,17 +328,8 @@ matchRoutes.post(
 
     const now = new Date();
 
-    // Build effective config (merge variant overrides if applicable)
-    let submitConfig = challenge.config;
-    if (match.variantId && challenge.variants) {
-      const variant = challenge.variants.find((v) => v.id === match.variantId);
-      if (variant) {
-        submitConfig = { ...challenge.config, ...variant.config_overrides };
-      }
-    }
-
     // Generate ground truth from seed via module
-    const data = mod.generateData(match.seed, submitConfig);
+    const data = mod.generateData(match.seed, challenge.config);
 
     // Trajectory validation: check replay_log if submitted
     let isVerified = false;
@@ -342,28 +374,56 @@ matchRoutes.post(
       trajectorySummary = { total_input_tokens: totalInput, total_output_tokens: totalOutput, total_llm_calls: totalCalls };
     }
 
-    // Extract tier from community spec config (if present)
+    // Extract community spec config (if present)
     const challengeConfig = challenge.config as Record<string, unknown> | null;
     const communitySpec = challengeConfig?.communitySpec as Record<string, unknown> | undefined;
-    const envSpec = communitySpec?.environment as { tier?: string; timeout?: number; image?: string; capabilities?: string[] } | undefined;
-    const tier = (envSpec?.tier ?? "sandboxed") as import("@clawdiators/shared").EnvironmentTier;
+    const envSpec = communitySpec?.environment as { timeout?: number; image?: string; capabilities?: string[] } | undefined;
 
-    // Build env vars for Tier 2+ (e.g., ANTHROPIC_API_KEY for LLM-as-judge)
+    // Pass ANTHROPIC_API_KEY when LLM-as-judge scoring is configured
     const evalEnvVars: Record<string, string> = {};
     const scoringConfig = communitySpec?.scoring as { judgeModel?: string } | undefined;
-    if (tier !== "sandboxed" && scoringConfig?.judgeModel && process.env.ANTHROPIC_API_KEY) {
+    if (scoringConfig?.judgeModel && process.env.ANTHROPIC_API_KEY) {
       evalEnvVars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    }
+
+    // For environment challenges: build a metrics fetcher to query live services before scoring
+    const matchContainerData = (match as any).serviceData as MatchContainerData | null;
+    let serviceMetricsFetcher: (() => Promise<Record<string, Record<string, unknown>>>) | undefined;
+    if (matchContainerData?.services?.length) {
+      const mod_ = mod; // capture
+      serviceMetricsFetcher = async () => {
+        const metrics: Record<string, Record<string, unknown>> = {};
+        for (const svc of matchContainerData.services) {
+          const svcSpec = mod_.workspaceSpec?.services?.find((s) => s.name === svc.name);
+          if (!svcSpec?.metricsEndpoint) continue;
+          try {
+            const res = await fetch(`${svc.internalUrl}${svcSpec.metricsEndpoint}`, {
+              headers: { authorization: `Bearer ${matchContainerData.serviceToken}` },
+              signal: AbortSignal.timeout(5_000),
+            });
+            if (res.ok) metrics[svc.name] = await res.json() as Record<string, unknown>;
+          } catch {
+            // Best-effort — missing metrics won't block scoring
+          }
+        }
+        return metrics;
+      };
     }
 
     const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
       verified: isVerified,
       constraints: challenge.constraints as import("@clawdiators/shared").ChallengeConstraints | null,
       trajectory: trajectorySummary,
-      tier: tier !== "sandboxed" ? tier : undefined,
       envVars: Object.keys(evalEnvVars).length > 0 ? evalEnvVars : undefined,
       timeoutSecs: envSpec?.timeout,
       image: envSpec?.image,
+      serviceMetricsFetcher,
     });
+
+    // Stop environment containers now that scoring is complete (best-effort)
+    if (matchContainerData) {
+      stopMatchContainers(matchContainerData);
+    }
     const { breakdown } = evalResult;
 
     // Determine result (solo calibration)
@@ -827,7 +887,6 @@ matchRoutes.get("/:matchId", async (c) => {
     challenge_id: match.challengeId,
     challenge_slug: challenge?.slug ?? null,
     match_type: challenge?.matchType ?? "single",
-    variant_id: match.variantId ?? null,
     attempt_number: match.attemptNumber,
     memoryless: match.memoryless,
     verified: match.verified,

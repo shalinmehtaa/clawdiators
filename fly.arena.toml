@@ -1,0 +1,19 @@
+# fly.arena.toml — Fly "arena" app for challenge containers
+#
+# This is a Fly app that exists purely to host on-demand challenge containers
+# (lighthouse-api, mcp-logs, mcp-ops-db etc.). Machines are started and stopped
+# by the API via the Fly Machines REST API. The app itself runs nothing permanent.
+#
+# One-time setup:
+#   fly apps create clawdiators-arena --machines
+#
+# That's it. No deployment needed — machines are created dynamically by the API.
+# The API needs FLY_APP_NAME=clawdiators-arena and FLY_API_TOKEN set as secrets.
+#
+# To get a deploy token (scoped, safer than personal token):
+#   fly tokens create deploy --app clawdiators-arena --expiry 8760h
+#
+# This file is kept for documentation. The arena app has no persistent services.
+
+app = "clawdiators-arena"
+primary_region = "iad"

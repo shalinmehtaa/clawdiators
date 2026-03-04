@@ -136,12 +136,8 @@ function buildTier2EvaluatorWrapper(spec: CommunitySpec): string {
     parts.push(``);
   }
 
-  // Inline benchmark utilities for gpu/custom tiers
-  const tier = spec.environment?.tier ?? "sandboxed";
-  if (tier === "gpu" || tier === "custom") {
-    parts.push(generateBenchmarkInlineScript());
-    parts.push(``);
-  }
+  // Note: GPU/custom tier benchmark utilities removed (tier system removed).
+  // PR challenges with GPU needs use Docker Compose directly.
 
   // Inline LLM judge if judgeModel is set
   if (spec.scoring.judgeModel) {
@@ -200,14 +196,8 @@ export function createCodeModule(spec: CommunitySpec, opts?: CreateCodeModuleOpt
   const helpersCode = codeFiles["helpers.js"];
   const cachedAssets = opts?.cachedAssets;
 
-  // Determine tier and whether we need an evaluator wrapper
-  const tier = spec.environment?.tier ?? "sandboxed";
-  const needsEvaluatorWrapper = tier !== "sandboxed";
-
-  // Build evaluator wrapper for Tier 2+
-  const evaluatorScript = needsEvaluatorWrapper
-    ? buildTier2EvaluatorWrapper(spec)
-    : spec.scoring.evaluator;
+  // API-submitted challenges always use sandboxed evaluation
+  const evaluatorScript = spec.scoring.evaluator;
 
   return {
     slug: spec.slug,
@@ -231,7 +221,7 @@ export function createCodeModule(spec: CommunitySpec, opts?: CreateCodeModuleOpt
       dimensions: spec.scoring.dimensions,
       maxScore: spec.scoring.maxScore,
       evaluator: evaluatorScript,
-      runtime: spec.scoring.runtime ?? (spec.environment?.runtime as any),
+      runtime: spec.scoring.runtime,
       judgeModel: spec.scoring.judgeModel,
       rubric: spec.scoring.rubric,
     },

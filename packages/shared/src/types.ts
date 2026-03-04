@@ -214,18 +214,6 @@ export interface SubmissionSpec {
 /** Runtime environment for evaluator containers. */
 export type EvalRuntime = "node" | "python" | "multi";
 
-/** Environment tier for code-based community challenges. */
-export type EnvironmentTier = "sandboxed" | "networked" | "gpu" | "custom";
-
-/** Environment specification for code-based challenge execution. */
-export interface EnvironmentSpec {
-  tier: EnvironmentTier;
-  runtime?: EvalRuntime;
-  timeout?: number;
-  image?: string;
-  capabilities?: string[];
-}
-
 /** A single step in an agent's replay log (tool call or LLM call). */
 export type ReplayStep = ToolCallStep | LLMCallStep;
 
@@ -266,7 +254,6 @@ export interface SubmissionMetadata {
 export interface EvaluationLog {
   method: string;
   runtime?: EvalRuntime;
-  tier?: EnvironmentTier;
   startedAt: string;
   completedAt: string;
   durationMs?: number;
@@ -336,22 +323,6 @@ export interface GateReport {
   generated_at: string;
 }
 
-export interface ReviewerVerdict {
-  agentId: string;
-  verdict: "accept" | "reject" | "revise";
-  findings: string[];
-  severity: "info" | "warn" | "critical";
-  trustScore: number;   // snapshotted at review time
-  submittedAt: string;
-}
-
-export interface QuorumResult {
-  status: "pending" | "accepted" | "rejected" | "escalated";
-  reportCount: number;
-  trustWeightSum: number;
-  hasCriticalFinding: boolean;
-}
-
 /** Optional constraints on agent resource usage. */
 export interface ChallengeConstraints {
   tokenBudget?: number;
@@ -389,7 +360,6 @@ export interface ChallengeAnalytics {
   score_distribution: { bucket: string; count: number }[];
   score_by_harness: Record<string, { mean: number; median: number; count: number }>;
   score_by_model: Record<string, { mean: number; median: number; count: number }>;
-  score_by_variant: Record<string, { mean: number; median: number; count: number; win_rate: number }>;
   score_trend: { date: string; mean_score: number; count: number }[];
   computed_at: string;
 }
@@ -424,15 +394,6 @@ export interface TrackProgress {
   best_scores: Record<string, number>;
   cumulative_score: number;
   completed: boolean;
-}
-
-// ── A/B Testing Variants ─────────────────────────────────────────────
-
-export interface ChallengeVariant {
-  id: string;           // "A", "B"
-  label: string;        // "Original", "Harder ciphers"
-  config_overrides: Record<string, unknown>;
-  weight?: number;      // assignment weight, default equal
 }
 
 /**
@@ -555,6 +516,10 @@ export interface ProxySpec {
   logBodies?: boolean;
   /** Max body size to log in bytes (default 5120 = 5KB) */
   maxLogBodySize?: number;
+  /** Which service handles proxied requests (default: first service) */
+  backendService?: string;
+  /** Path prefix on the backend service (default: "/docs") */
+  backendPathPrefix?: string;
 }
 
 /** Spec for running submitted code in a controlled environment (execution scoring). */
@@ -567,8 +532,8 @@ export interface ExecutionSpec {
   workdir?: string;
   /** Timeout for code execution in seconds (separate from match time limit) */
   executionTimeoutSecs: number;
-  /** Resource tier for the execution container */
-  tier: EnvironmentTier;
+  /** Docker resource limits (memory, cpus) */
+  resources?: { memory?: string; cpus?: number };
   /** Baseline for comparison (pre-computed or run alongside) */
   baseline?: {
     /** Baseline source files */

@@ -101,7 +101,6 @@ const codeFilesSchema = z.object({
   "helpers.js": z.string().max(100_000).optional(),
 });
 
-const VALID_TIERS = ["sandboxed", "networked", "gpu", "custom"] as const;
 const VALID_RUNTIMES = ["node", "python", "multi"] as const;
 
 // ── Image Allowlist ──────────────────────────────────────────────────
@@ -135,14 +134,6 @@ export function removeAllowedImage(image: string): boolean {
   if (DEFAULT_ALLOWED_IMAGES.includes(image)) return false;
   return allowedImages.delete(image);
 }
-
-const environmentSchema = z.object({
-  tier: z.enum(VALID_TIERS).default("sandboxed"),
-  runtime: z.enum(VALID_RUNTIMES).default("node"),
-  timeout: z.number().min(5).max(3600).default(60),
-  image: z.string().optional(),
-  capabilities: z.array(z.string()).optional(),
-});
 
 const assetSchema = z.object({
   url: z.string().url(),
@@ -198,7 +189,6 @@ export const communitySpecSchema = z.object({
   phases: z.array(phaseSchema).optional(),
   // Code-based challenge support
   codeFiles: codeFilesSchema.optional(),
-  environment: environmentSchema.optional(),
   assets: z.array(assetSchema).optional(),
   // Challenge policies
   constraints: constraintsSchema,
@@ -228,49 +218,10 @@ export const communitySpecSchema = z.object({
     return true;
   },
   { message: "scorer is required when maxScore > 1000 (default scorer caps at 1000)" },
-).refine(
-  (spec) => {
-    // gpu/custom tier requires image
-    if (spec.environment?.tier === "gpu" || spec.environment?.tier === "custom") {
-      if (!spec.environment.image) return false;
-    }
-    return true;
-  },
-  { message: "environment.image is required for gpu/custom tiers" },
-).refine(
-  (spec) => {
-    // image must be in the allowlist
-    if (spec.environment?.image && !isImageAllowed(spec.environment.image)) {
-      return false;
-    }
-    return true;
-  },
-  { message: "environment.image must be an allowlisted image" },
-).refine(
-  (spec) => {
-    // assets require networked+ tier (need network to download)
-    if (spec.assets && spec.assets.length > 0) {
-      const tier = spec.environment?.tier ?? "sandboxed";
-      if (tier === "sandboxed") return false;
-    }
-    return true;
-  },
-  { message: "assets require environment.tier to be networked, gpu, or custom" },
-).refine(
-  (spec) => {
-    // judgeModel requires non-sandboxed tier (needs network for API calls)
-    if (spec.scoring.judgeModel) {
-      const tier = spec.environment?.tier ?? "sandboxed";
-      if (tier === "sandboxed") return false;
-    }
-    return true;
-  },
-  { message: "scoring.judgeModel requires environment.tier to be networked, gpu, or custom (needs network for API calls)" },
 );
 
 export type CommunitySpec = z.infer<typeof communitySpecSchema>;
 export type CodeFiles = z.infer<typeof codeFilesSchema>;
-export type EnvironmentTier = (typeof VALID_TIERS)[number];
 
 /**
  * Validate a community challenge spec.

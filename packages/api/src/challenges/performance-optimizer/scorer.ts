@@ -88,7 +88,7 @@ export function scoreOptimizer(input: ScoringInput): ScoreResult {
     }
   }
 
-  raw.optimization = Math.max(0, Math.min(1000, optScore));
+  raw.correctness = Math.max(0, Math.min(1000, optScore));
 
   // ── Correctness (0-1000) ───────────────────────────────────────
   // We can't run the code server-side in Phase 1, so we assess based on
@@ -122,7 +122,7 @@ export function scoreOptimizer(input: ScoringInput): ScoreResult {
     }
   }
 
-  raw.correctness = Math.min(1000, correctScore);
+  raw.code_quality = Math.min(1000, correctScore);
 
   // ── Speed (0-1000) ─────────────────────────────────────────────
   const elapsed = (submittedAt.getTime() - startedAt.getTime()) / 1000;

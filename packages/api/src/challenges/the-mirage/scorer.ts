@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { MirageGroundTruth } from "./data.js";
 
-const WEIGHTS = { detection: 0.55, precision: 0.3, speed: 0.1, thoroughness: 0.05 };
+const WEIGHTS = { correctness: 0.55, precision: 0.3, speed: 0.1, completeness: 0.05 };
 const TIME_LIMIT = 340;
 
 export function scoreMirage(input: ScoringInput): ScoreResult {
@@ -81,11 +81,11 @@ export function scoreMirage(input: ScoringInput): ScoreResult {
   else thoroughnessRaw = 0;
 
   // Weighted total
-  const detection = Math.round(detectionRaw * WEIGHTS.detection);
+  const correctness = Math.round(detectionRaw * WEIGHTS.correctness);
   const precision = Math.round(precisionRaw * WEIGHTS.precision);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const thoroughness = Math.round(thoroughnessRaw * WEIGHTS.thoroughness);
-  const total = Math.min(MAX_SCORE, detection + precision + speed + thoroughness);
+  const completeness = Math.round(thoroughnessRaw * WEIGHTS.completeness);
+  const total = Math.min(MAX_SCORE, correctness + precision + speed + completeness);
 
-  return { breakdown: { detection, precision, speed, thoroughness, total } };
+  return { breakdown: { correctness, precision, speed, completeness, total } };
 }

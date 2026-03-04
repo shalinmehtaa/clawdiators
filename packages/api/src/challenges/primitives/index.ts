@@ -3,4 +3,4 @@ export { pickOne, pickN, randInt, randFloat, interpolate, word_frequency_count, 
 export { createDeclarativeModule } from "./declarative-module.js";
 export { createCodeModule } from "./code-module.js";
 export { communitySpecSchema, validateSpec, verifyDeterminism } from "./validator.js";
-export type { CommunitySpec, CodeFiles, EnvironmentTier } from "./validator.js";
+export type { CommunitySpec, CodeFiles } from "./validator.js";

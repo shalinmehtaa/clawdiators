@@ -1,4 +1,4 @@
-import type { ScoreBreakdown, EvaluationLog, EvalRuntime, ChallengeConstraints, EnvironmentTier } from "@clawdiators/shared";
+import type { ScoreBreakdown, EvaluationLog, EvalRuntime, ChallengeConstraints } from "@clawdiators/shared";
 import type { ChallengeModule, ScoringInput, ScoreResult } from "./types.js";
 import {
   isDockerAvailable,
@@ -26,14 +26,24 @@ export async function evaluate(
     verified?: boolean;
     constraints?: ChallengeConstraints | null;
     trajectory?: { total_input_tokens: number; total_output_tokens: number; total_llm_calls: number } | null;
-    tier?: EnvironmentTier;
     envVars?: Record<string, string>;
     image?: string;
     timeoutSecs?: number;
+    /** For "environment" challenges: fetch metrics from each service before scoring. */
+    serviceMetricsFetcher?: () => Promise<Record<string, Record<string, unknown>>>;
   },
 ): Promise<{ result: ScoreResult; log: EvaluationLog }> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
+
+  // For environment challenges: fetch service metrics before scoring
+  if (opts?.serviceMetricsFetcher) {
+    try {
+      input.serviceMetrics = await opts.serviceMetricsFetcher();
+    } catch (err: any) {
+      errors.push(`Failed to fetch service metrics: ${err.message}`);
+    }
+  }
 
   const scoringSpec = mod.scoringSpec;
   const method = scoringSpec?.method ?? "deterministic";
@@ -109,7 +119,6 @@ export async function evaluate(
       const evalFn = useDocker ? evaluateInDocker : evaluateInSubprocess;
 
       const tierOpts = {
-        tier: opts?.tier,
         envVars,
         image: opts?.image,
       };
@@ -198,12 +207,6 @@ export async function evaluate(
   const completedAt = new Date().toISOString();
   const durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
 
-  // Compute estimated cost for GPU evaluations
-  const gpuHourlyRate = Number(process.env.CLAWDIATORS_GPU_HOURLY_RATE ?? "3.50");
-  const estimatedCostUsd = opts?.tier === "gpu"
-    ? Number(((durationMs / 3_600_000) * gpuHourlyRate).toFixed(4))
-    : undefined;
-
   // Build final scores (from breakdown, excluding total)
   const finalScores: Record<string, number> = {};
   for (const [key, value] of Object.entries(result.breakdown)) {
@@ -213,11 +216,9 @@ export async function evaluate(
   const log: EvaluationLog = {
     method,
     runtime,
-    tier: opts?.tier,
     startedAt,
     completedAt,
     durationMs,
-    estimatedCostUsd,
     containerExitCode,
     stdout,
     rawScores,

@@ -1,0 +1,46 @@
+# Docker Compose for challenges that need live services.
+# Delete this file if your challenge doesn't need services.
+#
+# Environment variables injected by the platform:
+#   SEED          — match seed for deterministic data generation
+#   MATCH_ID      — unique match identifier
+#   SERVICE_TOKEN — auth token for service-to-platform communication
+#
+# Uncomment and customize the services below.
+
+# services:
+#   my-api:
+#     build: ./services/my-api
+#     environment:
+#       SEED: "${SEED}"
+#       MATCH_ID: "${MATCH_ID}"
+#       PORT: "3000"
+#     ports:
+#       - "3000"
+#     healthcheck:
+#       test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+#       interval: 2s
+#       timeout: 30s
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 512m
+#           cpus: "1"
+#
+#   # MCP server (optional — uncomment if your challenge exposes MCP tools)
+#   # my-mcp:
+#   #   build: ./services/my-mcp
+#   #   environment:
+#   #     SEED: "${SEED}"
+#   #     PORT: "3100"
+#   #   ports:
+#   #     - "3100"
+#   #   healthcheck:
+#   #     test: ["CMD", "curl", "-sf", "http://localhost:3100/health"]
+#   #     interval: 2s
+#   #     timeout: 30s
+#   #   deploy:
+#   #     resources:
+#   #       limits:
+#   #         memory: 256m
+#   #         cpus: "0.5"

@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { CipherGroundTruth } from "./data.js";
 
-const WEIGHTS = { decryption_accuracy: 0.5, speed: 0.2, methodology: 0.15, difficulty_bonus: 0.15 };
+const WEIGHTS = { correctness: 0.65, speed: 0.20, methodology: 0.15 };
 const TIME_LIMIT = 120;
 
 /** Strip trailing padding 'x' characters added by columnar transposition. */
@@ -91,12 +91,14 @@ export function scoreCipher(input: ScoringInput): ScoreResult {
   }
   const diffBonusRaw = diffBonusMax > 0 ? Math.round((diffBonusEarned / diffBonusMax) * 1000) : 0;
 
+  // Merge decryption accuracy and difficulty bonus into single correctness raw score
+  const correctnessRaw = Math.round(accuracyRaw * (0.50 / 0.65) + diffBonusRaw * (0.15 / 0.65));
+
   // Weighted total
-  const decryption_accuracy = Math.round(accuracyRaw * WEIGHTS.decryption_accuracy);
+  const correctness = Math.round(correctnessRaw * WEIGHTS.correctness);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
   const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
-  const difficulty_bonus = Math.round(diffBonusRaw * WEIGHTS.difficulty_bonus);
-  const total = Math.min(MAX_SCORE, decryption_accuracy + speed + methodology + difficulty_bonus);
+  const total = Math.min(MAX_SCORE, correctness + speed + methodology);
 
-  return { breakdown: { decryption_accuracy, speed, methodology, difficulty_bonus, total } };
+  return { breakdown: { correctness, speed, methodology, total } };
 }

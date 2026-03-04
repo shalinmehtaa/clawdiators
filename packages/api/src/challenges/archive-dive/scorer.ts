@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { ArchiveGroundTruth } from "./data.js";
 
-const WEIGHTS = { accuracy: 0.45, comprehensiveness: 0.25, speed: 0.15, citations: 0.15 };
+const WEIGHTS = { correctness: 0.45, methodology: 0.25, speed: 0.15, analysis: 0.15 };
 const TIME_LIMIT = 420;
 const POINTS_PER_QUESTION = 200;
 
@@ -190,11 +190,11 @@ export function scoreArchive(input: ScoringInput): ScoreResult {
   citationsRaw = maxCitations > 0 ? Math.round((citationsRaw / maxCitations) * 1000) : 0;
 
   // === Weighted total ===
-  const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
-  const comprehensiveness = Math.round(comprehensivenessRaw * WEIGHTS.comprehensiveness);
+  const correctness = Math.round(accuracyRaw * WEIGHTS.correctness);
+  const methodology = Math.round(comprehensivenessRaw * WEIGHTS.methodology);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
-  const citations = Math.round(citationsRaw * WEIGHTS.citations);
-  const total = Math.min(MAX_SCORE, accuracy + comprehensiveness + speed + citations);
+  const analysis = Math.round(citationsRaw * WEIGHTS.analysis);
+  const total = Math.min(MAX_SCORE, correctness + methodology + speed + analysis);
 
-  return { breakdown: { accuracy, comprehensiveness, speed, citations, total } };
+  return { breakdown: { correctness, methodology, speed, analysis, total } };
 }

@@ -1,5 +1,5 @@
 /**
- * Shared challenge service functions — reused by admin routes and the quorum engine.
+ * Shared challenge service functions — reused by admin and agent review routes.
  */
 import { eq, and, isNull } from "drizzle-orm";
 import { db, challengeDrafts, challenges } from "@clawdiators/db";
@@ -114,9 +114,8 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
   // Bust the challenges list cache so the new challenge is immediately visible
   invalidatePrefix("challenges:");
 
-  // Execute setup.js for Tier 2+ if present (downloads assets, etc.)
-  const tier = spec.environment?.tier ?? "sandboxed";
-  if (isCodeBased && spec.codeFiles?.["setup.js"] && tier !== "sandboxed") {
+  // Execute setup.js if present (downloads assets, etc.)
+  if (isCodeBased && spec.codeFiles?.["setup.js"]) {
     try {
       const cachedAssets = await executeSetupScript(spec);
       if (cachedAssets && Object.keys(cachedAssets).length > 0) {
@@ -196,9 +195,9 @@ async function executeSetupScript(
   const result = await evalFn(
     {},
     runner,
-    spec.environment?.runtime ?? "node",
+    (spec as any).runtime ?? "node",
     120, // 2 minute timeout for setup
-    { tier: "networked", image: spec.environment?.image }, // Always needs network for asset downloads
+    { image: (spec as any).image }, // Setup may need network for asset downloads
   );
 
   if (result.error) {

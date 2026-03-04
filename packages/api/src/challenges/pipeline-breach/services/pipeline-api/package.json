@@ -1,0 +1,13 @@
+{
+  "name": "pipeline-api",
+  "version": "1.0.0",
+  "description": "PIPELINE BREACH supply chain forensics simulation API",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

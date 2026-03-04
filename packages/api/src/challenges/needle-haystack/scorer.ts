@@ -41,7 +41,7 @@ export function scoreHaystack(input: ScoringInput): ScoreResult {
   }
 
   const totalQuestions = truth.answers.length;
-  raw.accuracy = Math.round(((correctCount + partialCredit * 0.25) / totalQuestions) * 1000);
+  raw.correctness = Math.round(((correctCount + partialCredit * 0.25) / totalQuestions) * 1000);
 
   // ── Citation Quality (0-1000) ──────────────────────────────────
   let citationScore = 0;
@@ -65,7 +65,7 @@ export function scoreHaystack(input: ScoringInput): ScoreResult {
     }
   }
 
-  raw.citations = citationsGiven > 0
+  raw.analysis = citationsGiven > 0
     ? Math.round((citationScore / citationsGiven) * 1000)
     : 0;
 

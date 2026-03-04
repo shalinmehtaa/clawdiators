@@ -121,12 +121,12 @@ describe("formatMemoryBlock()", () => {
       makeMemory({
         attempt_count: 2,
         best_score: 800,
-        best_score_breakdown: { total: 800, decryption_accuracy: 850, speed: 700 },
+        best_score_breakdown: { total: 800, correctness: 850, speed: 700 },
       }),
       null,
     );
     expect(block).toContain("Best breakdown");
-    expect(block).toContain("decryption_accuracy: 850");
+    expect(block).toContain("correctness: 850");
     expect(block).not.toContain("total:"); // 'total' key excluded
   });
 

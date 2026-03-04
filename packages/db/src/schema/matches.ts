@@ -46,9 +46,6 @@ export const matches = pgTable("matches", {
   // Harness tracking
   harnessId: text("harness_id"),
 
-  // A/B variant tracking
-  variantId: text("variant_id"),
-
   // Attempt tracking & memoryless mode
   attemptNumber: integer("attempt_number").notNull().default(1),
   memoryless: boolean("memoryless").notNull().default(false),
@@ -69,6 +66,10 @@ export const matches = pgTable("matches", {
     .notNull()
     .default([]),
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+
+  // Environment challenge: running container metadata (URLs, tokens, IDs)
+  // Stored so proxy routes can resolve internalUrl and tokens per match.
+  serviceData: jsonb("service_data").$type<Record<string, unknown>>(),
 
   // Timestamps
   startedAt: timestamp("started_at", { withTimezone: true })

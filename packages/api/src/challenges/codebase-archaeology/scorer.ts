@@ -38,7 +38,7 @@ export function scoreArchaeology(input: ScoringInput): ScoreResult {
     }
   }
 
-  raw.identification = Math.min(1000, identScore);
+  raw.correctness = Math.min(1000, identScore);
 
   // ── Fix Quality (0-1000) ───────────────────────────────────────
   let fixScore = 0;
@@ -77,7 +77,7 @@ export function scoreArchaeology(input: ScoringInput): ScoreResult {
     }
   }
 
-  raw.fix_quality = Math.min(1000, fixScore);
+  raw.code_quality = Math.min(1000, fixScore);
 
   // ── Speed (0-1000) ─────────────────────────────────────────────
   const elapsed = (submittedAt.getTime() - startedAt.getTime()) / 1000;

@@ -32,8 +32,6 @@ adminRoutes.get("/drafts", async (c) => {
     c,
     drafts.map((d) => {
       const spec = d.spec as Record<string, unknown>;
-      const environment = spec.environment as Record<string, unknown> | undefined;
-      const tier = (environment?.tier as string) ?? "sandboxed";
       const gateReport = d.gateReport as unknown as Record<string, unknown> | undefined;
       const gates = gateReport?.gates as Record<string, unknown> | undefined;
       const contentSafety = gates?.content_safety as Record<string, unknown> | undefined;
@@ -47,11 +45,7 @@ adminRoutes.get("/drafts", async (c) => {
         name: spec.name,
         status: d.status,
         gate_status: d.gateStatus,
-        environment_tier: tier,
         requires_admin_review: requiresAdminReview,
-        quorum_status: d.reviewerVerdicts?.length
-          ? `${d.reviewerVerdicts.length} verdicts`
-          : "no verdicts",
         rejection_reason: d.rejectionReason,
         created_at: d.createdAt.toISOString(),
         reviewed_at: d.reviewedAt?.toISOString() ?? null,
@@ -96,31 +90,6 @@ adminRoutes.post("/drafts/:id/approve", async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     return errorEnvelope(c, msg, 400, "The blueprint crumbles under scrutiny.");
   }
-});
-
-// POST /admin/drafts/:id/escalate — manually escalate a draft for human review
-adminRoutes.post("/drafts/:id/escalate", async (c) => {
-  const id = c.req.param("id");
-  const body = await c.req.json().catch(() => ({}));
-  const reason = (body as { reason?: string }).reason ?? "Escalated by admin.";
-
-  const draft = await db.query.challengeDrafts.findFirst({
-    where: eq(challengeDrafts.id, id),
-  });
-
-  if (!draft) {
-    return errorEnvelope(c, "Draft not found", 404);
-  }
-  if (draft.status === "approved") {
-    return errorEnvelope(c, "Cannot escalate an approved draft", 400);
-  }
-
-  await db
-    .update(challengeDrafts)
-    .set({ status: "escalated", rejectionReason: reason, reviewedAt: new Date() })
-    .where(eq(challengeDrafts.id, id));
-
-  return envelope(c, { id, status: "escalated", reason }, 200, "Draft escalated for human review.");
 });
 
 // POST /admin/drafts/:id/reject — set rejection_reason + reviewed_at

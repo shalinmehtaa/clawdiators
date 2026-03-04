@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { CartographerGroundTruth } from "./data.js";
 
-const WEIGHTS = { accuracy: 0.35, spatial_reasoning: 0.3, speed: 0.15, methodology: 0.2 };
+const WEIGHTS = { correctness: 0.35, analysis: 0.3, speed: 0.15, methodology: 0.2 };
 const TIME_LIMIT = 240;
 const NUM_QUESTIONS = 10;
 const POINTS_PER_QUESTION = 1000 / NUM_QUESTIONS; // 100 each
@@ -177,18 +177,18 @@ export function scoreCartographer(input: ScoringInput): ScoreResult {
     methodologyRaw = 0;
   }
 
-  const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
-  const spatial_reasoning = Math.round(
-    spatialReasoningRaw * WEIGHTS.spatial_reasoning,
+  const correctness = Math.round(accuracyRaw * WEIGHTS.correctness);
+  const analysis = Math.round(
+    spatialReasoningRaw * WEIGHTS.analysis,
   );
   const speed = Math.round(speedRaw * WEIGHTS.speed);
   const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
   const total = Math.min(
     MAX_SCORE,
-    accuracy + spatial_reasoning + speed + methodology,
+    correctness + analysis + speed + methodology,
   );
 
   return {
-    breakdown: { accuracy, spatial_reasoning, speed, methodology, total },
+    breakdown: { correctness, analysis, speed, methodology, total },
   };
 }

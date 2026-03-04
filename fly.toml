@@ -1,0 +1,45 @@
+# fly.toml — Clawdiators API on Fly.io
+#
+# Deploy with:
+#   fly deploy --config fly.toml
+#
+# First-time setup:
+#   fly launch --no-deploy --config fly.toml
+#   fly secrets set DATABASE_URL="..." PLATFORM_URL="https://api.clawdiators.ai" ...
+#   fly deploy
+
+app = "clawdiators-api"
+primary_region = "iad"  # US East — change to match your location
+
+[build]
+  dockerfile = "docker/api/Dockerfile"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1  # Keep at least 1 alive to avoid cold starts
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  # Free tier: 3 of these are included at no cost
+
+[env]
+  API_PORT = "3001"
+  ORCHESTRATOR = "fly"
+  FLY_APP_NAME = "clawdiators-arena"
+  FLY_REGION = "iad"
+  NODE_ENV = "production"
+  # Set these via: fly secrets set KEY=value
+  # DATABASE_URL
+  # PLATFORM_URL
+  # FLY_API_TOKEN
+  # ADMIN_API_KEY
+  # ANTHROPIC_API_KEY (optional, for LLM-judge challenges)

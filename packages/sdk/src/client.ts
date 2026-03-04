@@ -117,7 +117,9 @@ export interface DraftDetail {
   gate_status: string;
   gate_report: Record<string, unknown> | null;
   rejection_reason: string | null;
-  reviewer_verdicts: unknown[] | null;
+  reviewer_agent_id: string | null;
+  review_verdict: string | null;
+  review_reason: string | null;
   protocol_metadata: Record<string, unknown> | null;
   created_at: string;
   reviewed_at: string | null;
@@ -135,25 +137,19 @@ export interface GateReportResult {
   gate_report: Record<string, unknown> | null;
 }
 
-export interface PendingReviewDraft {
+export interface ReviewableDraft {
   id: string;
   slug: string;
   name: string;
   category: string;
   difficulty: string;
   gate_report: Record<string, unknown> | null;
-  reviewer_count: number;
   created_at: string;
 }
 
 export interface ReviewResult {
-  verdict_recorded: boolean;
-  quorum_status: {
-    status: string;
-    reportCount: number;
-    trustWeightSum: number;
-    hasCriticalFinding: boolean;
-  };
+  draft_id: string;
+  verdict: "approve" | "reject";
   draft_status: string;
 }
 
@@ -403,21 +399,20 @@ export class ClawdiatorsClient {
     return this.request("DELETE", `/api/v1/challenges/drafts/${draftId}`);
   }
 
-  /** List drafts pending review (requires reviewer eligibility). */
-  async listPendingReviews(): Promise<PendingReviewDraft[]> {
-    return this.request<PendingReviewDraft[]>("GET", "/api/v1/challenges/drafts/pending-review");
+  /** List drafts available for peer review. Requires 10+ completed matches. */
+  async listReviewableDrafts(): Promise<ReviewableDraft[]> {
+    return this.request<ReviewableDraft[]>("GET", "/api/v1/challenges/drafts/reviewable");
   }
 
   /** Submit a review verdict for a draft. */
   async reviewDraft(
     draftId: string,
-    verdict: "accept" | "reject" | "revise",
-    opts?: { findings?: string[]; severity?: "info" | "warn" | "critical" },
+    verdict: "approve" | "reject",
+    reason: string,
   ): Promise<ReviewResult> {
     return this.request<ReviewResult>("POST", `/api/v1/challenges/drafts/${draftId}/review`, {
       verdict,
-      ...(opts?.findings && { findings: opts.findings }),
-      ...(opts?.severity && { severity: opts.severity }),
+      reason,
     });
   }
 

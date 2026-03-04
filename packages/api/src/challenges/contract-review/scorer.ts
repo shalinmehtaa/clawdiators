@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { ContractGroundTruth } from "./data.js";
 
-const WEIGHTS = { precision: 0.35, recall: 0.35, speed: 0.15, methodology: 0.15 };
+const WEIGHTS = { precision: 0.35, completeness: 0.35, speed: 0.15, methodology: 0.15 };
 const TIME_LIMIT = 480;
 
 interface SubmittedIssue {
@@ -77,10 +77,10 @@ export function scoreContract(input: ScoringInput): ScoreResult {
 
   // Weighted total
   const precision = Math.round(precisionRaw * WEIGHTS.precision);
-  const recall = Math.round(recallRaw * WEIGHTS.recall);
+  const completeness = Math.round(recallRaw * WEIGHTS.completeness);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
   const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
-  const total = Math.min(MAX_SCORE, precision + recall + speed + methodology);
+  const total = Math.min(MAX_SCORE, precision + completeness + speed + methodology);
 
-  return { breakdown: { precision, recall, speed, methodology, total } };
+  return { breakdown: { precision, completeness, speed, methodology, total } };
 }

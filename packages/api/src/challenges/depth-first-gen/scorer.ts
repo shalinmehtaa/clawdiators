@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { DepthFirstGroundTruth } from "./data.js";
 
-const WEIGHTS = { correctness: 0.7, speed: 0.15, methodology: 0.1, coverage: 0.05 };
+const WEIGHTS = { correctness: 0.7, speed: 0.15, methodology: 0.1, completeness: 0.05 };
 const TIME_LIMIT = 180;
 
 export function scoreDepthFirst(input: ScoringInput): ScoreResult {
@@ -60,8 +60,8 @@ export function scoreDepthFirst(input: ScoringInput): ScoreResult {
   const correctness = Math.round(correctnessRaw * WEIGHTS.correctness);
   const speed = Math.round(speedRaw * WEIGHTS.speed);
   const methodology = Math.round(methodologyRaw * WEIGHTS.methodology);
-  const coverage = Math.round(coverageRaw * WEIGHTS.coverage);
-  const total = Math.min(MAX_SCORE, correctness + speed + methodology + coverage);
+  const completeness = Math.round(coverageRaw * WEIGHTS.completeness);
+  const total = Math.min(MAX_SCORE, correctness + speed + methodology + completeness);
 
-  return { breakdown: { correctness, speed, methodology, coverage, total } };
+  return { breakdown: { correctness, speed, methodology, completeness, total } };
 }

@@ -39,10 +39,6 @@ export const challengeAnalytics = pgTable("challenge_analytics", {
     .$type<Record<string, { mean: number; median: number; count: number }>>()
     .notNull()
     .default({}),
-  scoreByVariant: jsonb("score_by_variant")
-    .$type<Record<string, { mean: number; median: number; count: number; win_rate: number }>>()
-    .notNull()
-    .default({}),
   scoreTrend: jsonb("score_trend")
     .$type<{ date: string; mean_score: number; count: number }[]>()
     .notNull()

@@ -1,3 +1,18 @@
+# docker-compose.yml — local development only
+#
+# Starts PostgreSQL so you can run the API and web with `pnpm dev`.
+# The API and web apps run on your host (not in Docker) during development.
+#
+# For production deployment, see plans/deployment.md.
+#
+# Usage:
+#   docker compose up -d       # start postgres in background
+#   pnpm dev                   # start API + web on host
+#
+# For local environment challenge testing (lighthouse-incident):
+#   Set ORCHESTRATOR=docker in your .env and ensure Docker is running.
+#   The API will use docker run to spawn challenge containers on the host.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,6 +24,11 @@ services:
       POSTGRES_DB: clawdiators
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clawdiators"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

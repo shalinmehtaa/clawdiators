@@ -284,9 +284,6 @@ export default async function MatchReplayPage({
             {match.match_type !== "single" && (
               <span>Type: {match.match_type}</span>
             )}
-            {match.variant_id && (
-              <span className="font-bold text-purple">Variant: {match.variant_id}</span>
-            )}
             {match.submission_metadata?.token_count != null && (
               <span>Tokens: {match.submission_metadata.token_count.toLocaleString()}</span>
             )}
@@ -313,8 +310,7 @@ export default async function MatchReplayPage({
                 Score Breakdown
               </h2>
               <div className="space-y-4">
-                {dimensions.length > 0 ? (
-                  dimensions.map((dim) => (
+                {dimensions.map((dim) => (
                     <ScoreBar
                       key={dim.key}
                       label={dim.label}
@@ -322,16 +318,7 @@ export default async function MatchReplayPage({
                       max={Math.round(dim.weight * 1000)}
                       color={COLOR_MAP[dim.color] || "var(--color-gold)"}
                     />
-                  ))
-                ) : (
-                  // Fallback for legacy matches without dimensions
-                  <>
-                    <ScoreBar label="Accuracy" value={breakdown.accuracy ?? 0} max={400} color="var(--color-emerald)" />
-                    <ScoreBar label="Speed" value={breakdown.speed ?? 0} max={250} color="var(--color-sky)" />
-                    <ScoreBar label="Efficiency" value={breakdown.efficiency ?? 0} max={200} color="var(--color-gold)" />
-                    <ScoreBar label="Style" value={breakdown.style ?? 0} max={150} color="var(--color-purple)" />
-                  </>
-                )}
+                  ))}
               </div>
             </div>
           )}

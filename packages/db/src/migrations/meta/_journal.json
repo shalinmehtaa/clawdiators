@@ -148,6 +148,27 @@
       "when": 1774000000000,
       "tag": "0020_drop_harness_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1774100000000,
+      "tag": "0022_remove_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1774200000000,
+      "tag": "0023_simplify_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1774300000000,
+      "tag": "0024_agent_review",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,6 @@ import {
   uuid,
   text,
   integer,
-  real,
   jsonb,
   timestamp,
 } from "drizzle-orm/pg-core";
@@ -71,12 +70,12 @@ export const agents = pgTable("agents", {
     .notNull()
     .default({ versions: [], currentHash: null }),
 
+  // Review
+  reviewCount: integer("review_count").notNull().default(0),
+
   // Archival
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   archivedReason: text("archived_reason"),
-
-  // Governance
-  reviewTrustScore: real("review_trust_score"),
 
   // Timestamps
   createdAt: timestamp("created_at", { withTimezone: true })

@@ -195,124 +195,139 @@ export const BENCHMARK_ELO_BONUS = 1.2;
 
 // ── Challenge Governance ──────────────────────────────────────────────
 
-/** Minimum verified match count to be eligible as a community challenge reviewer. */
-export const REVIEWER_MIN_VERIFIED_MATCHES = 5;
-/** Default trust score assigned to a newly eligible reviewer. */
-export const REVIEWER_DEFAULT_TRUST_SCORE = 0.5;
-/** Minimum number of reviewer reports before quorum can be reached. */
-export const QUORUM_MIN_REPORTS = 2;
-/** Minimum combined trust weight before quorum can be reached. */
-export const QUORUM_MIN_TRUST_WEIGHT = 1.0;
+/** Minimum completed matches for an agent to review community challenge drafts. */
+export const REVIEW_MIN_MATCHES = 5;
+
 /** Gate: reference answer must score >= this fraction of maxScore. */
 export const GATE_PASS_SCORE_THRESHOLD = 0.6;
 /** Gate: adversarial probes must score < this fraction of maxScore. */
 export const GATE_PROBE_SCORE_CEILING = 0.3;
 
-// ── Scoring Dimensions ──────────────────────────────────────────────
+// ── Standard Scoring Dimensions Palette (7 core keys) ────────────────
 
-export const CIPHER_FORGE_DIMENSIONS: ScoringDimension[] = [
-  { key: "decryption_accuracy", label: "Decryption", weight: 0.5, description: "Correctness of decrypted messages", color: "emerald" },
-  { key: "speed", label: "Speed", weight: 0.2, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.15, description: "Structured approach to cryptanalysis", color: "purple" },
-  { key: "difficulty_bonus", label: "Difficulty", weight: 0.15, description: "Bonus for solving harder ciphers", color: "gold" },
-];
+/** Standard dimension definitions. Challenges pick from this palette via dims(). */
+export const STANDARD_DIMENSIONS: Record<string, Omit<ScoringDimension, "weight">> = {
+  correctness:  { key: "correctness",  label: "Correctness",  description: "Accuracy of the primary answer or identification",          color: "emerald" },
+  completeness: { key: "completeness", label: "Completeness", description: "Coverage of all required targets, actions, or parts",        color: "gold" },
+  precision:    { key: "precision",    label: "Precision",    description: "Fraction of reported findings that are genuine",             color: "coral" },
+  methodology:  { key: "methodology",  label: "Methodology",  description: "Quality of reasoning, investigation, and reporting",         color: "purple" },
+  speed:        { key: "speed",        label: "Speed",        description: "Time efficiency relative to the time limit",                 color: "sky" },
+  code_quality: { key: "code_quality", label: "Code Quality", description: "Quality of generated, modified, or optimized code",          color: "coral" },
+  analysis:     { key: "analysis",     label: "Analysis",     description: "Depth of evidence gathering and source investigation",       color: "gold" },
+};
 
-export const LOGIC_REEF_DIMENSIONS: ScoringDimension[] = [
-  { key: "validity", label: "Validity", weight: 0.5, description: "Correctness of logical conclusions", color: "emerald" },
-  { key: "reasoning", label: "Reasoning", weight: 0.2, description: "Include reasoning explaining your logical steps", color: "purple" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "coverage", label: "Coverage", weight: 0.15, description: "Fraction of puzzles attempted", color: "gold" },
-];
+/**
+ * Build ScoringDimension[] from the standard palette.
+ * @param weights - Map of dimension key → weight (must sum to 1.0)
+ * @param overrides - Optional per-key overrides for non-standard labels/descriptions/colors
+ */
+export function dims(
+  weights: Record<string, number>,
+  overrides?: Record<string, Partial<Omit<ScoringDimension, "weight">>>,
+): ScoringDimension[] {
+  return Object.entries(weights).map(([key, weight]) => {
+    const base = STANDARD_DIMENSIONS[key];
+    const over = overrides?.[key] ?? {};
+    if (!base) {
+      return { key, label: key, weight, description: key, color: "gold" as const, ...over };
+    }
+    return { ...base, key, weight, ...over };
+  });
+}
 
-export const REEF_REFACTOR_DIMENSIONS: ScoringDimension[] = [
-  { key: "correctness", label: "Correctness", weight: 0.7, description: "Exact correctness across all function test cases", color: "emerald" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "coverage", label: "Coverage", weight: 0.05, description: "Fraction of functions attempted with non-empty outputs", color: "purple" },
-  { key: "methodology", label: "Methodology", weight: 0.1, description: "Clear, specific debugging approach", color: "gold" },
-];
+// ── Challenge Dimension Exports ──────────────────────────────────────
 
-export const DEPTH_FIRST_GEN_DIMENSIONS: ScoringDimension[] = [
-  { key: "correctness", label: "Correctness", weight: 0.7, description: "Exact correctness across all hidden test outputs", color: "emerald" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "coverage", label: "Coverage", weight: 0.05, description: "Percentage of test cases attempted", color: "purple" },
-  { key: "methodology", label: "Methodology", weight: 0.1, description: "Substantive rule-inference explanation", color: "gold" },
-];
+export const CIPHER_FORGE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.65, speed: 0.20, methodology: 0.15 },
+  { correctness: { description: "Decryption accuracy including difficulty bonus" }, methodology: { description: "Structured approach to cryptanalysis" } },
+);
 
-export const ARCHIVE_DIVE_DIMENSIONS: ScoringDimension[] = [
-  { key: "accuracy", label: "Accuracy", weight: 0.45, description: "Correctness of cross-document synthesis answers", color: "emerald" },
-  { key: "comprehensiveness", label: "Comprehensiveness", weight: 0.25, description: "Evidence citations and document coverage", color: "purple" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "citations", label: "Citations", weight: 0.15, description: "Quality and accuracy of source citations", color: "gold" },
-];
+export const LOGIC_REEF_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.20, speed: 0.15, completeness: 0.15 },
+  { correctness: { description: "Correctness of logical conclusions" }, methodology: { description: "Quality of logical reasoning steps" }, completeness: { description: "Fraction of puzzles attempted" } },
+);
 
-export const CONTRACT_REVIEW_DIMENSIONS: ScoringDimension[] = [
-  { key: "precision", label: "Precision", weight: 0.35, description: "Reported issues that are actual issues", color: "emerald" },
-  { key: "recall", label: "Recall", weight: 0.35, description: "Fraction of planted issues found", color: "coral" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.15, description: "Structured approach to contract analysis", color: "gold" },
-];
+export const REEF_REFACTOR_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.70, speed: 0.15, methodology: 0.10, completeness: 0.05 },
+  { correctness: { description: "Exact correctness across all function test cases" }, completeness: { description: "Fraction of functions attempted with non-empty outputs" }, methodology: { description: "Clear, specific debugging approach" } },
+);
 
-export const CHART_FORENSICS_DIMENSIONS: ScoringDimension[] = [
-  { key: "precision", label: "Precision", weight: 0.35, description: "Reported discrepancies that are actual misrepresentations", color: "emerald" },
-  { key: "recall", label: "Recall", weight: 0.35, description: "Fraction of planted misrepresentations found", color: "coral" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.15, description: "Structured approach to data verification", color: "gold" },
-];
+export const DEPTH_FIRST_GEN_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.70, speed: 0.15, methodology: 0.10, completeness: 0.05 },
+  { correctness: { description: "Exact correctness across all hidden test outputs" }, completeness: { description: "Percentage of test cases attempted" }, methodology: { description: "Substantive rule-inference explanation" } },
+);
 
-export const CARTOGRAPHERS_EYE_DIMENSIONS: ScoringDimension[] = [
-  { key: "accuracy", label: "Accuracy", weight: 0.35, description: "Correctness of spatial reasoning answers", color: "emerald" },
-  { key: "spatial_reasoning", label: "Spatial Reasoning", weight: 0.3, description: "Quality of distance and direction analysis", color: "purple" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.2, description: "Structured approach to spatial analysis", color: "gold" },
-];
+export const ARCHIVE_DIVE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.45, methodology: 0.25, speed: 0.15, analysis: 0.15 },
+  { correctness: { description: "Correctness of cross-document synthesis answers" }, methodology: { description: "Evidence citations and document coverage" }, analysis: { description: "Quality and accuracy of source citations" } },
+);
 
-export const BLUEPRINT_AUDIT_DIMENSIONS: ScoringDimension[] = [
-  { key: "precision", label: "Precision", weight: 0.35, description: "Reported violations that are actual violations", color: "emerald" },
-  { key: "recall", label: "Recall", weight: 0.35, description: "Fraction of planted violations found", color: "coral" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.15, description: "Structured approach to code compliance", color: "gold" },
-];
+export const CONTRACT_REVIEW_DIMENSIONS: ScoringDimension[] = dims(
+  { precision: 0.35, completeness: 0.35, speed: 0.15, methodology: 0.15 },
+  { precision: { description: "Reported issues that are actual issues" }, completeness: { description: "Fraction of planted issues found" }, methodology: { description: "Structured approach to contract analysis" } },
+);
 
-export const ADVERSARIAL_INTERVIEW_DIMENSIONS: ScoringDimension[] = [
-  { key: "discernment", label: "Discernment", weight: 0.55, description: "Correctly classifying false-premise vs ambiguous questions with supporting evidence", color: "purple" },
-  { key: "accuracy", label: "Accuracy", weight: 0.25, description: "Correctness of straightforward answers", color: "emerald" },
-  { key: "speed", label: "Speed", weight: 0.1, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.1, description: "Structured approach to question assessment", color: "gold" },
-];
+export const CHART_FORENSICS_DIMENSIONS: ScoringDimension[] = dims(
+  { precision: 0.35, completeness: 0.35, speed: 0.15, methodology: 0.15 },
+  { precision: { description: "Reported discrepancies that are actual misrepresentations" }, completeness: { description: "Fraction of planted misrepresentations found" }, methodology: { description: "Structured approach to data verification" } },
+);
 
-export const THE_MIRAGE_DIMENSIONS: ScoringDimension[] = [
-  { key: "detection", label: "Detection", weight: 0.55, description: "Correctly identifying fabricated district+field pairs", color: "purple" },
-  { key: "precision", label: "Precision", weight: 0.3, description: "Reported fabrications that are actual fabrications", color: "emerald" },
-  { key: "speed", label: "Speed", weight: 0.1, description: "Time to submission relative to limit", color: "sky" },
-  { key: "thoroughness", label: "Thoroughness", weight: 0.05, description: "Coverage of matched findings across all three sources", color: "gold" },
-];
+export const CARTOGRAPHERS_EYE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.35, analysis: 0.30, speed: 0.15, methodology: 0.20 },
+  { correctness: { description: "Correctness of spatial reasoning answers" }, analysis: { description: "Quality of distance and direction analysis" }, methodology: { description: "Structured approach to spatial analysis" } },
+);
 
-export const DEEP_MAPPING_DIMENSIONS: ScoringDimension[] = [
-  { key: "coverage", label: "Coverage", weight: 0.35, description: "Percentage of map nodes discovered", color: "emerald" },
-  { key: "accuracy", label: "Accuracy", weight: 0.3, description: "Correct identification of key features", color: "sky" },
-  { key: "exploration", label: "Exploration", weight: 0.2, description: "Resource collection path quality", color: "purple" },
-  { key: "strategy", label: "Strategy", weight: 0.15, description: "Efficiency of exploration approach", color: "gold" },
-];
+export const BLUEPRINT_AUDIT_DIMENSIONS: ScoringDimension[] = dims(
+  { precision: 0.35, completeness: 0.35, speed: 0.15, methodology: 0.15 },
+  { precision: { description: "Reported violations that are actual violations" }, completeness: { description: "Fraction of planted violations found" }, methodology: { description: "Structured approach to code compliance" } },
+);
 
-// ── Workspace-based Challenge Dimensions ────────────────────────────
+export const ADVERSARIAL_INTERVIEW_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.55, precision: 0.25, speed: 0.10, methodology: 0.10 },
+  { correctness: { description: "Correctly classifying false-premise vs ambiguous questions with supporting evidence" }, precision: { description: "Correctness of straightforward answers" }, methodology: { description: "Structured approach to question assessment" } },
+);
 
-export const CODEBASE_ARCHAEOLOGY_DIMENSIONS: ScoringDimension[] = [
-  { key: "identification", label: "Bug Identification", weight: 0.35, description: "Correctly identifying the buggy commit and root cause", color: "emerald" },
-  { key: "fix_quality", label: "Fix Quality", weight: 0.3, description: "Correctness and quality of the code fix", color: "coral" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.2, description: "Structured approach to debugging", color: "purple" },
-];
+export const THE_MIRAGE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.55, precision: 0.30, speed: 0.10, completeness: 0.05 },
+  { correctness: { description: "Correctly identifying fabricated district+field pairs" }, precision: { description: "Reported fabrications that are actual fabrications" }, completeness: { description: "Coverage of matched findings across all sources" } },
+);
 
-export const NEEDLE_HAYSTACK_DIMENSIONS: ScoringDimension[] = [
-  { key: "accuracy", label: "Accuracy", weight: 0.75, description: "Correctness of answers against ground truth", color: "emerald" },
-  { key: "citations", label: "Citations", weight: 0.1, description: "Correct source identification for correct answers", color: "purple" },
-  { key: "speed", label: "Speed", weight: 0.05, description: "Time to submission relative to limit", color: "sky" },
-  { key: "completeness", label: "Completeness", weight: 0.1, description: "Fraction of unique question IDs answered", color: "gold" },
-];
+export const DEEP_MAPPING_DIMENSIONS: ScoringDimension[] = dims(
+  { completeness: 0.35, correctness: 0.30, methodology: 0.20, speed: 0.15 },
+  { completeness: { description: "Percentage of map nodes discovered" }, correctness: { description: "Correct identification of key features" }, methodology: { description: "Resource collection path quality" }, speed: { description: "Efficiency of exploration approach" } },
+);
 
-export const PERFORMANCE_OPTIMIZER_DIMENSIONS: ScoringDimension[] = [
-  { key: "optimization", label: "Optimization", weight: 0.4, description: "Quality of algorithmic improvement", color: "emerald" },
-  { key: "correctness", label: "Correctness", weight: 0.25, description: "Whether optimized code preserves behavior", color: "coral" },
-  { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
-  { key: "methodology", label: "Methodology", weight: 0.2, description: "Quality of explanation and approach", color: "purple" },
-];
+export const CODEBASE_ARCHAEOLOGY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.35, code_quality: 0.30, speed: 0.15, methodology: 0.20 },
+  { correctness: { description: "Correctly identifying the buggy commit and root cause" }, code_quality: { description: "Correctness and quality of the code fix" }, methodology: { description: "Structured approach to debugging" } },
+);
+
+export const NEEDLE_HAYSTACK_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.75, analysis: 0.10, speed: 0.05, completeness: 0.10 },
+  { analysis: { description: "Correct source identification for correct answers" }, completeness: { description: "Fraction of unique question IDs answered" } },
+);
+
+export const PERFORMANCE_OPTIMIZER_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, code_quality: 0.25, speed: 0.15, methodology: 0.20 },
+  { correctness: { description: "Quality of algorithmic improvement" }, code_quality: { description: "Whether optimized code preserves behavior" }, methodology: { description: "Quality of explanation and approach" } },
+);
+
+export const LIGHTHOUSE_INCIDENT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.20, completeness: 0.30, analysis: 0.15, code_quality: 0.20, methodology: 0.15 },
+  { correctness: { description: "Correct root cause ID with supporting evidence from logs and database" }, completeness: { description: "Fraction of correct recovery actions taken in correct dependency order" }, analysis: { description: "Accuracy of identified failure propagation chain (Jaccard overlap + order bonus)" }, code_quality: { description: "Recovery script quality: idempotency, correct ordering, error handling" }, methodology: { description: "Evidence of consulting runbooks/documentation and structured post-incident reporting" } },
+);
+
+export const REEF_RESCUE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.25, code_quality: 0.25, completeness: 0.15, methodology: 0.20, speed: 0.15 },
+  { correctness: { description: "Correctly identified root causes for failing subsystems" }, code_quality: { description: "Code fixes resolve the bugs without introducing new issues" }, completeness: { description: "Data migration correctly repairs corrupted data" }, methodology: { description: "Evidence quality, technical references, and incident report completeness" } },
+);
+
+export const PIPELINE_BREACH_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.20, completeness: 0.45, code_quality: 0.15, methodology: 0.20 },
+  { correctness: { description: "Correct attack vector ID with evidence from build logs and artifact database" }, completeness: { description: "Accuracy of blast radius and correct remediation actions in priority order" }, code_quality: { description: "Automated remediation script: verification steps, secret rotation, clean rebuild" }, methodology: { description: "Multi-source forensic investigation and structured security advisory" } },
+);
+
+export const NEURAL_SPEEDRUN_DIMENSIONS: ScoringDimension[] = dims(
+  { code_quality: 0.80, precision: 0.20 },
+  { code_quality: { description: "Steps ratio vs naive baseline (20x = max 800pts)" }, precision: { description: "MSE ≤ 1.05× baseline = full 200pts" } },
+);

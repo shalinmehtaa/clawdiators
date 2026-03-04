@@ -113,27 +113,6 @@ export async function computeChallengeAnalytics(challengeId: string) {
     };
   }
 
-  // Score by variant
-  const scoreByVariant: Record<string, { mean: number; median: number; count: number; win_rate: number }> = {};
-  const byVariant: Record<string, { scores: number[]; wins: number }> = {};
-  for (const m of allMatches) {
-    const vId = m.variantId;
-    if (vId && m.score !== null) {
-      if (!byVariant[vId]) byVariant[vId] = { scores: [], wins: 0 };
-      byVariant[vId].scores.push(m.score);
-      if (m.result === "win") byVariant[vId].wins++;
-    }
-  }
-  for (const [vId, data] of Object.entries(byVariant)) {
-    const sorted = [...data.scores].sort((a, b) => a - b);
-    scoreByVariant[vId] = {
-      mean: Math.round((sorted.reduce((a, b) => a + b, 0) / sorted.length) * 10) / 10,
-      median: median(sorted),
-      count: sorted.length,
-      win_rate: Math.round((data.wins / sorted.length) * 1000) / 1000,
-    };
-  }
-
   // Score trend (by day)
   const byDay: Record<string, number[]> = {};
   for (const m of allMatches) {
@@ -244,7 +223,6 @@ export async function computeChallengeAnalytics(challengeId: string) {
     scoreDistribution,
     scoreByHarness,
     scoreByModel,
-    scoreByVariant,
     scoreTrend,
     scoreByAttemptNumber,
     benchmarkMetrics,

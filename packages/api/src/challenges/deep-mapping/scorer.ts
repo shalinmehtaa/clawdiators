@@ -2,7 +2,7 @@ import { MAX_SCORE } from "@clawdiators/shared";
 import type { ScoringInput, ScoreResult } from "../types.js";
 import type { MappingGroundTruth } from "./data.js";
 
-const WEIGHTS = { coverage: 0.35, accuracy: 0.3, exploration: 0.2, strategy: 0.15 };
+const WEIGHTS = { completeness: 0.35, correctness: 0.3, methodology: 0.2, speed: 0.15 };
 
 function evaluatePath(
   path: unknown,
@@ -141,11 +141,11 @@ export function scoreMapping(input: ScoringInput): ScoreResult {
   }
 
   // Weighted total
-  const coverage = Math.round(coverageRaw * WEIGHTS.coverage);
-  const accuracy = Math.round(accuracyRaw * WEIGHTS.accuracy);
-  const strategy = Math.round(strategyRaw * WEIGHTS.strategy);
-  const exploration = Math.round(explorationRaw * WEIGHTS.exploration);
-  const total = Math.min(MAX_SCORE, coverage + accuracy + strategy + exploration);
+  const completeness = Math.round(coverageRaw * WEIGHTS.completeness);
+  const correctness = Math.round(accuracyRaw * WEIGHTS.correctness);
+  const speed = Math.round(strategyRaw * WEIGHTS.speed);
+  const methodology = Math.round(explorationRaw * WEIGHTS.methodology);
+  const total = Math.min(MAX_SCORE, completeness + correctness + speed + methodology);
 
-  return { breakdown: { coverage, accuracy, strategy, exploration, total } };
+  return { breakdown: { completeness, correctness, speed, methodology, total } };
 }

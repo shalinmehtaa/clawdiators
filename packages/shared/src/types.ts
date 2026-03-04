@@ -31,7 +31,10 @@ export type ChallengeCategory =
   | "memory"
   | "endurance"
   | "adversarial"
-  | "multimodal";
+  | "multimodal"
+  | "simulation"     // environment/interaction challenges (market campaign, trading sim)
+  | "optimization"   // execution/speedrun challenges (nanogpt speedrun, compiler opt)
+  | "research";      // external service / fact-finding challenges
 
 export interface EloHistoryEntry {
   ts: string;
@@ -180,12 +183,18 @@ export interface BenchmarkMetrics {
 
 /** How the workspace is generated and delivered. */
 export interface WorkspaceSpec {
-  /** "archive" = static tarball; "generator" = function creates workspace from seed */
-  type: "archive" | "generator";
+  /** "archive" = static tarball; "generator" = function creates workspace from seed; "environment" = live services */
+  type: "archive" | "generator" | "environment";
   /** If true, workspace varies per seed */
   seedable: boolean;
-  /** Template for CHALLENGE.md — the agent's briefing document. Supports {{seed}} placeholders. */
+  /** Template for CHALLENGE.md — the agent's briefing document. Supports {{seed}}, {{service_urls.*}}, {{mcp_servers.*}} placeholders. */
   challengeMd: string;
+  /** Docker services started when match begins (environment type). Platform-managed, match-scoped. */
+  services?: ServiceSpec[];
+  /** MCP servers started when match begins. Agents connect via standard MCP protocol. */
+  mcpServers?: McpServerSpec[];
+  /** HTTP proxy config for challenges requiring external internet access. */
+  proxy?: ProxySpec;
 }
 
 /** What the agent submits back. */
@@ -273,7 +282,7 @@ export interface EvaluationLog {
 /** How the submission is evaluated. */
 export interface ScoringSpec {
   /** Evaluation method */
-  method: "deterministic" | "test-suite" | "custom-script";
+  method: "deterministic" | "test-suite" | "custom-script" | "execution" | "environment";
   /** Scoring dimensions (reused from existing system) */
   dimensions: ScoringDimension[];
   /** Max total score (default 1000) */
@@ -288,6 +297,8 @@ export interface ScoringSpec {
   judgeModel?: string;
   /** Rubric for LLM-as-judge evaluation */
   rubric?: string;
+  /** For execution method: how to run and measure submitted code */
+  execution?: ExecutionSpec;
 }
 
 // ── Challenge Governance Types ───────────────────────────────────────
@@ -455,6 +466,210 @@ export interface ChallengeSpec {
   // Optional
   lore?: string;
   constraints?: ChallengeConstraints;
+}
+
+// ── Live Environment Types ───────────────────────────────────────────
+
+/** A Docker service started alongside a match for environment challenges. */
+export interface ServiceSpec {
+  /** Unique name within this challenge (used as key in service_urls) */
+  name: string;
+  /** Docker image (must be in platform allowlist) */
+  image: string;
+  /** Environment variables. Supports {{seed}}, {{match_id}}, {{config.*}} placeholders. */
+  env?: Record<string, string>;
+  /** Port declarations */
+  ports: Array<{
+    /** Port inside the container */
+    container: number;
+    /** Protocol for proxy routing */
+    protocol: "http" | "ws" | "grpc";
+    /** Optional path prefix for proxy routing */
+    pathPrefix?: string;
+  }>;
+  /** Health check — service must pass before match starts */
+  healthCheck?: {
+    /** GET this path, expect 200 */
+    path: string;
+    /** Seconds between checks (default 2) */
+    intervalSecs?: number;
+    /** Total seconds to wait for health (default 30) */
+    timeoutSecs?: number;
+    /** Delay before first health check (default 0) */
+    startDelaySecs?: number;
+  };
+  /** Endpoint to query for final metrics at scoring time */
+  metricsEndpoint?: string;
+  /** Resource limits for the service container */
+  resources?: {
+    memory?: string;   // default "512m"
+    cpus?: number;     // default 1
+    tmpSize?: string;  // default "64m"
+  };
+  /** Allow service to access external internet (not just agent traffic) */
+  networkExternal?: boolean;
+  /** Wait for these services to be healthy before starting this one */
+  dependsOn?: string[];
+}
+
+/** An MCP server started alongside a match. Agents connect via standard MCP protocol. */
+export interface McpServerSpec {
+  /** Unique name within this challenge */
+  name: string;
+  /** Docker image running the MCP server */
+  image: string;
+  /** MCP transport protocol */
+  transport: "sse" | "streamable-http";
+  /** Server port inside container (default 3000) */
+  port?: number;
+  /** Environment variables with {{seed}}, {{match_id}} placeholder support */
+  env?: Record<string, string>;
+  /** Advertised tools — used in CHALLENGE.md documentation and interaction logging */
+  tools?: Array<{
+    name: string;
+    description: string;
+    inputSchema?: Record<string, unknown>;
+  }>;
+  /** Advertised resources — used in CHALLENGE.md documentation */
+  resources?: Array<{
+    uri: string;
+    description: string;
+    mimeType?: string;
+  }>;
+  /** Health check timeout in seconds (default 30). Server must respond to MCP initialize. */
+  healthCheckTimeoutSecs?: number;
+  /** Resource limits for the MCP server container */
+  resourceLimits?: {
+    memory?: string;   // default "512m"
+    cpus?: number;     // default 1
+  };
+}
+
+/** HTTP proxy config for challenges requiring external internet access. */
+export interface ProxySpec {
+  /** Domains the agent is allowed to access (default: all) */
+  allowedDomains?: string[];
+  /** Max requests per minute (default 60) */
+  rateLimit?: number;
+  /** Whether to log request/response bodies (default true) */
+  logBodies?: boolean;
+  /** Max body size to log in bytes (default 5120 = 5KB) */
+  maxLogBodySize?: number;
+}
+
+/** Spec for running submitted code in a controlled environment (execution scoring). */
+export interface ExecutionSpec {
+  /** Docker image for running submitted code */
+  image: string;
+  /** Command to run the submission (e.g., ["python3", "train.py"]) */
+  command: string[];
+  /** Working directory inside container (default "/workspace") */
+  workdir?: string;
+  /** Timeout for code execution in seconds (separate from match time limit) */
+  executionTimeoutSecs: number;
+  /** Resource tier for the execution container */
+  tier: EnvironmentTier;
+  /** Baseline for comparison (pre-computed or run alongside) */
+  baseline?: {
+    /** Baseline source files */
+    files: Record<string, string>;
+    /** Command to run baseline */
+    command: string[];
+    /** Pre-computed baseline metrics (avoids re-running) */
+    cachedMetrics?: Record<string, number>;
+  };
+  /** Metrics to collect from execution */
+  metrics: Array<{
+    /** Metric name (used as scorer input key) */
+    name: string;
+    /** How to collect this metric */
+    source: "stdout_json" | "wall_clock" | "output_file" | "exit_code" | "memory_peak";
+    /** For output_file: path to read inside container */
+    path?: string;
+    /** For stdout_json: JSON key to extract from output */
+    key?: string;
+  }>;
+  /** Files the agent must submit */
+  requiredFiles: string[];
+  /** Workspace files to include in execution environment (not modified by agent) */
+  includeFiles?: string[];
+  /** Setup command to run before execution (e.g., ["pip", "install", "-r", "requirements.txt"]) */
+  setupCommand?: string[];
+}
+
+/** Recorded interaction between agent and a match service (via platform proxy). */
+export interface ServiceInteraction {
+  ts: string;
+  service: string;
+  method: string;
+  path: string;
+  requestHeaders?: Record<string, string>;
+  requestBodyPreview?: string;   // first 5KB
+  status: number;
+  responseBodyPreview?: string;  // first 5KB
+  durationMs: number;
+}
+
+/** Recorded MCP tool call between agent and a match MCP server. */
+export interface McpToolCallRecord {
+  ts: string;
+  server: string;
+  tool: string;
+  arguments: Record<string, unknown>;
+  result: unknown;
+  durationMs: number;
+  error?: string;
+}
+
+/** Recorded MCP resource read between agent and a match MCP server. */
+export interface McpResourceReadRecord {
+  ts: string;
+  server: string;
+  uri: string;
+  mimeType?: string;
+  contentPreview?: string;  // first 5KB
+  durationMs: number;
+}
+
+/** MCP server connection info returned to agent on match entry. */
+export interface McpConnectionInfo {
+  transport: "sse" | "streamable-http";
+  url: string;
+  token: string;
+}
+
+/** Live service state tracked on a match record. */
+export interface MatchServiceState {
+  /** URLs for each active service */
+  serviceUrls: Record<string, string>;
+  /** MCP server connection info */
+  mcpServers: Record<string, McpConnectionInfo>;
+  /** Proxy URL (if challenge uses external access) */
+  proxyUrl?: string;
+  /** Docker container IDs for lifecycle management */
+  containerIds: string[];
+  /** Interaction log (populated during match) */
+  serviceInteractions: ServiceInteraction[];
+  /** MCP tool call log (populated during match) */
+  mcpToolCalls: McpToolCallRecord[];
+  /** MCP resource read log (populated during match) */
+  mcpResourceReads: McpResourceReadRecord[];
+  /** Metrics collected from services at scoring time */
+  serviceMetrics: Record<string, Record<string, unknown>>;
+}
+
+/** Result of running submitted code in an execution challenge. */
+export interface ExecutionResult {
+  /** Collected metrics (mapped by metric name from ExecutionSpec) */
+  metrics: Record<string, number>;
+  /** Stdout from execution */
+  output: string;
+  /** Process exit code */
+  exitCode: number;
+  /** Total wall clock time in seconds */
+  wallClockSecs: number;
+  /** Peak memory usage in MB */
+  peakMemoryMb?: number;
 }
 
 // ── Layered Memory System ────────────────────────────────────────────

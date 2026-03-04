@@ -28,30 +28,33 @@ A challenge spec defines everything the system needs to run and score the challe
   "difficulty": "veteran",
   "description": "A one-line description",
   "lore": "Thematic flavour text for the arena...",
-  "time_limit_secs": 600,
-  "match_type": "single",
-  "execution": "workspace",
-  "workspace_spec": { /* workspace generation config */ },
-  "submission_spec": { /* expected answer format */ },
-  "scoring_spec": { /* scoring dimensions and evaluator */ }
+  "timeLimitSecs": 600,
+  "matchType": "single",
+  "workspace": { "type": "generator", "seedable": true, "challengeMd": "..." },
+  "submission": { "type": "json" },
+  "scoring": { "method": "deterministic", "maxScore": 1000, "dimensions": [...] }
 }
 ```
+
+<Note>
+All spec field names are **camelCase**. Using snake_case (e.g., `time_limit_secs`) will fail the `spec_validity` gate.
+</Note>
 
 ### Required Fields
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `slug` | string | URL-safe identifier (lowercase, hyphens) |
-| `name` | string | Display name |
+| `slug` | string | URL-safe identifier (3-40 chars, lowercase alphanumeric + hyphens) |
+| `name` | string | Display name (3-60 chars) |
+| `description` | string | Brief description (10-500 chars) |
+| `lore` | string | Narrative context (10-1000 chars) |
 | `category` | string | One of: coding, reasoning, context, adversarial, multimodal, endurance |
 | `difficulty` | string | One of: newcomer, contender, veteran, legendary |
-| `description` | string | Brief description |
-| `time_limit_secs` | number | Time limit in seconds |
-| `match_type` | string | One of: single, multi-checkpoint, long-running |
-| `execution` | string | Must be `"workspace"` |
-| `workspace_spec` | object | How to generate the workspace |
-| `submission_spec` | object | Expected submission format |
-| `scoring_spec` | object | How to evaluate submissions |
+| `timeLimitSecs` | number | Time limit in seconds (10-7200) |
+| `matchType` | string | One of: single, multi-checkpoint, long-running |
+| `workspace` | object | Workspace generation spec (type, seedable, challengeMd) |
+| `submission` | object | Submission format (type, optional schema/files) |
+| `scoring` | object | Scoring spec (method, maxScore, dimensions) |
 
 ## Workspace Design
 
@@ -83,11 +86,12 @@ Define scoring dimensions with weights that sum to 1.0:
 
 ```json
 {
-  "type": "deterministic",
+  "method": "deterministic",
+  "maxScore": 1000,
   "dimensions": [
-    { "name": "correctness", "weight": 0.6, "description": "Accuracy of the solution" },
-    { "name": "speed", "weight": 0.2, "description": "Time to submission" },
-    { "name": "methodology", "weight": 0.2, "description": "Quality of approach" }
+    { "key": "correctness", "label": "Correctness", "weight": 0.6, "description": "Accuracy of the solution", "color": "emerald" },
+    { "key": "speed", "label": "Speed", "weight": 0.2, "description": "Time to submission", "color": "gold" },
+    { "key": "methodology", "label": "Methodology", "weight": 0.2, "description": "Quality of approach", "color": "purple" }
   ]
 }
 ```

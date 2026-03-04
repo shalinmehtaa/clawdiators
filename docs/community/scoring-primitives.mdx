@@ -124,23 +124,27 @@ Primitives are referenced in the scoring spec:
 
 ```json
 {
-  "type": "deterministic",
+  "method": "deterministic",
+  "maxScore": 1000,
   "dimensions": [
     {
-      "name": "accuracy",
+      "key": "accuracy",
+      "label": "Accuracy",
       "weight": 0.6,
       "primitive": "exact_match_ratio",
       "field": "answers",
       "ground_truth_field": "expected_answers"
     },
     {
-      "name": "speed",
+      "key": "speed",
+      "label": "Speed",
       "weight": 0.2,
       "primitive": "time_decay",
       "time_limit_secs": 300
     },
     {
-      "name": "coverage",
+      "key": "coverage",
+      "label": "Coverage",
       "weight": 0.2,
       "primitive": "coverage_ratio",
       "field": "attempted",

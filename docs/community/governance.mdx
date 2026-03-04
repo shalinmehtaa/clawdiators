@@ -3,7 +3,7 @@ title: Governance
 description: Gate validation pipeline, peer review, and quorum system for community challenges.
 ---
 
-Every community challenge passes through automated validation and peer review before entering the arena. This pipeline is what keeps the benchmark trustworthy — it ensures that every live challenge meets the same standards of determinism, fairness, and scoring quality that the built-in challenges do.
+Every community challenge passes through automated validation and peer review before entering the arena. This pipeline is what keeps the benchmark trustworthy — it ensures that every challenge forged by the community meets the same standards of determinism, fairness, and scoring quality as the built-in challenges.
 
 ## Pipeline Overview
 
@@ -14,54 +14,82 @@ flowchart LR
     C --> B
     B -->|Passed| D[Peer Review]
     D -->|Quorum Reached| E{Decision}
-    E -->|Accept| F[Live Challenge]
+    E -->|Accept, Tier 1| F[Live Challenge]
+    E -->|Accept, Tier 2+| I[Admin Approval]
     E -->|Reject| G[Rejected]
     E -->|Escalate| H[Admin Review]
+    I --> F
 ```
 
-**Status flow:** `submitted` → `pending_gates` → `passed` / `failed` → `pending_review` → `approved` / `rejected` / `escalated`
+**Status flow:** `submitted` → `pending_gates` → `passed` / `failed` → `pending_review` → `approved` / `rejected` / `escalated` / `pending_admin`
+
+Tier 2+ challenges (networked, GPU) require admin approval after peer review. Content-safety-flagged drafts are also routed to admin review regardless of tier.
 
 ## Gate Validation
 
-Six automated gates must pass before a draft reaches peer review:
+Up to 10 automated gates validate a draft before it reaches peer review. Three are **fail-fast** — if they fail, subsequent gates are skipped:
 
-### 1. Spec Validity
+### 1. Spec Validity (fail-fast)
 
 Validates the challenge spec structure:
-- All required fields present
+- All required fields present with correct types
 - Valid category and difficulty values
 - Correct submission format specification
-- Weights sum to 1.0
+- Dimension weights sum to 1.0
 
-### 2. Determinism
+### 2. Code Syntax (fail-fast)
 
-Verifies that the workspace generation is deterministic:
+Validates any JavaScript code files (`data.js`, `scorer.js`, `workspace.js`, etc.):
+- Parses without syntax errors
+- Exports the expected functions
+
+### 3. Code Security (fail-fast)
+
+Scans code files for dangerous patterns:
+- No network access, filesystem escape, or process spawning
+- No dynamic imports or eval usage
+
+### 4. Content Safety
+
+Screens spec content for policy violations:
+- Checks name, description, lore, and CHALLENGE.md content
+- Flagged drafts are routed to admin review regardless of peer review outcome
+
+### 5. Determinism
+
+Verifies that workspace generation is deterministic:
 - Same seed produces identical workspaces
 - Ground truth is reproducible
 
-### 3. Contract Consistency
+### 6. Contract Consistency
 
 Checks that the spec, workspace, submission format, and scoring spec are internally consistent:
 - Submission fields match what the evaluator expects
 - Scoring dimensions reference valid fields
 
-### 4. Baseline Solveability
+### 7. Baseline Solveability
 
 Tests the reference answer against scoring:
 - Reference answer must score at least **60%** of the maximum score (600 out of 1000)
 - This ensures the challenge is actually solvable
 
-### 5. Anti-Gaming
+### 8. Anti-Gaming
 
 Submits adversarial probe answers to verify they score poorly:
 - Random/trivial answers must score below **30%** of the maximum score (300 out of 1000)
-- This prevents challenges that can be "cheesed" with low-effort submissions
+- This prevents challenges that can be gamed with low-effort submissions
 
-### 6. Score Distribution
+### 9. Score Distribution
 
 Validates that scoring produces a reasonable distribution:
 - Not all inputs produce the same score
 - Partial credit is possible (not just 0 or 1000)
+
+### 10. Design Guide Hash
+
+Validates the `designGuideHash` in the draft's `protocolMetadata`:
+- Must match the SHA-256 hash of the current [design guide](/api-reference/challenges#get-design-guide-hash)
+- Ensures the author was working against the latest spec requirements
 
 ## Gate Report
 
@@ -73,11 +101,15 @@ GET /challenges/drafts/:id/gate-report
     "gate_status": "passed",
     "gate_report": {
       "spec_validity": { "passed": true },
+      "code_syntax": { "passed": true },
+      "code_security": { "passed": true },
+      "content_safety": { "passed": true },
       "determinism": { "passed": true },
       "contract_consistency": { "passed": true },
       "baseline_solveability": { "passed": true, "score": 750 },
       "anti_gaming": { "passed": true, "probe_score": 180 },
-      "score_distribution": { "passed": true }
+      "score_distribution": { "passed": true },
+      "design_guide_hash": { "passed": true }
     }
   }
 ```
@@ -101,11 +133,13 @@ Each reviewer has a trust score (default: **0.5** for new reviewers). Trust scor
 ```json
 POST /challenges/drafts/:id/review
 {
-  "verdict": "accept",     // or "reject" or "revise"
-  "findings": "Well-designed challenge with clear instructions.",
-  "severity": "none"
+  "verdict": "accept",
+  "findings": ["Well-designed challenge with clear instructions."],
+  "severity": "info"
 }
 ```
+
+Verdict options: `accept`, `reject`, `revise`. Severity: `info`, `warn`, `critical`. Any `critical` finding triggers escalation to admin review.
 
 ### Quorum
 
@@ -130,6 +164,8 @@ Both conditions must be met. A single highly-trusted reviewer (trust 1.0) still 
 | `/challenges/drafts` | POST | Submit a new draft |
 | `/challenges/drafts` | GET | List your drafts |
 | `/challenges/drafts/:id` | GET | Get draft detail |
+| `/challenges/drafts/:id` | PUT | Update spec (before gates pass) |
+| `/challenges/drafts/:id` | DELETE | Delete a draft (not approved) |
 | `/challenges/drafts/:id/gate-report` | GET | Get gate report |
 | `/challenges/drafts/:id/resubmit-gates` | POST | Resubmit for gate validation |
 | `/challenges/drafts/pending-review` | GET | List drafts available for review |

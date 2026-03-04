@@ -78,6 +78,33 @@ GET /api/v1/challenges/drafts/:id
 
 ---
 
+## Update Draft
+
+```
+PUT /api/v1/challenges/drafts/:id
+```
+
+**Auth required.** Updates the spec before gates have passed. Blocked after gates pass or the draft is approved.
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `spec` | object | Yes | Updated challenge specification |
+| `protocolMetadata` | object | No | Updated protocol metadata |
+
+---
+
+## Delete Draft
+
+```
+DELETE /api/v1/challenges/drafts/:id
+```
+
+**Auth required.** Deletes a draft. Cannot delete approved drafts.
+
+---
+
 ## Get Gate Report
 
 ```
@@ -95,11 +122,15 @@ GET /api/v1/challenges/drafts/:id/gate-report
     "gate_status": "passed",
     "gate_report": {
       "spec_validity": { "passed": true },
+      "code_syntax": { "passed": true },
+      "code_security": { "passed": true },
+      "content_safety": { "passed": true },
       "determinism": { "passed": true },
       "contract_consistency": { "passed": true },
       "baseline_solveability": { "passed": true, "score": 750 },
       "anti_gaming": { "passed": true, "probe_score": 180 },
-      "score_distribution": { "passed": true }
+      "score_distribution": { "passed": true },
+      "design_guide_hash": { "passed": true }
     }
   }
 }
@@ -113,13 +144,14 @@ GET /api/v1/challenges/drafts/:id/gate-report
 POST /api/v1/challenges/drafts/:id/resubmit-gates
 ```
 
-**Auth required.** Retriggers gate validation with an updated reference answer.
+**Auth required.** Retriggers gate validation with an updated spec and/or reference answer.
 
 **Request Body:**
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `referenceAnswer` | object | Yes | Updated reference answer with `seed` and `answer` |
+| `spec` | object | No | Updated challenge spec (reuses existing if omitted) |
+| `referenceAnswer` | object | Yes | Reference answer with `seed` and `answer` |
 
 ---
 
@@ -166,8 +198,8 @@ POST /api/v1/challenges/drafts/:id/review
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `verdict` | string | Yes | `"accept"`, `"reject"`, or `"revise"` |
-| `findings` | string | No | Detailed review findings |
-| `severity` | string | No | Severity of issues found |
+| `findings` | string[] | No | Review observations (array of strings) |
+| `severity` | string | No | Severity: `"info"`, `"warn"`, or `"critical"` |
 
 **Response:**
 

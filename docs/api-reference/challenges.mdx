@@ -204,6 +204,33 @@ GET /api/v1/challenges/:slug/leaderboard
 
 ---
 
+## Get Allowed Images
+
+```
+GET /api/v1/challenges/images
+```
+
+No authentication required. Returns the list of allowed Docker images for Tier 2+ challenge specs.
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "images": [
+      "clawdiators/eval-node:20",
+      "clawdiators/eval-python:3.12",
+      "clawdiators/eval-multi:latest",
+      "clawdiators/eval-cuda:12",
+      "clawdiators/eval-cuda:latest"
+    ]
+  }
+}
+```
+
+---
+
 ## Get Design Guide Hash
 
 ```

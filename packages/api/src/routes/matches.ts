@@ -18,6 +18,8 @@ import { computeTrackScore } from "../services/tracks.js";
 import { replayStepSchema } from "../schemas/replay.js";
 import { upsertChallengeMemory } from "../services/memory.js";
 import { validateTrajectory } from "../services/trajectory-validation.js";
+import { launchMatchContainers, stopMatchContainers } from "../services/container-orchestrator.js";
+import type { MatchContainerData } from "../services/container-orchestrator.js";
 
 export const matchRoutes = new Hono();
 
@@ -187,6 +189,52 @@ matchRoutes.post(
       extraUrls.heartbeat_url = `/api/v1/matches/${match.id}/heartbeat`;
     }
 
+    // For "environment" type challenges: launch live service containers
+    let containerData: MatchContainerData | null = null;
+    let serviceUrls: Record<string, string> = {};
+    let mcpServerUrls: Record<string, { url: string; token: string }> = {};
+    let proxyUrl: string | undefined;
+
+    const wsSpec = mod.workspaceSpec;
+    if (wsSpec?.type === "environment" && (wsSpec.services?.length || wsSpec.mcpServers?.length)) {
+      try {
+        containerData = await launchMatchContainers(match.id, seed, {
+          services: wsSpec.services,
+          mcpServers: wsSpec.mcpServers,
+        });
+
+        // Store container data in DB for the proxy routes and cleanup
+        await db
+          .update(matches)
+          .set({ serviceData: containerData as unknown as Record<string, unknown> })
+          .where(eq(matches.id, match.id));
+
+        // Build agent-facing URLs (all routed through the API as proxy)
+        const platformBase = process.env.PLATFORM_URL ?? "";
+        for (const svc of containerData.services) {
+          serviceUrls[svc.name] = `${platformBase}/api/v1/matches/${match.id}/services/${svc.name}`;
+        }
+        for (const mcp of containerData.mcpServers) {
+          mcpServerUrls[mcp.name] = {
+            url: `${platformBase}/api/v1/matches/${match.id}/mcp/${mcp.name}`,
+            token: mcp.token,
+          };
+        }
+        if (wsSpec.proxy) {
+          proxyUrl = `${platformBase}/api/v1/matches/${match.id}/proxy`;
+        }
+      } catch (err: any) {
+        // Container launch failed — expire match and report error
+        await db.update(matches).set({ status: "expired" }).where(eq(matches.id, match.id));
+        return errorEnvelope(
+          c,
+          `Failed to launch challenge environment: ${err.message}`,
+          503,
+          "The arena's simulation infrastructure is temporarily unavailable. Try again shortly.",
+        );
+      }
+    }
+
     return envelope(
       c,
       {
@@ -212,6 +260,10 @@ matchRoutes.post(
               constraints: challenge.constraints as Record<string, unknown> | null ?? null,
               matchId: match.id,
               agentHarness: (agent.harness as HarnessInfo | null) ?? null,
+              serviceUrls: Object.keys(serviceUrls).length ? serviceUrls : undefined,
+              serviceToken: containerData?.serviceToken,
+              mcpServers: Object.keys(mcpServerUrls).length ? mcpServerUrls : undefined,
+              proxyUrl,
             })
           : null,
         submission_spec: mod.submissionSpec ?? null,
@@ -355,6 +407,30 @@ matchRoutes.post(
       evalEnvVars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
     }
 
+    // For environment challenges: build a metrics fetcher to query live services before scoring
+    const matchContainerData = (match as any).serviceData as MatchContainerData | null;
+    let serviceMetricsFetcher: (() => Promise<Record<string, Record<string, unknown>>>) | undefined;
+    if (matchContainerData?.services?.length) {
+      const mod_ = mod; // capture
+      serviceMetricsFetcher = async () => {
+        const metrics: Record<string, Record<string, unknown>> = {};
+        for (const svc of matchContainerData.services) {
+          const svcSpec = mod_.workspaceSpec?.services?.find((s) => s.name === svc.name);
+          if (!svcSpec?.metricsEndpoint) continue;
+          try {
+            const res = await fetch(`${svc.internalUrl}${svcSpec.metricsEndpoint}`, {
+              headers: { authorization: `Bearer ${matchContainerData.serviceToken}` },
+              signal: AbortSignal.timeout(5_000),
+            });
+            if (res.ok) metrics[svc.name] = await res.json() as Record<string, unknown>;
+          } catch {
+            // Best-effort — missing metrics won't block scoring
+          }
+        }
+        return metrics;
+      };
+    }
+
     const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
       verified: isVerified,
       constraints: challenge.constraints as import("@clawdiators/shared").ChallengeConstraints | null,
@@ -363,7 +439,13 @@ matchRoutes.post(
       envVars: Object.keys(evalEnvVars).length > 0 ? evalEnvVars : undefined,
       timeoutSecs: envSpec?.timeout,
       image: envSpec?.image,
+      serviceMetricsFetcher,
     });
+
+    // Stop environment containers now that scoring is complete (best-effort)
+    if (matchContainerData) {
+      stopMatchContainers(matchContainerData);
+    }
     const { breakdown } = evalResult;
 
     // Determine result (solo calibration)

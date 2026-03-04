@@ -70,6 +70,10 @@ export const matches = pgTable("matches", {
     .default([]),
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
 
+  // Environment challenge: running container metadata (URLs, tokens, IDs)
+  // Stored so proxy routes can resolve internalUrl and tokens per match.
+  serviceData: jsonb("service_data").$type<Record<string, unknown>>(),
+
   // Timestamps
   startedAt: timestamp("started_at", { withTimezone: true })
     .notNull()

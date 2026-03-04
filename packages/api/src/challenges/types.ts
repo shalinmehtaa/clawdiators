@@ -19,6 +19,12 @@ export interface ScoringInput {
   apiCallCount: number;
   /** For multi-checkpoint challenges: previously submitted checkpoints. */
   checkpoints?: Record<string, unknown>[];
+  /**
+   * For "environment" challenges: metrics fetched from each live service's
+   * metricsEndpoint just before scoring. Keyed by service name.
+   * Allows the scorer to read final system state (e.g. recovery completeness).
+   */
+  serviceMetrics?: Record<string, Record<string, unknown>>;
 }
 
 /** Result returned by a challenge's score function. */

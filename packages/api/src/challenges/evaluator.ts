@@ -30,10 +30,21 @@ export async function evaluate(
     envVars?: Record<string, string>;
     image?: string;
     timeoutSecs?: number;
+    /** For "environment" challenges: fetch metrics from each service before scoring. */
+    serviceMetricsFetcher?: () => Promise<Record<string, Record<string, unknown>>>;
   },
 ): Promise<{ result: ScoreResult; log: EvaluationLog }> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
+
+  // For environment challenges: fetch service metrics before scoring
+  if (opts?.serviceMetricsFetcher) {
+    try {
+      input.serviceMetrics = await opts.serviceMetricsFetcher();
+    } catch (err: any) {
+      errors.push(`Failed to fetch service metrics: ${err.message}`);
+    }
+  }
 
   const scoringSpec = mod.scoringSpec;
   const method = scoringSpec?.method ?? "deterministic";

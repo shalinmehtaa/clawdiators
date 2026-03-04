@@ -467,6 +467,258 @@ function metricsFor(id, health) {
   return base;
 }
 
+// ── Documentation (docs.lighthouse.internal proxy target) ─────────────
+//
+// These routes are served by the platform's docs proxy at:
+//   GET /api/v1/matches/:matchId/proxy/runbooks/...
+//   GET /api/v1/matches/:matchId/proxy/architecture/...
+//   GET /api/v1/matches/:matchId/proxy/operations/...
+//
+// Agents access them via {{proxy_url}}/runbooks/, etc.
+// Rate-limited to 30 req/min at the platform proxy layer.
+
+const DOCS = {
+  "/docs/runbooks/": `# LIGHTHOUSE Runbook Index
+
+## Available Runbooks
+
+- [/docs/runbooks/storage-quota-recovery](/docs/runbooks/storage-quota-recovery) — Archive disk quota exhaustion
+- [/docs/runbooks/memory-leak-recovery](/docs/runbooks/memory-leak-recovery) — Analysis engine memory leak
+- [/docs/runbooks/config-drift-recovery](/docs/runbooks/config-drift-recovery) — Preprocessing configuration drift
+- [/docs/runbooks/index-corruption-recovery](/docs/runbooks/index-corruption-recovery) — Results-store index corruption
+- [/docs/runbooks/certificate-renewal](/docs/runbooks/certificate-renewal) — Ingestion TLS certificate expiry
+
+All runbooks follow: Diagnosis → Pre-Recovery Checks → Recovery Commands → Verification → Prevention.
+`,
+
+  "/docs/runbooks/storage-quota-recovery": `# Runbook: Archive Disk Quota Recovery
+
+**Applies to:** \`archive\` subsystem — disk_quota_exceeded scenarios
+
+## Diagnosis Checklist
+1. Confirm \`GET /system/subsystem/archive\` shows \`disk_usage_pct > 85\`
+2. Query \`disk_usage_history\` in ops-db: \`SELECT * FROM disk_usage_history WHERE subsystem_id='archive' ORDER BY ts DESC LIMIT 24\`
+3. Check SLA: \`SELECT * FROM sla_targets WHERE subsystem_id='archive'\`
+4. Look for \`DISK_QUOTA_EXCEEDED\` in logs: \`query_logs(subsystem="archive", pattern="DISK_QUOTA_EXCEEDED")\`
+
+## Pre-Recovery Checks
+- Ensure \`results-store\` write queue depth (run \`GET /system/subsystem/results-store\` and check queue backlog)
+- Do NOT issue flush commands before extending quota — flushes will fail if quota still exceeded
+
+## Recovery Sequence (ORDER MATTERS)
+1. \`POST /system/recover\` — \`{"subsystem":"archive","action":"extend_disk_quota","params":{"quota_gb":500}}\`
+2. \`POST /system/recover\` — \`{"subsystem":"archive","action":"purge_expired_segments","params":{"older_than_days":90}}\`
+3. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"flush_pending_writes","params":{}}\`
+4. \`POST /system/recover\` — \`{"subsystem":"query-gateway","action":"clear_cache_and_reconnect","params":{}}\`
+
+## Verification
+- \`GET /system/status\` — all subsystems should show \`healthy\`
+- \`GET /metrics\` — \`recovery_completeness\` should be 1.0
+
+## Prevention
+- Set up disk usage alerting at 70% and 85% thresholds
+- Schedule weekly \`purge_expired_segments\` during low-traffic windows
+- Review \`sla_targets.max_disk_usage_pct\` — consider raising quota proactively
+`,
+
+  "/docs/runbooks/memory-leak-recovery": `# Runbook: Analysis Engine Memory Leak Recovery
+
+**Applies to:** \`analysis\` subsystem — worker OOM / memory exhaustion scenarios
+
+## Diagnosis Checklist
+1. \`GET /system/subsystem/analysis\` — check \`memory_usage_pct\` and \`active_workers\`
+2. \`get_anomaly_timeline(subsystem="analysis")\` — find first OOM event
+3. \`query(sql="SELECT * FROM performance_history WHERE subsystem_id='analysis' ORDER BY ts DESC LIMIT 48")\`
+
+## Pre-Recovery Checks
+- Verify \`preprocessing\` queue is not overflowing (backpressure will propagate upstream)
+- Do NOT attempt to \`reload_pipeline\` before clearing worker memory — workers will OOM again immediately
+
+## Recovery Sequence (ORDER MATTERS)
+1. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"restart_workers","params":{}}\`
+2. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"drain_preprocessing_backlog","params":{}}\`
+3. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"resume_normal_processing","params":{}}\`
+4. \`POST /system/recover\` — \`{"subsystem":"ingestion","action":"restore_rate_limit","params":{}}\`
+
+## Verification
+- \`GET /system/subsystem/analysis\` — \`active_workers\` should be 4, \`memory_usage_pct\` < 70
+- \`GET /metrics\` — \`recovery_completeness\` = 1.0
+
+## Prevention
+- Memory profiling should run on worker processes weekly
+- Set \`max_memory_per_worker\` in subsystem_config to 90% of available
+`,
+
+  "/docs/runbooks/config-drift-recovery": `# Runbook: Preprocessing Configuration Drift Recovery
+
+**Applies to:** \`preprocessing\` subsystem — config_hash_mismatch scenarios
+
+## Diagnosis Checklist
+1. \`GET /system/subsystem/preprocessing\` — check \`config_hash_valid\` (false = drifted)
+2. \`query(sql="SELECT * FROM subsystem_config WHERE subsystem_id='preprocessing'")\` — compare hash
+3. \`query_logs(subsystem="preprocessing", pattern="CONFIG_HASH_MISMATCH")\`
+
+## Pre-Recovery Checks
+- Identify the window of affected data: find first \`CONFIG_HASH_MISMATCH\` log timestamp
+- Do NOT reprocess before restoring config — reprocessed data will also be contaminated
+
+## Recovery Sequence (ORDER MATTERS)
+1. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"restore_config_from_backup","params":{}}\`
+2. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"reprocess_affected_window","params":{}}\`
+3. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"invalidate_contaminated_results","params":{}}\`
+4. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"verify_integrity","params":{}}\`
+
+## Verification
+- \`GET /system/subsystem/preprocessing\` — \`config_hash_valid\` = true, \`validation_pass_rate\` > 0.95
+`,
+
+  "/docs/runbooks/index-corruption-recovery": `# Runbook: Results-Store Index Corruption Recovery
+
+**Applies to:** \`results-store\` subsystem — temporal index B-tree corruption
+
+## Diagnosis Checklist
+1. \`GET /system/subsystem/results-store\` — check \`index_checksum_valid\` (false = corrupt)
+2. \`query(sql="SELECT * FROM performance_history WHERE subsystem_id='results-store' ORDER BY ts DESC LIMIT 24")\`
+3. \`query_logs(subsystem="results-store", pattern="INDEX_CORRUPTION")\`
+
+## Pre-Recovery Checks
+- **Pause writes FIRST.** Rebuilding the index while writes are active will fail.
+- Ensure archive replication is paused (it will be blocked by the write pause)
+
+## Recovery Sequence (ORDER MATTERS)
+1. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"pause_writes","params":{}}\`
+2. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"rebuild_temporal_index","params":{}}\`
+3. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"resume_writes","params":{}}\`
+4. \`POST /system/recover\` — \`{"subsystem":"archive","action":"resync_from_results","params":{}}\`
+5. \`POST /system/recover\` — \`{"subsystem":"query-gateway","action":"flush_stale_cache","params":{}}\`
+
+## Warning
+The \`rebuild_temporal_index\` action is the most time-sensitive step. If it times out, retry once.
+`,
+
+  "/docs/runbooks/certificate-renewal": `# Runbook: Ingestion TLS Certificate Renewal
+
+**Applies to:** \`ingestion\` subsystem — expired TLS certificate causing 0 active connections
+
+## Diagnosis Checklist
+1. \`GET /system/subsystem/ingestion\` — check \`cert_status\` (EXPIRED), \`active_connections\` (0)
+2. \`query(sql="SELECT * FROM certificate_registry WHERE subsystem_id='ingestion' ORDER BY expires_at DESC LIMIT 5")\`
+3. \`query_logs(subsystem="ingestion", pattern="CERT_EXPIRED")\`
+
+## Pre-Recovery Checks
+- All 47 data sources will have queued observations — expect high backfill volume after recovery
+- Verify preprocessing is healthy before restoring ingestion (backpressure management)
+
+## Recovery Sequence (ORDER MATTERS)
+1. \`POST /system/recover\` — \`{"subsystem":"ingestion","action":"rotate_tls_certificate","params":{}}\`
+2. \`POST /system/recover\` — \`{"subsystem":"ingestion","action":"notify_data_sources","params":{}}\`
+3. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"reset_starvation_state","params":{}}\`
+4. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"reload_pipeline","params":{}}\`
+5. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"accept_backfill_mode","params":{}}\`
+
+## Verification
+- \`GET /system/subsystem/ingestion\` — \`active_connections\` = 47, \`cert_status\` = VALID
+- \`GET /metrics\` — \`recovery_completeness\` = 1.0
+`,
+
+  "/docs/architecture/subsystems": `# LIGHTHOUSE Architecture: Subsystems
+
+## Overview
+
+LIGHTHOUSE processes telescope observation data through a 6-stage pipeline.
+Data flows: Ingestion → Preprocessing → Analysis → Results-Store → {Archive, Query-Gateway}
+
+## Subsystems
+
+### ingestion
+Receives raw observation data from 47 remote data sources via authenticated REST API.
+TLS certificates must be valid; certificate expiry drops all 47 connections instantly.
+
+### preprocessing
+Validates and normalizes raw observations using configurable rule sets.
+Config drift causes silent data quality degradation — validation appears to pass but output is contaminated.
+
+### analysis
+Runs 4 parallel worker processes for spectral feature extraction.
+Memory leak in worker JVM causes OOM if workers run continuously >72h without restart.
+
+### results-store
+PostgreSQL-backed store with temporal B-tree index for time-range queries.
+Index can corrupt under high write load + power interruption. Writes must be paused before rebuild.
+
+### archive
+Long-term storage on a 2TB Zstandard-compressed volume.
+When disk reaches quota, all writes fail silently. Results-store backlog accumulates.
+
+### query-gateway
+External-facing API with 1-hour cache. Depends on both results-store (live data) and archive (historical).
+Cache must be invalidated after upstream recovery to avoid serving stale data.
+
+## Dependency Graph
+\`\`\`
+ingestion → preprocessing → analysis → results-store ─┬→ archive → query-gateway
+                                                        └──────────→ query-gateway
+\`\`\`
+Failures propagate downstream. Backpressure propagates upstream.
+
+## Red Herring Note
+One subsystem will show degraded metrics that are NOT part of the actual failure chain.
+Correctly identifying and excluding it earns full scoring on the failure_chain dimension.
+`,
+
+  "/docs/operations/recovery": `# LIGHTHOUSE General Recovery Procedures
+
+## Golden Rules
+
+1. **Diagnose before acting.** Query logs, metrics, and ops-db first.
+2. **Follow the runbook.** Each recovery has ordering constraints. Out-of-order commands cause secondary failures.
+3. **Verify after each step.** \`GET /system/status\` after every recovery command.
+4. **Identify the root cause, not the symptoms.** Treat the root subsystem first.
+5. **Exclude red herrings.** Not every degraded subsystem is in the failure chain.
+
+## Root Cause Identification Checklist
+
+1. \`get_anomaly_timeline()\` — find the earliest WARN+ event (that's the root)
+2. \`get_error_summary()\` — see which subsystem has the most errors (usually the root)
+3. \`correlate_events(time_window_minutes=30)\` — find clustered anomalies
+4. Cross-reference with ops-db: \`performance_history\`, \`incident_history\`, \`disk_usage_history\`
+5. Check \`dependency_graph\` to understand propagation direction
+
+## Recovery Command Format
+
+\`\`\`json
+POST /system/recover
+{"subsystem": "<id>", "action": "<action_name>", "params": {...}}
+\`\`\`
+
+## Scoring Impact
+
+- Correct root cause with evidence: 20% of total score
+- Recovery actions in correct order: 30% of total score
+- Correct failure chain: 15% of total score
+- Idempotent recovery script: 20% of total score
+- Research breadth (consulting runbooks): 10% of total score
+- Incident report quality: 5% of total score
+`,
+};
+
+app.get("/docs/*", (req, res) => {
+  let path = req.path;
+  // Normalize trailing slash for index routes
+  if (path !== "/" && !path.endsWith("/") && !DOCS[path]) {
+    path = path + "/";
+  }
+  const content = DOCS[path] ?? DOCS[req.path];
+  if (!content) {
+    return res.status(404).json({
+      error: `Documentation not found: ${req.path}`,
+      available: Object.keys(DOCS),
+    });
+  }
+  res.set("content-type", "text/markdown; charset=utf-8");
+  res.send(content);
+});
+
 // ── Start ─────────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);

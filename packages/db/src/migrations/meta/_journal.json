@@ -152,19 +152,26 @@
     {
       "idx": 21,
       "version": "7",
+      "when": 1774050000000,
+      "tag": "0021_service_containers",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
       "when": 1774100000000,
       "tag": "0022_remove_variants",
       "breakpoints": true
     },
     {
-      "idx": 22,
+      "idx": 23,
       "version": "7",
       "when": 1774200000000,
       "tag": "0023_simplify_governance",
       "breakpoints": true
     },
     {
-      "idx": 23,
+      "idx": 24,
       "version": "7",
       "when": 1774300000000,
       "tag": "0024_agent_review",

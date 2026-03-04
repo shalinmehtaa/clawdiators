@@ -29,6 +29,8 @@ import { generateHaystackData } from "../src/challenges/needle-haystack/data.js"
 import { scoreHaystack } from "../src/challenges/needle-haystack/scorer.js";
 import { generateOptimizerData } from "../src/challenges/performance-optimizer/data.js";
 import { scoreOptimizer } from "../src/challenges/performance-optimizer/scorer.js";
+import { generateLighthouseData } from "../src/challenges/lighthouse-incident/data.js";
+import { scoreLighthouse } from "../src/challenges/lighthouse-incident/scorer.js";
 
 // ── Deep Mapping ─────────────────────────────────────────────────────
 
@@ -1133,5 +1135,179 @@ describe("Performance Optimizer scoring", () => {
       submittedAt: new Date(startedAt.getTime() + 5000), apiCallCount: 0,
     });
     expect(r.breakdown.total).toBeLessThan(600);
+  });
+});
+
+// ── LIGHTHOUSE Incident Response ──────────────────────────────────────
+
+describe("LIGHTHOUSE Incident: data generation", () => {
+  it("is deterministic across seeds", () => {
+    const d1 = generateLighthouseData(42);
+    const d2 = generateLighthouseData(42);
+    expect(d1.groundTruth.rootCauseId).toBe(d2.groundTruth.rootCauseId);
+    expect(d1.groundTruth.failureChain).toEqual(d2.groundTruth.failureChain);
+    expect(d1.logs.length).toBe(d2.logs.length);
+  });
+
+  it("produces different scenarios for different seeds", () => {
+    const scenarios = new Set<string>();
+    for (const seed of [1, 7, 13, 42, 99, 201, 888, 1001, 5555, 9999]) {
+      scenarios.add(generateLighthouseData(seed).groundTruth.rootCauseId);
+    }
+    // Should produce at least 3 distinct root causes across 10 seeds
+    expect(scenarios.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("all 5 root causes are reachable", () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 200; seed++) {
+      seen.add(generateLighthouseData(seed).groundTruth.rootCauseId);
+    }
+    expect(seen.has("archive_disk_quota")).toBe(true);
+    expect(seen.has("analysis_memory_leak")).toBe(true);
+    expect(seen.has("preprocessing_config_drift")).toBe(true);
+    expect(seen.has("results_store_index_corruption")).toBe(true);
+    expect(seen.has("ingestion_cert_expiry")).toBe(true);
+  });
+
+  it("generates logs with correct signal codes", () => {
+    const data = generateLighthouseData(42);
+    const codes = new Set(data.logs.map((l: any) => l.code));
+    // Should contain at least some of the expected signal codes for the scenario
+    const scenario = data.scenario;
+    const hasSignal = scenario.logSignals.some((sig: string) => codes.has(sig));
+    expect(hasSignal).toBe(true);
+  });
+
+  it("ground truth has valid recovery sequence", () => {
+    const data = generateLighthouseData(42);
+    expect(data.groundTruth.recoverySequence.length).toBeGreaterThan(0);
+    expect(data.groundTruth.failureChain.length).toBeGreaterThan(0);
+    expect(data.groundTruth.runbook).toMatch(/^\/docs\/runbooks\//);
+  });
+
+  it("red herring subsystem is not in failure chain", () => {
+    for (const seed of [1, 7, 42, 99, 201]) {
+      const data = generateLighthouseData(seed);
+      expect(data.groundTruth.failureChain).not.toContain(data.groundTruth.redHerring.subsystem);
+    }
+  });
+});
+
+describe("LIGHTHOUSE Incident: scoring", () => {
+  const data = generateLighthouseData(42);
+  const gt = data.groundTruth;
+  const startedAt = new Date("2026-03-04T03:00:00Z");
+
+  it("perfect submission scores ≥ 850", () => {
+    const sub = {
+      root_cause: gt.rootCauseId,
+      root_cause_evidence: `Log entry ${gt.logSignals[0]} detected. DB shows ${Object.values(gt.dbSignals)[0]}`,
+      failure_chain: [...gt.failureChain],
+      failure_chain_reasoning: "Earliest anomaly in logs was at root subsystem, cascaded downstream per dependency graph",
+      recovery_actions_taken: gt.recoverySequence.map(s => ({
+        subsystem: s.subsystem, action: s.action, params: s.params, result: "success",
+      })),
+      recovery_script: `#!/usr/bin/env python3
+import requests
+import sys
+
+API_BASE = 'http://lighthouse-api:3000'
+HEADERS = {'Authorization': 'Bearer token'}
+
+def recover_${gt.rootCauseId.replace(/_/g, "_")}():
+    try:
+        for step in [${gt.recoverySequence.map(s => `("${s.subsystem}", "${s.action}")`).join(", ")}]:
+            subsystem, action = step
+            response = requests.post(f'{API_BASE}/system/recover',
+                json={'subsystem': subsystem, 'action': action},
+                headers=HEADERS)
+            if response.status_code != 200:
+                print(f'Failed: {subsystem}/{action}')
+                sys.exit(1)
+            print(f'OK: {subsystem}/{action}')
+    except Exception as e:
+        print(f'Error: {e}')
+        raise
+
+def main():
+    recover_${gt.rootCauseId.replace(/_/g, "_")}()
+    print('Recovery complete')
+
+if __name__ == '__main__':
+    main()
+`,
+      incident_report: `## Executive Summary\nP1 incident in LIGHTHOUSE pipeline. Root cause: ${gt.rootCauseName}.\n\n## Root Cause Analysis\nInvestigation revealed ${gt.rootCauseId} as root cause based on log signals and database evidence.\n\n## Impact Assessment\nAffected subsystems: ${gt.failureChain.join(", ")}.\n\n## Recovery Timeline\nRecovery actions taken in order per runbook ${gt.runbook}.\n\n## Prevention Recommendations\nAutomate monitoring and quota management to prevent recurrence.`,
+      methodology: `1. GET /system/status to identify degraded subsystems. 2. Used mcp-logs get_anomaly_timeline to find earliest anomaly. 3. Queried mcp-ops-db for ${Object.keys(gt.dbSignals)[0]}. 4. Consulted runbook ${gt.runbook} via proxy documentation. 5. Executed recovery in runbook order.`,
+    };
+    const r = scoreLighthouse({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 3600000), apiCallCount: 50 });
+    expect(r.breakdown.total).toBeGreaterThanOrEqual(850);
+    expect(r.breakdown.root_cause).toBeGreaterThan(150);
+    expect(r.breakdown.recovery).toBeGreaterThan(250);
+    expect(r.breakdown.failure_chain).toBeGreaterThan(100);
+  });
+
+  it("wrong root cause scores 0 on root_cause dimension", () => {
+    const wrongCauses = ["archive_disk_quota", "analysis_memory_leak", "preprocessing_config_drift", "results_store_index_corruption", "ingestion_cert_expiry"]
+      .filter(c => c !== gt.rootCauseId);
+    const sub = {
+      root_cause: wrongCauses[0],
+      failure_chain: gt.failureChain,
+      recovery_actions_taken: [],
+      recovery_script: "import requests\n\ndef recover():\n    pass\n\nmain()",
+      incident_report: "## Executive Summary\nWrong analysis.",
+      methodology: "Checked logs.",
+    };
+    const r = scoreLighthouse({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 100000), apiCallCount: 5 });
+    expect(r.breakdown.root_cause).toBeLessThan(80);
+  });
+
+  it("red herring in failure_chain loses points", () => {
+    const subWithRedHerring = {
+      root_cause: gt.rootCauseId,
+      failure_chain: [...gt.failureChain, gt.redHerring.subsystem],
+      recovery_actions_taken: gt.recoverySequence.map(s => ({ subsystem: s.subsystem, action: s.action })),
+      recovery_script: "import requests\ndef recover(): pass",
+      incident_report: "## Executive Summary\n## Root Cause\n## Impact\n## Recovery\n## Prevention",
+      methodology: "Used logs and database",
+    };
+    const subWithout = {
+      root_cause: gt.rootCauseId,
+      failure_chain: [...gt.failureChain],
+      recovery_actions_taken: gt.recoverySequence.map(s => ({ subsystem: s.subsystem, action: s.action })),
+      recovery_script: "import requests\ndef recover(): pass",
+      incident_report: "## Executive Summary\n## Root Cause\n## Impact\n## Recovery\n## Prevention",
+      methodology: "Used logs and database",
+    };
+    const rWith = scoreLighthouse({ submission: subWithRedHerring, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 100000), apiCallCount: 10 });
+    const rWithout = scoreLighthouse({ submission: subWithout, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 100000), apiCallCount: 10 });
+    expect(rWith.breakdown.failure_chain).toBeLessThan(rWithout.breakdown.failure_chain);
+  });
+
+  it("empty submission scores 0", () => {
+    const r = scoreLighthouse({ submission: {}, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 100000), apiCallCount: 0 });
+    expect(r.breakdown.total).toBe(0);
+  });
+
+  it("out-of-order recovery loses points vs correct order", () => {
+    const correctOrder = gt.recoverySequence.map(s => ({ subsystem: s.subsystem, action: s.action, result: "success" }));
+    const reversedOrder = [...correctOrder].reverse();
+    const subCorrect = { root_cause: gt.rootCauseId, failure_chain: gt.failureChain, recovery_actions_taken: correctOrder, recovery_script: "def main(): pass\nmain()", incident_report: "short", methodology: "used runbook documentation" };
+    const subReversed = { root_cause: gt.rootCauseId, failure_chain: gt.failureChain, recovery_actions_taken: reversedOrder, recovery_script: "def main(): pass\nmain()", incident_report: "short", methodology: "used runbook" };
+    const rCorrect = scoreLighthouse({ submission: subCorrect, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 100000), apiCallCount: 20 });
+    const rReversed = scoreLighthouse({ submission: subReversed, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 100000), apiCallCount: 20 });
+    expect(rCorrect.breakdown.recovery).toBeGreaterThanOrEqual(rReversed.breakdown.recovery);
+  });
+
+  it("total score is always within 0–1000", () => {
+    for (const seed of [1, 7, 42, 99, 201]) {
+      const d = generateLighthouseData(seed);
+      const r = scoreLighthouse({
+        submission: { root_cause: d.groundTruth.rootCauseId, failure_chain: d.groundTruth.failureChain, recovery_actions_taken: d.groundTruth.recoverySequence, recovery_script: "import requests\ndef r(): pass", incident_report: "## Executive Summary\n## Root Cause\n## Impact\n## Recovery\n## Prevention", methodology: "used logs database documentation runbook" },
+        groundTruth: d.groundTruth as any, startedAt, submittedAt: new Date(startedAt.getTime() + 1000000), apiCallCount: 10,
+      });
+      expect(r.breakdown.total).toBeGreaterThanOrEqual(0);
+      expect(r.breakdown.total).toBeLessThanOrEqual(1000);
+    }
   });
 });

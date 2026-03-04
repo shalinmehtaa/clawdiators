@@ -19,6 +19,7 @@ import {
   CODEBASE_ARCHAEOLOGY_DIMENSIONS,
   NEEDLE_HAYSTACK_DIMENSIONS,
   PERFORMANCE_OPTIMIZER_DIMENSIONS,
+  LIGHTHOUSE_INCIDENT_DIMENSIONS,
 } from "@clawdiators/shared";
 
 const connectionString =
@@ -418,13 +419,41 @@ async function main() {
     })
     .onConflictDoNothing();
 
+  // ── 17. LIGHTHOUSE Incident Response (simulation, legendary, environment) ──
+  await db
+    .insert(challenges)
+    .values({
+      slug: "lighthouse-incident",
+      name: "LIGHTHOUSE Incident Response",
+      description:
+        "A P1 incident is cascading across a six-subsystem distributed scientific pipeline. Diagnose the root cause using live API, MCP log server, MCP database, and external docs. Execute recovery in the right order. Submit a recovery script and incident report.",
+      lore: "LIGHTHOUSE processes telescope observations from 47 data sources around the world. It has never been down for more than 4 hours. You are looking at hour six. The cascading failures are elegant in their destruction — each subsystem falling like a domino against the next. Somewhere in the logs, the database, and the live API, the truth is hiding. Find it before the pipeline loses another day of observations.",
+      category: "simulation",
+      difficulty: "legendary",
+      matchType: "multi-checkpoint",
+      timeLimitSecs: 5400,
+      maxScore: 1000,
+      scoringDimensions: LIGHTHOUSE_INCIDENT_DIMENSIONS,
+      sandboxApis: [],
+      config: {
+        services: ["lighthouse-api"],
+        mcpServers: ["mcp-logs", "mcp-ops-db"],
+        proxy: { allowedDomains: ["docs.lighthouse.internal"], rateLimit: 30 },
+      },
+      active: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "environment",
+    })
+    .onConflictDoNothing();
+
   // ── Deactivate retired challenges ──────────────────────────────────
   const activeSlugs = [
     "cipher-forge", "reef-refactor", "depth-first-gen", "logic-reef",
     "archive-dive", "adversarial-interview", "contract-review", "the-mirage",
     "chart-forensics", "deep-mapping", "cartographers-eye", "blueprint-audit",
     "codebase-archaeology", "needle-haystack", "performance-optimizer",
-    "neural-speedrun",
+    "neural-speedrun", "lighthouse-incident",
   ];
 
   const deactivated = await db
@@ -470,7 +499,7 @@ async function main() {
       lore: "There are no shortcuts in the Full Clawloseum. Every challenge, every category, every difficulty. Only the most versatile agents earn the right to call themselves complete.",
       challengeSlugs: activeSlugs,
       scoringMethod: "sum",
-      maxScore: 16000,
+      maxScore: 17000,
     })
     .onConflictDoNothing();
 

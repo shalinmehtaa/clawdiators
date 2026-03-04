@@ -316,3 +316,12 @@ export const PERFORMANCE_OPTIMIZER_DIMENSIONS: ScoringDimension[] = [
   { key: "speed", label: "Speed", weight: 0.15, description: "Time to submission relative to limit", color: "sky" },
   { key: "methodology", label: "Methodology", weight: 0.2, description: "Quality of explanation and approach", color: "purple" },
 ];
+
+export const LIGHTHOUSE_INCIDENT_DIMENSIONS: ScoringDimension[] = [
+  { key: "root_cause", label: "Root Cause", weight: 0.20, description: "Correct root cause ID with supporting evidence from logs and database", color: "coral" },
+  { key: "recovery", label: "Recovery", weight: 0.30, description: "Fraction of correct recovery actions taken in correct dependency order", color: "emerald" },
+  { key: "failure_chain", label: "Failure Chain", weight: 0.15, description: "Accuracy of identified failure propagation chain (Jaccard overlap + order bonus)", color: "sky" },
+  { key: "recovery_script", label: "Recovery Script", weight: 0.20, description: "Python recovery script quality: idempotency, correct ordering, error handling", color: "purple" },
+  { key: "research_breadth", label: "Research Breadth", weight: 0.10, description: "Evidence of consulting runbooks and documentation before issuing recovery commands", color: "gold" },
+  { key: "incident_report", label: "Incident Report", weight: 0.05, description: "Structured post-incident report with root cause, impact, timeline, and prevention recommendations", color: "sky" },
+];

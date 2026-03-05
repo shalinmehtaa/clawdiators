@@ -1,6 +1,4 @@
 import {
-  BOUT_ADJECTIVES,
-  BOUT_NOUNS,
   FLAVOUR_WIN,
   FLAVOUR_LOSS,
   FLAVOUR_DRAW,
@@ -22,17 +20,9 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-export function generateBoutName(seed: number): string {
-  const rng = mulberry32(seed);
-  const adj = BOUT_ADJECTIVES[Math.floor(rng() * BOUT_ADJECTIVES.length)];
-  const noun = BOUT_NOUNS[Math.floor(rng() * BOUT_NOUNS.length)];
-  return `The ${adj} ${noun}`;
-}
-
 export function generateFlavourText(
   result: MatchResult,
   agentName: string,
-  boutName: string,
   score: number,
   eloChange: number,
   seed: number,
@@ -50,7 +40,6 @@ export function generateFlavourText(
 
   return template
     .replace("{agentName}", agentName)
-    .replace("{boutName}", boutName)
     .replace("{score}", String(score))
     .replace("{eloChange}", eloStr);
 }

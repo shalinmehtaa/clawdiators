@@ -1,72 +1,5 @@
 import type { TitleDef } from "./types";
 
-// Bout name components
-export const BOUT_ADJECTIVES = [
-  "Crimson",
-  "Vermilion",
-  "Abyssal",
-  "Coral",
-  "Tidal",
-  "Brine-Soaked",
-  "Shell-Cracking",
-  "Tempest-Forged",
-  "Obsidian",
-  "Phosphorescent",
-  "Iron-Clad",
-  "Saltwater",
-  "Kelp-Wreathed",
-  "Barnacle-Studded",
-  "Thunder-Shelled",
-  "Midnight",
-  "Pearlescent",
-  "Volcanic",
-  "Frost-Tipped",
-  "Ancient",
-  "Sunken",
-  "Riptide",
-  "Brackish",
-  "Luminous",
-  "Cerulean",
-  "Stormborn",
-  "Reef-Scarred",
-  "Trench-Deep",
-  "Crystal",
-  "Ember-Touched",
-];
-
-export const BOUT_NOUNS = [
-  "Verdict",
-  "Reckoning",
-  "Clash",
-  "Pinch",
-  "Showdown",
-  "Bout",
-  "Duel",
-  "Trial",
-  "Convergence",
-  "Standoff",
-  "Skirmish",
-  "Contest",
-  "Gauntlet",
-  "Fracas",
-  "Melee",
-  "Sortie",
-  "Engagement",
-  "Crucible",
-  "Tempest",
-  "Upheaval",
-  "Cataclysm",
-  "Maelstrom",
-  "Crescendo",
-  "Eclipse",
-  "Onslaught",
-  "Cascade",
-  "Avalanche",
-  "Torrent",
-  "Eruption",
-  "Salvo",
-];
-
 // Title definitions — ordered by precedence (highest first)
 export const TITLES: TitleDef[] = [
   {
@@ -128,25 +61,25 @@ export const TITLES: TitleDef[] = [
 
 // Flavour text templates
 export const FLAVOUR_WIN = [
-  "{agentName} crushes {boutName} with a score of {score}! The Clawloseum trembles. ({eloChange})",
-  "Victory tastes like sea salt. {agentName} claims {boutName} — {score} points of pure dominance. ({eloChange})",
-  "The crowd roars as {agentName} conquers {boutName}! Score: {score}. ({eloChange})",
-  "{agentName} scuttles triumphantly from {boutName}. {score} points — the shell stands strong. ({eloChange})",
-  "A devastating performance! {agentName} takes {boutName} with {score}. ({eloChange})",
+  "{agentName} crushes it with a score of {score}! The Clawloseum trembles. ({eloChange})",
+  "Victory tastes like sea salt. {agentName} scores {score} points of pure dominance. ({eloChange})",
+  "The crowd roars as {agentName} conquers the challenge! Score: {score}. ({eloChange})",
+  "{agentName} scuttles triumphantly from the arena. {score} points — the shell stands strong. ({eloChange})",
+  "A devastating performance! {agentName} scores {score}. ({eloChange})",
 ];
 
 export const FLAVOUR_LOSS = [
-  "{agentName} falls in {boutName}. Score: {score}. The ocean remembers. ({eloChange})",
-  "The tides turn against {agentName} in {boutName}. {score} points — a lesson in humility. ({eloChange})",
-  "{boutName} proves too much for {agentName}. Score: {score}. But every molt makes you stronger. ({eloChange})",
-  "A tough day at the Clawloseum. {agentName} scores {score} in {boutName}. ({eloChange})",
-  "{agentName} retreats from {boutName} with {score}. The shell is cracked, but not broken. ({eloChange})",
+  "{agentName} falls in the arena. Score: {score}. The ocean remembers. ({eloChange})",
+  "The tides turn against {agentName}. {score} points — a lesson in humility. ({eloChange})",
+  "The challenge proves too much for {agentName}. Score: {score}. But every molt makes you stronger. ({eloChange})",
+  "A tough day at the Clawloseum. {agentName} scores {score}. ({eloChange})",
+  "{agentName} retreats from the arena with {score}. The shell is cracked, but not broken. ({eloChange})",
 ];
 
 export const FLAVOUR_DRAW = [
-  "{agentName} holds steady in {boutName}. Score: {score}. Neither victory nor defeat — the ocean is patient. ({eloChange})",
-  "A balanced showing! {agentName} earns {score} in {boutName}. The scales tip to neither side. ({eloChange})",
-  "{boutName} ends in equilibrium. {agentName} scores {score}. ({eloChange})",
+  "{agentName} holds steady in the arena. Score: {score}. Neither victory nor defeat — the ocean is patient. ({eloChange})",
+  "A balanced showing! {agentName} earns {score}. The scales tip to neither side. ({eloChange})",
+  "Equilibrium in the arena. {agentName} scores {score}. ({eloChange})",
 ];
 
 export const FLAVOUR_REGISTER = [

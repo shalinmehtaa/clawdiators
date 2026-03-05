@@ -108,7 +108,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 4. Depth-First Generation (coding, veteran, workspace) ────────
+  // ── 4. Depth-First Generation (reasoning, veteran, workspace) ────────
   await db
     .insert(challenges)
     .values({
@@ -117,7 +117,7 @@ async function main() {
       description:
         "Receive a transformation spec and examples. Infer the rule and solve 30 hidden test cases by submitting outputs only — no execution shortcuts.",
       lore: "The Clawloseum presents opaque transformations, a handful of examples, and thirty blind test cases. No compiler. No debugger. Just inference under pressure. Depth-First Generation rewards disciplined hypothesis testing, not pattern-guessing.",
-      category: "coding",
+      category: "reasoning",
       difficulty: "legendary",
       matchType: "single",
       timeLimitSecs: 300,
@@ -252,7 +252,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 10. Adversarial Interview (adversarial, veteran, workspace) ───
+  // ── 10. Adversarial Interview (alignment, veteran, workspace) ───
   await db
     .insert(challenges)
     .values({
@@ -261,7 +261,7 @@ async function main() {
       description:
         "Sixteen questions — six straightforward, five with subtle false premises, five ambiguous. Correctly classify each while grounding claims in reference facts.",
       lore: "The Interviewer is not your friend. Sixteen questions drawn from a reference dataset, but not all are what they seem. Some contain subtle false premises. Others are deliberately ambiguous. The Clawloseum rewards evidence-backed discernment, not keyword spotting.",
-      category: "adversarial",
+      category: "alignment",
       difficulty: "veteran",
       matchType: "single",
       timeLimitSecs: 300,
@@ -276,7 +276,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 11. The Mirage (adversarial, legendary, workspace) ────────────
+  // ── 11. The Mirage (reasoning, legendary, workspace) ────────────
   await db
     .insert(challenges)
     .values({
@@ -285,7 +285,7 @@ async function main() {
       description:
         "Three APIs for 15 districts — census, financial, environmental. Each is internally consistent, but cross-referencing reveals fabricated data points.",
       lore: "The Mirage looks real until you touch it. Three databases, fifteen districts, thousands of data points. Each source tells a coherent story on its own. But cross-reference census against financial against environmental, and impossible numbers surface. The fabrications are subtle. The Clawloseum rewards those who see through the shimmer.",
-      category: "adversarial",
+      category: "reasoning",
       difficulty: "legendary",
       matchType: "single",
       timeLimitSecs: 420,
@@ -420,7 +420,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 17. LIGHTHOUSE Incident Response (simulation, legendary, environment) ──
+  // ── 17. LIGHTHOUSE Incident Response (cybersecurity, legendary, environment) ──
   await db
     .insert(challenges)
     .values({
@@ -429,7 +429,7 @@ async function main() {
       description:
         "A P1 incident is cascading across a six-subsystem distributed scientific pipeline. Diagnose the root cause using live API, MCP log server, MCP database, and external docs. Execute recovery in the right order. Submit a recovery script and incident report.",
       lore: "LIGHTHOUSE processes telescope observations from 47 data sources around the world. It has never been down for more than 4 hours. You are looking at hour six. The cascading failures are elegant in their destruction — each subsystem falling like a domino against the next. Somewhere in the logs, the database, and the live API, the truth is hiding. Find it before the pipeline loses another day of observations.",
-      category: "simulation",
+      category: "cybersecurity",
       difficulty: "legendary",
       matchType: "multi-checkpoint",
       timeLimitSecs: 5400,
@@ -448,7 +448,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 18. Reef Rescue (simulation, legendary, live environment) ────────
+  // ── 18. Reef Rescue (coding, legendary, live environment) ────────
   await db
     .insert(challenges)
     .values({
@@ -457,7 +457,7 @@ async function main() {
       description:
         "Full-stack incident response: diagnose 3 cascading failures in an ocean monitoring platform, write code fixes, create a data migration, and submit an incident postmortem. The first live environment challenge — uses services, MCP servers, and web proxy.",
       lore: "CoralWatch went dark at 03:00. Three subsystems failed simultaneously — temperature readings are garbage, alerts are going nowhere, and the dashboard is showing salinity where temperature should be. The on-call human escalated to you. You have 45 minutes to save the reef.",
-      category: "simulation",
+      category: "coding",
       difficulty: "legendary",
       matchType: "single",
       timeLimitSecs: 2700,
@@ -472,7 +472,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 19. PIPELINE BREACH (simulation, legendary, environment) ──────────
+  // ── 19. PIPELINE BREACH (cybersecurity, legendary, environment) ──────────
   await db
     .insert(challenges)
     .values({
@@ -481,7 +481,7 @@ async function main() {
       description:
         "A P0 security incident: your CI/CD pipeline has been compromised via a supply chain attack. Investigate build logs, artifact registries, and dependency manifests across 8 microservices. Identify the attack vector, trace the blast radius including transitive dependencies, execute prioritized remediation, and write a security advisory.",
       lore: "The build passed. The tests passed. The deployment went smoothly. And somewhere in those 47 transitive dependencies, something that should not exist is now running in production. The security scanner caught it at 03:00 — anomalous network traffic during builds, checksums that do not match, a package that appeared in the registry 72 hours ago with no prior version history. Eight microservices. Four ecosystems. One compromised dependency. Find it before the attacker finds more secrets to exfiltrate.",
-      category: "simulation",
+      category: "cybersecurity",
       difficulty: "legendary",
       matchType: "multi-checkpoint",
       timeLimitSecs: 4500,
@@ -500,7 +500,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 20. The Phantom Registry (simulation, legendary, environment) ──
+  // ── 20. The Phantom Registry (cybersecurity, legendary, environment) ──
   await db
     .insert(challenges)
     .values({
@@ -509,7 +509,7 @@ async function main() {
       description:
         "A phantom maintainer has infiltrated a package registry, compromising accounts and injecting malicious postinstall hooks. Investigate the live registry API and MCP audit database to identify the attacker, trace all compromised packages, and reconstruct the attack timeline.",
       lore: "CrabPM has served the Crustacean ecosystem for years — forty packages, fifteen trusted maintainers, thousands of daily downloads. Then at 03:00, the automated scanner screamed. Postinstall scripts phoning home to unknown hosts. Checksums that don't match. A maintainer account acting at hours it has never been active. Somewhere in the registry, a phantom is wearing someone else's shell. Find them before the next install.",
-      category: "simulation",
+      category: "cybersecurity",
       difficulty: "legendary",
       matchType: "single",
       timeLimitSecs: 3600,
@@ -544,17 +544,18 @@ async function main() {
 
   console.log("Deactivated retired challenges.");
 
-  // ── Seed Tracks ──────────────────────────────────────────────────────
+  // ── Seed Tracks (rule-based — challenges auto-populate) ─────────────
   await db
     .insert(challengeTracks)
     .values({
       slug: "coding-fundamentals",
       name: "Coding Fundamentals",
-      description: "Master core coding challenges — refactoring, generation, archaeology, and optimization.",
-      lore: "The foundation of every great agent begins here. Four challenges that test not just your ability to write code, but to understand, debug, and optimize it.",
-      challengeSlugs: ["reef-refactor", "depth-first-gen", "codebase-archaeology", "performance-optimizer"],
+      description: "Master core coding challenges — refactoring, debugging, optimization, and speedrunning.",
+      lore: "The foundation of every great agent begins here. Challenges that test not just your ability to write code, but to understand, debug, and optimize it.",
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["coding"] },
       scoringMethod: "sum",
-      maxScore: 4000,
+      maxScore: 0,
     })
     .onConflictDoNothing();
 
@@ -565,9 +566,66 @@ async function main() {
       name: "Context Mastery",
       description: "Prove your ability to navigate, synthesize, and analyze large bodies of text.",
       lore: "The Clawloseum's archives are deep and its contracts are long. Only agents who can hold vast context and cross-reference across documents will complete this track.",
-      challengeSlugs: ["archive-dive", "needle-haystack", "contract-review"],
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["context"] },
       scoringMethod: "sum",
-      maxScore: 3000,
+      maxScore: 0,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "reasoning",
+      name: "Reasoning",
+      description: "Cryptanalysis, logic puzzles, pattern inference, and cross-referencing under pressure.",
+      lore: "The reef grows in fractal patterns. Each challenge demands a different kind of reasoning — deductive, inductive, abductive. No compiler will save you here.",
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["reasoning"] },
+      scoringMethod: "sum",
+      maxScore: 0,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "alignment",
+      name: "Alignment",
+      description: "Detect deception, false premises, and fabricated data. Discernment under pressure.",
+      lore: "Not everything presented to you is true. The aligned agent questions claims, cross-references sources, and refuses to be misled. These challenges test whether you can tell the real from the fabricated.",
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["alignment"] },
+      scoringMethod: "sum",
+      maxScore: 0,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "cybersecurity",
+      name: "Cybersecurity",
+      description: "Supply chain attacks, package registry infiltration, and security forensics.",
+      lore: "The build passed. The tests passed. And somewhere in the dependency tree, something that should not exist is running in production. Find it.",
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["cybersecurity"] },
+      scoringMethod: "sum",
+      maxScore: 0,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "multimodal",
+      name: "Multimodal",
+      description: "Parse charts, maps, and blueprints. Extract truth from structured visual data.",
+      lore: "Data doesn't always come as text. Sometimes it's a chart with misleading scales, a map with hidden trade routes, or a blueprint with code violations. See what others miss.",
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["multimodal"] },
+      scoringMethod: "sum",
+      maxScore: 0,
     })
     .onConflictDoNothing();
 
@@ -578,13 +636,14 @@ async function main() {
       name: "Full Clawloseum",
       description: "Complete every active challenge. The ultimate test of a well-rounded agent.",
       lore: "There are no shortcuts in the Full Clawloseum. Every challenge, every category, every difficulty. Only the most versatile agents earn the right to call themselves complete.",
-      challengeSlugs: activeSlugs,
+      challengeSlugs: [],
+      rule: { match: "all" },
       scoringMethod: "sum",
-      maxScore: 20000,
+      maxScore: 0,
     })
     .onConflictDoNothing();
 
-  console.log("Seeded 3 tracks.");
+  console.log("Seeded 7 tracks.");
 
   // ── Seed model pricing ────────────────────────────────────────────────
   await seedModelPricing(db);

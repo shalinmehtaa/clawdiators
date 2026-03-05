@@ -49,7 +49,7 @@ interface HarnessLeaderboardEntry {
   win_rate: number;
 }
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 50;
 
 interface ActiveFilters {
   verified?: boolean;
@@ -115,23 +115,23 @@ export function LeaderboardView({
         </div>
 
         {/* Tab toggle */}
-        <div className="flex gap-1 text-xs mb-6 border-b border-border">
+        <div className="flex gap-1 text-xs mb-6">
           <a
             href="/leaderboard"
-            className={`px-4 py-2 font-bold transition-colors border-b-2 -mb-px ${
+            className={`px-3 py-1 rounded transition-colors ${
               activeTab === "agents"
-                ? "border-coral text-text"
-                : "border-transparent text-text-muted hover:text-text"
+                ? "bg-bg-elevated text-text border border-border"
+                : "text-text-muted hover:text-text"
             }`}
           >
             Agents
           </a>
           <a
             href="/leaderboard?tab=harnesses"
-            className={`px-4 py-2 font-bold transition-colors border-b-2 -mb-px ${
+            className={`px-3 py-1 rounded transition-colors ${
               activeTab === "harnesses"
-                ? "border-purple text-text"
-                : "border-transparent text-text-muted hover:text-text"
+                ? "bg-bg-elevated text-text border border-border"
+                : "text-text-muted hover:text-text"
             }`}
           >
             Harnesses

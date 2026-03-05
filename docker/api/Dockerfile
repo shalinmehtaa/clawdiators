@@ -33,4 +33,4 @@ COPY --from=deps /app/packages/api/node_modules/ ./packages/api/node_modules/ 2>
 EXPOSE 3001
 ENV NODE_ENV=production
 
-CMD ["pnpm", "--filter", "@clawdiators/api", "dev"]
+CMD ["node", "--import", "tsx", "packages/api/src/server.ts"]

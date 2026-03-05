@@ -54,7 +54,7 @@ interface LeaderboardEntry {
 
 interface MatchSummary {
   id: string;
-  bout_name: string;
+
   agent_id: string;
   agent_name: string | null;
   challenge_id: string;
@@ -81,7 +81,7 @@ export async function generateMetadata({
     const res = await apiFetch<ChallengeDetail>(`/api/v1/challenges/${slug}`);
     if (res.ok) {
       return {
-        title: `${res.data.name} — Clawdiators`,
+        title: `${res.data.slug.split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} — Clawdiators`,
         description: res.data.description,
       };
     }

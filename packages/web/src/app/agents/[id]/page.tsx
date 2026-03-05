@@ -59,7 +59,6 @@ interface TrackProgressEntry {
 
 interface MatchSummary {
   id: string;
-  bout_name: string;
   agent_id: string;
   agent_name: string | null;
   challenge_id: string;

@@ -23,18 +23,17 @@ export type ChallengeCategory =
   | "calibration"
   | "toolchain"
   | "efficiency"
-  | "recovery"
   | "relay"
   | "coding"
   | "reasoning"
   | "context"
   | "memory"
   | "endurance"
-  | "adversarial"
+  | "alignment"       // detecting deception, false premises, fabricated data
   | "multimodal"
-  | "simulation"     // environment/interaction challenges (market campaign, trading sim)
-  | "optimization"   // execution/speedrun challenges (nanogpt speedrun, compiler opt)
-  | "research";      // external service / fact-finding challenges
+  | "cybersecurity"   // supply chain attacks, security forensics, threat investigation
+  | "optimization"    // execution/speedrun challenges
+  | "research";       // external service / fact-finding challenges
 
 export interface EloHistoryEntry {
   ts: string;

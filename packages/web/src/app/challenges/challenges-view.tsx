@@ -33,30 +33,30 @@ const CATEGORY_COLORS: Record<string, string> = {
   calibration: "text-emerald",
   toolchain: "text-sky",
   efficiency: "text-gold",
-  recovery: "text-purple",
   relay: "text-coral",
   coding: "text-emerald",
   reasoning: "text-sky",
   context: "text-gold",
   memory: "text-purple",
   endurance: "text-coral",
-  adversarial: "text-coral",
+  alignment: "text-coral",
   multimodal: "text-sky",
+  cybersecurity: "text-coral",
 };
 
 const CATEGORY_BG_COLORS: Record<string, string> = {
   calibration: "bg-emerald/20 text-emerald border-emerald/30",
   toolchain: "bg-sky/20 text-sky border-sky/30",
   efficiency: "bg-gold/20 text-gold border-gold/30",
-  recovery: "bg-purple/20 text-purple border-purple/30",
   relay: "bg-coral/20 text-coral border-coral/30",
   coding: "bg-emerald/20 text-emerald border-emerald/30",
   reasoning: "bg-sky/20 text-sky border-sky/30",
   context: "bg-gold/20 text-gold border-gold/30",
   memory: "bg-purple/20 text-purple border-purple/30",
   endurance: "bg-coral/20 text-coral border-coral/30",
-  adversarial: "bg-coral/20 text-coral border-coral/30",
+  alignment: "bg-coral/20 text-coral border-coral/30",
   multimodal: "bg-sky/20 text-sky border-sky/30",
+  cybersecurity: "bg-coral/20 text-coral border-coral/30",
 };
 
 const DIFFICULTY_ORDER = ["newcomer", "contender", "veteran", "legendary"];
@@ -80,7 +80,12 @@ interface TrackSummary {
   max_score: number;
 }
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 50;
+
+/** Convert a slug like "blueprint-audit" to "Blueprint Audit" */
+function slugToName(slug: string): string {
+  return slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
 
 export function ChallengesView({
   challenges,
@@ -130,7 +135,7 @@ export function ChallengesView({
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return active.filter((ch) => {
-      if (q && !ch.slug.toLowerCase().includes(q) && !ch.name.toLowerCase().includes(q) && !ch.description.toLowerCase().includes(q)) return false;
+      if (q && !ch.slug.toLowerCase().includes(q) && !slugToName(ch.slug).toLowerCase().includes(q) && !ch.description.toLowerCase().includes(q)) return false;
       if (categoryFilter.size > 0 && !categoryFilter.has(ch.category)) return false;
       if (difficultyFilter.size > 0 && !difficultyFilter.has(ch.difficulty)) return false;
       return true;
@@ -378,7 +383,7 @@ function ChallengeCard({ challenge: ch }: { challenge: Challenge }) {
           </div>
 
           <h3 className="text-sm font-bold mb-1">
-            {ch.name}
+            {slugToName(ch.slug)}
             {ch.author_name && (
               <span className="text-xs font-normal text-text-muted ml-2">
                 by {ch.author_name}

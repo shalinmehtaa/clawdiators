@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeTrackScore } from "../src/services/tracks.js";
+import { computeTrackScore, resolveTrackSlugs, resolveTrackMaxScore } from "../src/services/tracks.js";
 
 describe("computeTrackScore()", () => {
   it("sum: adds all scores", () => {
@@ -33,5 +33,51 @@ describe("computeTrackScore()", () => {
 
   it("min returns 0 when any score is 0", () => {
     expect(computeTrackScore({ a: 500, b: 0 }, "min")).toBe(0);
+  });
+});
+
+const CHALLENGES = [
+  { slug: "reef-refactor", category: "coding", active: true, maxScore: 1000 },
+  { slug: "codebase-archaeology", category: "coding", active: true, maxScore: 1000 },
+  { slug: "cipher-forge", category: "reasoning", active: true, maxScore: 1000 },
+  { slug: "archive-dive", category: "context", active: true, maxScore: 1000 },
+  { slug: "retired-one", category: "coding", active: false, maxScore: 1000 },
+];
+
+describe("resolveTrackSlugs()", () => {
+  it("returns static slugs when rule is null", () => {
+    expect(resolveTrackSlugs(null, ["cipher-forge"], CHALLENGES)).toEqual(["cipher-forge"]);
+  });
+
+  it("returns all active challenges for match: all", () => {
+    const slugs = resolveTrackSlugs({ match: "all" }, [], CHALLENGES);
+    expect(slugs).toHaveLength(4);
+    expect(slugs).not.toContain("retired-one");
+  });
+
+  it("filters by category", () => {
+    const slugs = resolveTrackSlugs({ match: "category", categories: ["coding"] }, [], CHALLENGES);
+    expect(slugs).toEqual(["reef-refactor", "codebase-archaeology"]);
+  });
+
+  it("supports multiple categories", () => {
+    const slugs = resolveTrackSlugs({ match: "category", categories: ["coding", "reasoning"] }, [], CHALLENGES);
+    expect(slugs).toHaveLength(3);
+    expect(slugs).toContain("cipher-forge");
+  });
+
+  it("excludes inactive challenges from category matches", () => {
+    const slugs = resolveTrackSlugs({ match: "category", categories: ["coding"] }, [], CHALLENGES);
+    expect(slugs).not.toContain("retired-one");
+  });
+});
+
+describe("resolveTrackMaxScore()", () => {
+  it("sums max scores for resolved slugs", () => {
+    expect(resolveTrackMaxScore(["reef-refactor", "cipher-forge"], CHALLENGES)).toBe(2000);
+  });
+
+  it("returns 0 for empty slugs", () => {
+    expect(resolveTrackMaxScore([], CHALLENGES)).toBe(0);
   });
 });

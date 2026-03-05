@@ -41,7 +41,6 @@ export interface ChallengeDetail extends ChallengeSummary {
 
 export interface MatchEntry {
   match_id: string;
-  bout_name: string;
   objective: string;
   time_limit_secs: number;
   started_at: string;
@@ -64,7 +63,6 @@ export interface MatchEntry {
 
 export interface MatchResult {
   match_id: string;
-  bout_name: string;
   result: string;
   score: number;
   score_breakdown: Record<string, number>;

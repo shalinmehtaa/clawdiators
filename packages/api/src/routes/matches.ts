@@ -7,13 +7,13 @@ import { ELO_DEFAULT, ELO_FLOOR, DIFFICULTY_ELO, HEARTBEAT_GRACE_PERIOD_MS, VERI
 import type { TrackScoringMethod, HarnessInfo } from "@clawdiators/shared";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
-import { generateBoutName, generateFlavourText, computeTitle, computeAllTitles } from "../services/whimsy.js";
+import { generateFlavourText, computeTitle, computeAllTitles } from "../services/whimsy.js";
 import { calculateElo, scoreToResult } from "../services/elo.js";
 import { getChallenge } from "../challenges/registry.js";
 import { evaluate } from "../challenges/evaluator.js";
 import { injectChallengeMdContext } from "../challenges/workspace.js";
 import { recalibrateChallenge } from "../services/calibration.js";
-import { computeTrackScore } from "../services/tracks.js";
+import { computeTrackScore, resolveTrackSlugs } from "../services/tracks.js";
 import { replayStepSchema } from "../schemas/replay.js";
 import { upsertChallengeMemory } from "../services/memory.js";
 import { validateTrajectory } from "../services/trajectory-validation.js";
@@ -87,7 +87,7 @@ matchRoutes.post(
           });
           return errorEnvelope(
             c,
-            `You have an active match for "${existingChallenge?.name ?? "another challenge"}". Complete or wait for it to expire before entering a different challenge.`,
+            `You have an active match for "${existingChallenge?.slug ?? "another challenge"}". Complete or wait for it to expire before entering a different challenge.`,
             409,
             "One bout at a time, gladiator. Finish your current match before entering a new arena.",
           );
@@ -112,7 +112,6 @@ matchRoutes.post(
         const existingWorkspaceUrl = `/api/v1/challenges/${existingChallenge?.slug ?? challenge.slug}/workspace?seed=${existingActive.seed}`;
         return envelope(c, {
           match_id: existingActive.id,
-          bout_name: existingActive.boutName,
           status: "active",
           objective: existingActive.objective,
           time_limit_secs: existingChallenge?.timeLimitSecs ?? challenge.timeLimitSecs,
@@ -127,16 +126,14 @@ matchRoutes.post(
           verified: existingActive.verified,
           challenge: existingChallenge ? {
             slug: existingChallenge.slug,
-            name: existingChallenge.name,
           } : undefined,
-          note: `You already have an active match for "${existingChallenge?.name ?? "unknown"}". Complete or wait for it to expire.`,
+          note: `You already have an active match for "${existingChallenge?.slug ?? "unknown"}". Complete or wait for it to expire.`,
         }, 200, "Your current bout awaits, gladiator. Do not keep the crowd waiting.");
       }
     }
 
     // Generate match
     const seed = Math.floor(Math.random() * 2147483647);
-    const boutName = generateBoutName(seed);
 
     const data = await mod.generateData(seed, challenge.config);
     const now = new Date();
@@ -158,7 +155,7 @@ matchRoutes.post(
     const [match] = await db
       .insert(matches)
       .values({
-        boutName,
+        boutName: "Match",
         challengeId: challenge.id,
         agentId: agent.id,
         seed,
@@ -230,10 +227,8 @@ matchRoutes.post(
       c,
       {
         match_id: match.id,
-        bout_name: boutName,
         challenge: {
           slug: challenge.slug,
-          name: challenge.name,
           category: challenge.category,
           match_type: challenge.matchType,
         },
@@ -269,7 +264,7 @@ matchRoutes.post(
         ...extraUrls,
       },
       201,
-      `${boutName} begins! Download your workspace and get to work. You have ${challenge.timeLimitSecs} seconds.`,
+      `Match begins! Download your workspace and get to work. You have ${challenge.timeLimitSecs} seconds.`,
     );
   },
 );
@@ -469,7 +464,6 @@ matchRoutes.post(
     const flavourText = generateFlavourText(
       result,
       agent.name,
-      match.boutName,
       breakdown.total,
       eloChange,
       match.seed,
@@ -592,11 +586,17 @@ matchRoutes.post(
 
     // Update track progress (best-effort)
     try {
-      const allTracks = await db.query.challengeTracks.findMany({
-        where: eq(challengeTracks.active, true),
-      });
+      const [allTracks, challengeRefs] = await Promise.all([
+        db.query.challengeTracks.findMany({
+          where: eq(challengeTracks.active, true),
+        }),
+        db.query.challenges.findMany({
+          columns: { slug: true, category: true, active: true, maxScore: true },
+        }),
+      ]);
       for (const track of allTracks) {
-        if (!track.challengeSlugs.includes(challenge.slug)) continue;
+        const trackSlugs = resolveTrackSlugs(track.rule, track.challengeSlugs, challengeRefs);
+        if (!trackSlugs.includes(challenge.slug)) continue;
 
         // Upsert track progress
         const existing = await db.query.trackProgress.findFirst({
@@ -620,7 +620,7 @@ matchRoutes.post(
         // Compute cumulative score based on scoring method
         const cumulativeScore = computeTrackScore(bestScores, track.scoringMethod as TrackScoringMethod);
 
-        const isCompleted = completedSlugs.length >= track.challengeSlugs.length;
+        const isCompleted = completedSlugs.length >= trackSlugs.length;
 
         if (existing) {
           await db
@@ -673,7 +673,6 @@ matchRoutes.post(
       c,
       {
         match_id: match.id,
-        bout_name: match.boutName,
         result,
         score: breakdown.total,
         score_breakdown: breakdown,
@@ -859,7 +858,7 @@ matchRoutes.post(
     memory.reflections = [
       {
         matchId: match.id,
-        boutName: match.boutName,
+        boutName: "",
         result: match.result as "win" | "draw" | "loss",
         score: match.score ?? 0,
         lesson,
@@ -913,7 +912,6 @@ matchRoutes.get("/:matchId", async (c) => {
 
   return envelope(c, {
     id: match.id,
-    bout_name: match.boutName,
     challenge_id: match.challengeId,
     challenge_slug: challenge?.slug ?? null,
     match_type: challenge?.matchType ?? "single",
@@ -993,7 +991,6 @@ matchRoutes.get("/", async (c) => {
     c,
     allMatches.map((m) => ({
       id: m.id,
-      bout_name: m.boutName,
       agent_id: m.agentId,
       agent_name: agentNameMap.get(m.agentId) ?? null,
       challenge_id: m.challengeId,

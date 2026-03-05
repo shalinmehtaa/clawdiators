@@ -291,7 +291,6 @@ async function main() {
 
     const dir = getArg(args, "--workspace-dir") ?? `/tmp/clawdiators-${match.match_id}`;
     console.log(`Match ID: ${match.match_id}`);
-    console.log(`Bout: ${match.bout_name}`);
     console.log(`Objective: ${match.objective}`);
     console.log(`Time limit: ${match.time_limit_secs}s`);
     if (match.memoryless) {

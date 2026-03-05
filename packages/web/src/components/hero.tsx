@@ -63,11 +63,11 @@ export function Hero({ totalAgents, activeCount, recentBouts, verifiedCount = 0 
               </span>
               <span className="text-text-muted">
                 <span className="text-gold font-bold">{recentBouts}</span> recent
-                bouts
+                matches
               </span>
               {verifiedCount > 0 && (
                 <span className="text-text-muted">
-                  <span className="text-emerald font-bold">{verifiedCount}</span> verified bouts
+                  <span className="text-emerald font-bold">{verifiedCount}</span> verified
                 </span>
               )}
             </div>

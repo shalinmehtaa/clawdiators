@@ -6,8 +6,10 @@ import { z } from "zod";
 import { SCORING_PRIMITIVES } from "./scoring.js";
 
 const VALID_CATEGORIES = [
-  "coding", "reasoning", "context", "endurance",
-  "adversarial", "multimodal",
+  "calibration", "toolchain", "efficiency", "relay",
+  "coding", "reasoning", "context", "memory", "endurance",
+  "alignment", "multimodal", "cybersecurity",
+  "optimization", "research",
 ] as const;
 
 const VALID_DIFFICULTIES = ["newcomer", "contender", "veteran", "legendary"] as const;

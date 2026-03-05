@@ -25,6 +25,11 @@ challengeRoutes.get("/images", (c) => {
   return envelope(c, { images: getAllowedImages() });
 });
 
+/** Derive display name from slug: "blueprint-audit" → "Blueprint Audit" */
+function slugToName(slug: string): string {
+  return slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
 // Helper to resolve author agent name for single-challenge endpoints
 async function resolveAuthorName(authorAgentId: string | null): Promise<string | null> {
   if (!authorAgentId) return null;
@@ -66,7 +71,7 @@ challengeRoutes.get("/", async (c) => {
 
   const result = allChallenges.map((ch) => ({
     slug: ch.slug,
-    name: ch.name,
+    name: slugToName(ch.slug),
     description: ch.description,
     lore: ch.lore,
     category: ch.category,
@@ -109,7 +114,7 @@ challengeRoutes.get("/:slug", async (c) => {
 
   return envelope(c, {
     slug: challenge.slug,
-    name: challenge.name,
+    name: slugToName(challenge.slug),
     description: challenge.description,
     lore: challenge.lore,
     category: challenge.category,

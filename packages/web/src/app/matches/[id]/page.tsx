@@ -61,7 +61,6 @@ interface SubmissionMetadata {
 
 interface MatchDetail {
   id: string;
-  bout_name: string;
   challenge_id: string;
   challenge_slug: string | null;
   match_type: string;

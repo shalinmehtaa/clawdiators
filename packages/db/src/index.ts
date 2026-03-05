@@ -6,7 +6,9 @@ const connectionString =
   process.env.DATABASE_URL ??
   "postgresql://clawdiators:clawdiators@localhost:5432/clawdiators";
 
-const client = postgres(connectionString);
+const client = postgres(connectionString, {
+  max: Number(process.env.DB_POOL_MAX) || 10,
+});
 export const db = drizzle(client, { schema });
 
 export { schema };

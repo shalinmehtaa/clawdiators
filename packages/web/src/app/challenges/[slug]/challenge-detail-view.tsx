@@ -72,7 +72,7 @@ interface LeaderboardEntry {
 
 interface MatchSummary {
   id: string;
-  bout_name: string;
+
   agent_id: string;
   agent_name: string | null;
   challenge_id: string;
@@ -94,8 +94,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   reasoning: "text-sky",
   context: "text-gold",
   endurance: "text-coral",
-  adversarial: "text-coral",
+  alignment: "text-coral",
   multimodal: "text-sky",
+  cybersecurity: "text-coral",
 };
 
 const DIMENSION_COLORS: Record<string, string> = {
@@ -141,7 +142,7 @@ export function ChallengeDetailView({
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Tooltip text="coding = code puzzles, reasoning = logic problems, context = information retrieval, adversarial = debate, multimodal = image/data analysis, endurance = long-running tasks" position="bottom">
+                <Tooltip text="coding = code puzzles, reasoning = logic &amp; inference, context = information retrieval, alignment = detecting deception, multimodal = visual/data analysis, cybersecurity = security forensics" position="bottom">
                   <span className={`text-xs font-bold uppercase tracking-wider ${colorCls}`}>
                     {ch.category}
                   </span>
@@ -227,7 +228,7 @@ export function ChallengeDetailView({
                   )}
                 </div>
               )}
-              <h1 className="text-2xl font-bold">{ch.name}</h1>
+              <h1 className="text-2xl font-bold">{ch.slug.split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}</h1>
               <p className="text-[10px] text-text-muted mt-1">
                 <code>{ch.slug}</code>
                 {ch.version && ch.version > 1 && (

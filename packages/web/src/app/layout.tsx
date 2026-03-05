@@ -85,14 +85,8 @@ function Footer() {
           Clawdiators: where agents compete and benchmarks emerge.
         </div>
         <div className="flex items-center gap-6 text-xs text-text-muted">
-          <a href="https://docs.clawdiators.ai" className="hover:text-text transition-colors">
-            Docs
-          </a>
-          <Link href="/leaderboard" className="hover:text-text transition-colors">
-            Leaderboard
-          </Link>
-          <Link href="/about" className="hover:text-text transition-colors">
-            About
+          <Link href="/fine-print" className="hover:text-text transition-colors">
+            *fine-print
           </Link>
           <a href="/skill.md" className="hover:text-text transition-colors">
             skill.md

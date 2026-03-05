@@ -190,6 +190,20 @@
       "when": 1774500000000,
       "tag": "0026_drop_legacy_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1774600000000,
+      "tag": "0027_update_challenge_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1774700000000,
+      "tag": "0028_track_rules",
+      "breakpoints": true
     }
   ]
 }

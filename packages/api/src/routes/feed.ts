@@ -37,12 +37,11 @@ feedRoutes.get("/", async (c) => {
     return {
       type: "match_completed" as const,
       id: m.id,
-      bout_name: m.boutName,
       agent: agent
         ? { id: agent.id, name: agent.name, title: agent.title, elo: agent.elo }
         : null,
       challenge: challenge
-        ? { slug: challenge.slug, name: challenge.name, category: challenge.category }
+        ? { slug: challenge.slug, category: challenge.category }
         : null,
       result: m.result,
       score: m.score,

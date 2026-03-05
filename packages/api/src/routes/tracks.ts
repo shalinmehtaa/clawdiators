@@ -1,33 +1,49 @@
 import { Hono } from "hono";
 import { eq, desc, and } from "drizzle-orm";
-import { db, challengeTracks, trackProgress, agents } from "@clawdiators/db";
+import { db, challengeTracks, trackProgress, agents, challenges } from "@clawdiators/db";
 import { authMiddleware } from "../middleware/auth.js";
 import { envelope, errorEnvelope } from "../middleware/envelope.js";
 import { getCache, setCache } from "../lib/route-cache.js";
+import { resolveTrackSlugs, resolveTrackMaxScore } from "../services/tracks.js";
 
 export const trackRoutes = new Hono();
 
 const TRACKS_LIST_TTL = 60_000; // 60 s
+
+/** Load all active challenges (lightweight — used for rule resolution). */
+async function loadChallengeRefs() {
+  const all = await db.query.challenges.findMany({
+    columns: { slug: true, category: true, active: true, maxScore: true },
+  });
+  return all;
+}
 
 // GET /tracks — list active tracks
 trackRoutes.get("/", async (c) => {
   const cached = getCache<object[]>("tracks:active");
   if (cached) return envelope(c, cached, 200, `${cached.length} tracks await your journey.`);
 
-  const all = await db.query.challengeTracks.findMany({
-    where: eq(challengeTracks.active, true),
-  });
+  const [all, challengeRefs] = await Promise.all([
+    db.query.challengeTracks.findMany({
+      where: eq(challengeTracks.active, true),
+    }),
+    loadChallengeRefs(),
+  ]);
 
-  const result = all.map((t) => ({
-    slug: t.slug,
-    name: t.name,
-    description: t.description,
-    lore: t.lore,
-    challenge_slugs: t.challengeSlugs,
-    challenge_count: t.challengeSlugs.length,
-    scoring_method: t.scoringMethod,
-    max_score: t.maxScore,
-  }));
+  const result = all.map((t) => {
+    const slugs = resolveTrackSlugs(t.rule, t.challengeSlugs, challengeRefs);
+    const maxScore = resolveTrackMaxScore(slugs, challengeRefs);
+    return {
+      slug: t.slug,
+      name: t.name,
+      description: t.description,
+      lore: t.lore,
+      challenge_slugs: slugs,
+      challenge_count: slugs.length,
+      scoring_method: t.scoringMethod,
+      max_score: maxScore,
+    };
+  });
 
   setCache("tracks:active", result, TRACKS_LIST_TTL);
   return envelope(c, result, 200, `${all.length} tracks await your journey.`);
@@ -36,23 +52,29 @@ trackRoutes.get("/", async (c) => {
 // GET /tracks/:slug — track detail
 trackRoutes.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
-  const track = await db.query.challengeTracks.findFirst({
-    where: eq(challengeTracks.slug, slug),
-  });
+  const [track, challengeRefs] = await Promise.all([
+    db.query.challengeTracks.findFirst({
+      where: eq(challengeTracks.slug, slug),
+    }),
+    loadChallengeRefs(),
+  ]);
 
   if (!track) {
     return errorEnvelope(c, "Track not found", 404, "No such track exists.");
   }
+
+  const slugs = resolveTrackSlugs(track.rule, track.challengeSlugs, challengeRefs);
+  const maxScore = resolveTrackMaxScore(slugs, challengeRefs);
 
   return envelope(c, {
     slug: track.slug,
     name: track.name,
     description: track.description,
     lore: track.lore,
-    challenge_slugs: track.challengeSlugs,
-    challenge_count: track.challengeSlugs.length,
+    challenge_slugs: slugs,
+    challenge_count: slugs.length,
     scoring_method: track.scoringMethod,
-    max_score: track.maxScore,
+    max_score: maxScore,
     active: track.active,
   });
 });
@@ -62,12 +84,17 @@ trackRoutes.get("/:slug/leaderboard", async (c) => {
   const slug = c.req.param("slug");
   const limit = Math.min(Number(c.req.query("limit")) || 20, 100);
 
-  const track = await db.query.challengeTracks.findFirst({
-    where: eq(challengeTracks.slug, slug),
-  });
+  const [track, challengeRefs] = await Promise.all([
+    db.query.challengeTracks.findFirst({
+      where: eq(challengeTracks.slug, slug),
+    }),
+    loadChallengeRefs(),
+  ]);
   if (!track) {
     return errorEnvelope(c, "Track not found", 404);
   }
+
+  const resolvedSlugs = resolveTrackSlugs(track.rule, track.challengeSlugs, challengeRefs);
 
   const progress = await db.query.trackProgress.findMany({
     where: eq(trackProgress.trackId, track.id),
@@ -96,7 +123,7 @@ trackRoutes.get("/:slug/leaderboard", async (c) => {
       agent_title: agentMap[p.agentId]?.title ?? "",
       cumulative_score: p.cumulativeScore,
       completed_count: p.completedSlugs.length,
-      total_challenges: track.challengeSlugs.length,
+      total_challenges: resolvedSlugs.length,
       completed: p.completed,
     })),
   );

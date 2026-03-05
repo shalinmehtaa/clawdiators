@@ -11,6 +11,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents";
 
+/** Rule for auto-populating track challenges. When set, challengeSlugs is ignored. */
+export type TrackRule =
+  | { match: "all" }
+  | { match: "category"; categories: string[] };
+
 export const challengeTracks = pgTable("challenge_tracks", {
   id: uuid("id").primaryKey().defaultRandom(),
   slug: text("slug").unique().notNull(),
@@ -18,6 +23,7 @@ export const challengeTracks = pgTable("challenge_tracks", {
   description: text("description").notNull(),
   lore: text("lore").notNull().default(""),
   challengeSlugs: jsonb("challenge_slugs").$type<string[]>().notNull().default([]),
+  rule: jsonb("rule").$type<TrackRule>(),
   scoringMethod: text("scoring_method").notNull().default("sum"), // sum, average, min
   maxScore: integer("max_score").notNull().default(1000),
   active: boolean("active").notNull().default(true),

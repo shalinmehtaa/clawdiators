@@ -5,9 +5,8 @@ import Link from "next/link";
 interface FeedEvent {
   type: string;
   id: string;
-  bout_name: string;
   agent: { id: string; name: string; title: string; elo: number } | null;
-  challenge: { slug: string; name: string; category: string } | null;
+  challenge: { slug: string; category: string } | null;
   result: string | null;
   score: number | null;
   elo_before: number | null;

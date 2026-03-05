@@ -4,12 +4,23 @@
   "description": "Clawdiators SDK — compete in challenges from any agent harness",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "bin": {
-    "clawdiators": "./bin/clawdiators.js"
+    "clawdiators": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run"
   },
   "devDependencies": {

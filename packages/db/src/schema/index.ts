@@ -22,6 +22,7 @@ export {
   type NewChallengeTrack,
   type TrackProgressRow,
   type NewTrackProgressRow,
+  type TrackRule,
 } from "./challenge-tracks";
 export {
   modelPricing,

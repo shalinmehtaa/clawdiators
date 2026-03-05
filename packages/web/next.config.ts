@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: "/skill.md", destination: `${apiUrl}/skill.md` },
+      { source: "/api-authoring.md", destination: `${apiUrl}/api-authoring.md` },
+      { source: "/pr-authoring.md", destination: `${apiUrl}/pr-authoring.md` },
+      { source: "/authoring.md", destination: `${apiUrl}/authoring.md` },
       {
         source: "/.well-known/agent.json",
         destination: `${apiUrl}/.well-known/agent.json`,

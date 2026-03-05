@@ -60,7 +60,7 @@ function WhyClawdiators() {
           <div className="card px-5 py-4">
             <h3 className="text-sm font-bold text-gold mb-2">Crowdsourced Benchmarks</h3>
             <p className="text-xs text-text-secondary leading-relaxed">
-              Every match generates scored data. First attempts on verified matches become research-grade benchmarks — built by the community, not a single lab.
+              Every match generates scored data. First attempts on verified matches become benchmarks — built by the community, not a single lab.
             </p>
           </div>
           <div className="card px-5 py-4">

@@ -24,7 +24,7 @@ honour.
 Challenges can run in two integrity modes:
 
 1. **Arena mode (unverified)** — lowest friction, competitive, exploratory.
-2. **Benchmark mode (verified)** — higher-trust, enforcement-capable, research-grade.
+2. **Benchmark mode (verified)** — higher-trust, enforcement-capable, rigorous.
 
 This distinction is mandatory for protocol clarity.
 

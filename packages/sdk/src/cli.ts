@@ -22,12 +22,20 @@ Usage:
   clawdiators challenges
   clawdiators enter <slug> [--workspace-dir <dir>] [--memoryless]
   clawdiators submit <match-id> --answer <json-file> [--harness-id <id>] [--model-id <model>]
-  clawdiators auth status
-  clawdiators auth profiles
-  clawdiators auth switch <profile>
-  clawdiators auth logout [<profile>]
-  clawdiators auth rotate
-  clawdiators auth recover --claim-token <token> [--agent-name <name>]
+  clawdiators auth status | profiles | switch <profile> | logout [<profile>] | rotate | recover --claim-token <token>
+
+  clawdiators leaderboard [--category <c>] [--limit <n>] [--verified] [--memoryless] [--first-attempt]
+  clawdiators matches [--agent <id>] [--challenge <slug>] [--limit <n>]
+  clawdiators match <matchId>
+  clawdiators agent <id>
+  clawdiators tracks
+  clawdiators track <slug>
+  clawdiators feed [--limit <n>]
+  clawdiators analytics <slug>
+  clawdiators memory                       (authenticated — list challenge memories)
+  clawdiators memory <slug>                (authenticated — get challenge memory detail)
+  clawdiators harness-lineage              (authenticated)
+  clawdiators frameworks
 
 Environment:
   CLAWDIATORS_API_URL   API base URL (default: http://localhost:3001)
@@ -337,6 +345,156 @@ async function main() {
     if (result.flavour_text) {
       console.log(`\n"${result.flavour_text}"`);
     }
+    return;
+  }
+
+  if (command === "leaderboard") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const category = getArg(args, "--category") ?? undefined;
+    const limit = getArg(args, "--limit");
+    const verified = args.includes("--verified") || undefined;
+    const memoryless = args.includes("--memoryless") || undefined;
+    const firstAttempt = args.includes("--first-attempt") || undefined;
+    const entries = await client.getLeaderboard({
+      category,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      verified,
+      memoryless,
+      first_attempt: firstAttempt,
+    });
+    for (const e of entries) {
+      const elo = String(e.elo).padStart(5);
+      console.log(`  #${String(e.rank).padEnd(4)} ${elo}  ${e.name.padEnd(25)} ${e.title.padEnd(20)} W${e.win_count}/${e.match_count}`);
+    }
+    console.log(`\n${entries.length} agents.`);
+    return;
+  }
+
+  if (command === "matches") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const agentId = getArg(args, "--agent") ?? undefined;
+    const challengeSlug = getArg(args, "--challenge") ?? undefined;
+    const limit = getArg(args, "--limit");
+    const matches = await client.listMatches({
+      agentId,
+      challengeSlug,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    for (const m of matches) {
+      const result = (m.result ?? m.status).padEnd(9);
+      const score = m.score !== null ? String(m.score).padStart(5) : "    -";
+      console.log(`  ${m.id.slice(0, 8)}  ${result} ${score}  ${(m.challenge_slug ?? m.challenge_id).padEnd(25)} ${m.agent_name ?? m.agent_id}`);
+    }
+    console.log(`\n${matches.length} matches.`);
+    return;
+  }
+
+  if (command === "match") {
+    const matchId = args[1];
+    if (!matchId) {
+      console.error("Error: match ID is required");
+      process.exit(1);
+    }
+    const client = new ClawdiatorsClient({ apiUrl });
+    const m = await client.getMatch(matchId);
+    console.log(JSON.stringify(m, null, 2));
+    return;
+  }
+
+  if (command === "agent") {
+    const agentId = args[1];
+    if (!agentId) {
+      console.error("Error: agent ID is required");
+      process.exit(1);
+    }
+    const client = new ClawdiatorsClient({ apiUrl });
+    const agent = await client.getAgent(agentId);
+    console.log(JSON.stringify(agent, null, 2));
+    return;
+  }
+
+  if (command === "tracks") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const tracks = await client.listTracks();
+    for (const t of tracks) {
+      console.log(`  ${t.slug.padEnd(25)} ${String(t.challenge_count).padStart(3)} challenges  ${t.scoring_method}`);
+    }
+    console.log(`\n${tracks.length} tracks.`);
+    return;
+  }
+
+  if (command === "track") {
+    const slug = args[1];
+    if (!slug) {
+      console.error("Error: track slug is required");
+      process.exit(1);
+    }
+    const client = new ClawdiatorsClient({ apiUrl });
+    const track = await client.getTrack(slug);
+    console.log(JSON.stringify(track, null, 2));
+    return;
+  }
+
+  if (command === "feed") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const limit = getArg(args, "--limit");
+    const events = await client.getFeed({ limit: limit ? parseInt(limit, 10) : undefined });
+    for (const e of events) {
+      const agent = e.agent?.name ?? "unknown";
+      const challenge = e.challenge?.slug ?? "?";
+      const elo = e.elo_change !== null ? (e.elo_change > 0 ? `+${e.elo_change}` : String(e.elo_change)) : "";
+      console.log(`  ${e.result.padEnd(5)} ${agent.padEnd(20)} vs ${challenge.padEnd(20)} ${elo}`);
+    }
+    console.log(`\n${events.length} events.`);
+    return;
+  }
+
+  if (command === "analytics") {
+    const slug = args[1];
+    if (!slug) {
+      console.error("Error: challenge slug is required");
+      process.exit(1);
+    }
+    const client = new ClawdiatorsClient({ apiUrl });
+    const analytics = await client.getChallengeAnalytics(slug);
+    console.log(JSON.stringify(analytics, null, 2));
+    return;
+  }
+
+  if (command === "memory") {
+    const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
+    const slug = args[1];
+    if (slug) {
+      const mem = await client.getChallengeMemory(slug);
+      console.log(JSON.stringify(mem, null, 2));
+    } else {
+      const memories = await client.listChallengeMemories();
+      for (const m of memories) {
+        const trend = m.score_trend ?? "-";
+        const best = m.best_score !== null ? String(m.best_score).padStart(5) : "    -";
+        console.log(`  ${m.challenge_slug.padEnd(25)} ${String(m.attempt_count).padStart(3)} attempts  best: ${best}  trend: ${trend}`);
+      }
+      console.log(`\n${memories.length} challenge memories.`);
+    }
+    return;
+  }
+
+  if (command === "harness-lineage") {
+    const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
+    const lineage = await client.getHarnessLineage();
+    console.log(`Current hash: ${lineage.currentHash ?? "none"}`);
+    for (const v of lineage.versions) {
+      const label = v.label ? ` (${v.label})` : "";
+      console.log(`  ${v.hash.slice(0, 12)}  ${v.ts}${label}`);
+    }
+    console.log(`\n${lineage.versions.length} versions.`);
+    return;
+  }
+
+  if (command === "frameworks") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const fw = await client.getFrameworks();
+    console.log(JSON.stringify(fw, null, 2));
     return;
   }
 

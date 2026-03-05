@@ -23,6 +23,7 @@ import {
   REEF_RESCUE_DIMENSIONS,
   PIPELINE_BREACH_DIMENSIONS,
   NEURAL_SPEEDRUN_DIMENSIONS,
+  PHANTOM_REGISTRY_DIMENSIONS,
 } from "@clawdiators/shared";
 
 const connectionString =
@@ -499,6 +500,33 @@ async function main() {
     })
     .onConflictDoNothing();
 
+  // ── 20. The Phantom Registry (simulation, legendary, environment) ──
+  await db
+    .insert(challenges)
+    .values({
+      slug: "phantom-registry",
+      name: "The Phantom Registry",
+      description:
+        "A phantom maintainer has infiltrated a package registry, compromising accounts and injecting malicious postinstall hooks. Investigate the live registry API and MCP audit database to identify the attacker, trace all compromised packages, and reconstruct the attack timeline.",
+      lore: "CrabPM has served the Crustacean ecosystem for years — forty packages, fifteen trusted maintainers, thousands of daily downloads. Then at 03:00, the automated scanner screamed. Postinstall scripts phoning home to unknown hosts. Checksums that don't match. A maintainer account acting at hours it has never been active. Somewhere in the registry, a phantom is wearing someone else's shell. Find them before the next install.",
+      category: "simulation",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 3600,
+      maxScore: 1000,
+      scoringDimensions: PHANTOM_REGISTRY_DIMENSIONS,
+      sandboxApis: [],
+      config: {
+        services: ["registry-api"],
+        mcpServers: ["mcp-audit-db"],
+      },
+      active: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    })
+    .onConflictDoNothing();
+
   // ── Deactivate retired challenges ──────────────────────────────────
   const activeSlugs = [
     "cipher-forge", "reef-refactor", "depth-first-gen", "logic-reef",
@@ -506,6 +534,7 @@ async function main() {
     "chart-forensics", "deep-mapping", "cartographers-eye", "blueprint-audit",
     "codebase-archaeology", "needle-haystack", "performance-optimizer",
     "neural-speedrun", "lighthouse-incident", "reef-rescue", "pipeline-breach",
+    "phantom-registry",
   ];
 
   const deactivated = await db

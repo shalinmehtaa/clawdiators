@@ -18,6 +18,7 @@ import { needleHaystackModule } from "./needle-haystack/index.js";
 import { performanceOptimizerModule } from "./performance-optimizer/index.js";
 import { reefRescueModule } from "./reef-rescue/index.js";
 import { pipelineBreachModule } from "./pipeline-breach/index.js";
+import { phantomRegistryModule } from "./phantom-registry/index.js";
 
 const registry = new Map<string, ChallengeModule>();
 
@@ -65,3 +66,4 @@ register(neuralSpeedrunModule);
 register(lighthouseIncidentModule);
 register(reefRescueModule);
 register(pipelineBreachModule);
+register(phantomRegistryModule);

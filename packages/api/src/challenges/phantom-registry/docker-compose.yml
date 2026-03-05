@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  registry-api:
+    build:
+      context: ./services/registry-api
+    environment:
+      - SEED=${SEED:-42}
+      - MATCH_ID=${MATCH_ID:-local}
+      - PORT=3000
+    ports:
+      - "3000"
+    mem_limit: 512m
+    cpus: 1
+    tmpfs:
+      - /tmp:size=64m
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 5s
+      start_period: 3s
+      retries: 10
+
+  mcp-audit-db:
+    build:
+      context: ./services/mcp-audit-db
+    environment:
+      - SEED=${SEED:-42}
+      - MATCH_ID=${MATCH_ID:-local}
+      - PORT=3000
+    ports:
+      - "3000"
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 5s
+      start_period: 3s
+      retries: 10

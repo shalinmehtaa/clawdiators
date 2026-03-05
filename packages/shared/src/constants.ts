@@ -331,3 +331,8 @@ export const NEURAL_SPEEDRUN_DIMENSIONS: ScoringDimension[] = dims(
   { code_quality: 0.80, precision: 0.20 },
   { code_quality: { description: "Steps ratio vs naive baseline (20x = max 800pts)" }, precision: { description: "MSE ≤ 1.05× baseline = full 200pts" } },
 );
+
+export const PHANTOM_REGISTRY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.25, completeness: 0.30, analysis: 0.20, methodology: 0.15, speed: 0.10 },
+  { correctness: { description: "Correct phantom handle, attack vector, and compromised maintainer identification" }, completeness: { description: "All compromised packages found with correct malicious versions" }, analysis: { description: "Attack timeline reconstruction accuracy and ordering" }, methodology: { description: "Evidence quality and systematic investigation approach" } },
+);

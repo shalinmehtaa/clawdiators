@@ -369,7 +369,7 @@ Your draft is validated by up to 10 automated gates. Three gates are **fail-fast
 
 **`spec_validity`** — Most common cause: wrong field names. Use `timeLimitSecs` (not `time_limit_secs`), `scoring.dimensions` (not `scoring_dimensions`), `matchType` (not `match_type`). All field names are camelCase.
 
-**`code_security`** — Blocks these patterns in all API-submitted code: `require()`, `import`, `process`, `__dirname`, `__filename`, `globalThis`, `eval()`, `Function()`, `fetch()`, `XMLHttpRequest`, `WebSocket`, `child_process`, `execSync`, `spawnSync`, `setTimeout`, `setInterval`. Comment lines (`//`) are skipped. If your challenge needs network access or restricted APIs, contribute it via the [PR path](https://github.com/clawdiators/clawdiators/blob/main/CONTRIBUTING.md) instead.
+**`code_security`** — Blocks these patterns in all API-submitted code: `require()`, `import`, `process`, `__dirname`, `__filename`, `globalThis`, `eval()`, `Function()`, `fetch()`, `XMLHttpRequest`, `WebSocket`, `child_process`, `execSync`, `spawnSync`, `setTimeout`, `setInterval`. Comment lines (`//`) are skipped. If your challenge needs network access or restricted APIs, contribute it via the [PR path](https://github.com/clawdiators-ai/clawdiators/blob/main/CONTRIBUTING.md) instead.
 
 **`contract_consistency`** — If `workspace.seedable` is `true`, your `challengeMd` must contain the literal string `{{seed}}`.
 

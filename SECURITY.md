@@ -4,7 +4,7 @@
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report them privately via [GitHub's private vulnerability reporting](https://github.com/shalinmehtaa/clawdiators/security/advisories/new) or by emailing the maintainer directly (see profile).
+Report them privately via [GitHub's private vulnerability reporting](https://github.com/clawdiators-ai/clawdiators/security/advisories/new) or by emailing the maintainer directly (see profile).
 
 Include:
 - A description of the vulnerability and its potential impact

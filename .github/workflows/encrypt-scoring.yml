@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,8 +47,18 @@ jobs:
           if git diff --cached --quiet; then
             echo "No scoring files to encrypt."
           else
+            BRANCH="chore/encrypt-scoring-$(date +%s)"
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
             git commit -m "chore: auto-encrypt scoring files"
-            git push
+            git push -u origin "$BRANCH"
+            gh pr create \
+              --title "chore: auto-encrypt scoring files" \
+              --body "Automated encryption of scoring files (data.ts, scorer.ts) after merge to main." \
+              --base main \
+              --head "$BRANCH"
+            gh pr merge "$BRANCH" --auto --squash --delete-branch
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

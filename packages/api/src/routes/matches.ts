@@ -19,6 +19,8 @@ import { upsertChallengeMemory } from "../services/memory.js";
 import { validateTrajectory } from "../services/trajectory-validation.js";
 import { launchMatchContainers, stopMatchContainers } from "../services/container-orchestrator.js";
 import type { MatchContainerData } from "../services/container-orchestrator.js";
+import { flushInteractionBuffer, clearInteractionBuffer } from "./service-proxy.js";
+import type { ApiCallLogEntry } from "@clawdiators/shared";
 
 export const matchRoutes = new Hono();
 
@@ -136,7 +138,7 @@ matchRoutes.post(
     const seed = Math.floor(Math.random() * 2147483647);
     const boutName = generateBoutName(seed);
 
-    const data = mod.generateData(seed, challenge.config);
+    const data = await mod.generateData(seed, challenge.config);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + challenge.timeLimitSecs * 1000);
 
@@ -190,7 +192,7 @@ matchRoutes.post(
         containerData = await launchMatchContainers(match.id, seed, {
           services: wsSpec.services,
           mcpServers: wsSpec.mcpServers,
-        }, challenge.timeLimitSecs);
+        }, challenge.timeLimitSecs, challenge.slug);
 
         // Store container data in DB for the proxy routes and cleanup
         await db
@@ -311,6 +313,7 @@ matchRoutes.post(
       if (match.status !== "expired") {
         await db.update(matches).set({ status: "expired" }).where(eq(matches.id, matchId));
       }
+      clearInteractionBuffer(matchId);
       return errorEnvelope(c, "Match has expired", 410, "The sands of time have run out, gladiator.");
     }
 
@@ -329,7 +332,7 @@ matchRoutes.post(
     const now = new Date();
 
     // Generate ground truth from seed via module
-    const data = mod.generateData(match.seed, challenge.config);
+    const data = await mod.generateData(match.seed, challenge.config);
 
     // Trajectory validation: check replay_log if submitted
     let isVerified = false;
@@ -355,7 +358,7 @@ matchRoutes.post(
     };
     // Validate submission structure and collect warnings for the agent
     const submissionWarnings = mod.validateSubmission
-      ? mod.validateSubmission(answer, data.groundTruth)
+      ? await mod.validateSubmission(answer, data.groundTruth)
       : [];
 
     // Build trajectory summary for efficiency scoring
@@ -410,7 +413,7 @@ matchRoutes.post(
       };
     }
 
-    const { result: evalResult, log: evaluationLog } = await evaluate(mod, scoringInput, {
+    const { result: evalResult, log: evaluationLog, constraintViolations } = await evaluate(mod, scoringInput, {
       verified: isVerified,
       constraints: challenge.constraints as import("@clawdiators/shared").ChallengeConstraints | null,
       trajectory: trajectorySummary,
@@ -424,6 +427,19 @@ matchRoutes.post(
     if (matchContainerData) {
       stopMatchContainers(matchContainerData);
     }
+
+    // Flush service interaction buffer (populated by service-proxy.ts)
+    const interactionLog = flushInteractionBuffer(matchId);
+    const apiCallLog: ApiCallLogEntry[] = interactionLog
+      ? interactionLog.interactions.map((i) => ({
+          ts: i.ts,
+          method: i.method,
+          path: i.path,
+          status: i.status,
+          durationMs: i.durationMs,
+        }))
+      : [];
+
     const { breakdown } = evalResult;
 
     // Determine result (solo calibration)
@@ -464,6 +480,17 @@ matchRoutes.post(
       ? Math.max(ELO_FLOOR, agent.elo + eloChange)
       : eloResult.newRating;
 
+    // Merge interaction log into serviceData for GET /matches/:id
+    let updatedServiceData = match.serviceData as Record<string, unknown> | null;
+    if (interactionLog && (interactionLog.interactions.length || interactionLog.mcpToolCalls.length || interactionLog.mcpResourceReads.length)) {
+      updatedServiceData = {
+        ...(updatedServiceData ?? {}),
+        serviceInteractions: interactionLog.interactions,
+        mcpToolCalls: interactionLog.mcpToolCalls,
+        mcpResourceReads: interactionLog.mcpResourceReads,
+      };
+    }
+
     // Update match
     await db
       .update(matches)
@@ -483,6 +510,8 @@ matchRoutes.post(
         submissionMetadata: metadata ?? null,
         harnessId: metadata?.harness_id ?? null,
         verified: isVerified,
+        apiCallLog,
+        ...(updatedServiceData ? { serviceData: updatedServiceData } : {}),
       })
       .where(eq(matches.id, matchId));
 
@@ -660,6 +689,7 @@ matchRoutes.post(
         flavour_text: flavourText,
         evaluation_log: evaluationLog,
         submission_warnings: submissionWarnings.length > 0 ? submissionWarnings : undefined,
+        constraint_violations: constraintViolations.length > 0 ? constraintViolations : undefined,
         harness_warning: harnessWarning,
         reflect_url: `/api/v1/matches/${match.id}/reflect`,
       },
@@ -722,8 +752,8 @@ matchRoutes.post(
     let feedback: string | undefined;
     if (mod && mod.scoringSpec?.method === "deterministic") {
       try {
-        const data = mod.generateData(match.seed, challenge.config);
-        const partial = mod.score({
+        const data = await mod.generateData(match.seed, challenge.config);
+        const partial = await mod.score({
           submission: body.data,
           groundTruth: data.groundTruth,
           startedAt: match.startedAt,

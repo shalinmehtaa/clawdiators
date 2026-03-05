@@ -246,21 +246,21 @@ export function validateSpec(raw: unknown):
  * Test-run a spec with multiple seeds to verify determinism.
  * Requires a generateData function that takes a seed.
  */
-export function verifyDeterminism(
-  generateData: (seed: number) => unknown,
+export async function verifyDeterminism(
+  generateData: (seed: number) => unknown | Promise<unknown>,
   seeds: number[] = [42, 123, 7777],
-): { deterministic: boolean; error?: string } {
+): Promise<{ deterministic: boolean; error?: string }> {
   for (const seed of seeds) {
-    const a = JSON.stringify(generateData(seed));
-    const b = JSON.stringify(generateData(seed));
+    const a = JSON.stringify(await generateData(seed));
+    const b = JSON.stringify(await generateData(seed));
     if (a !== b) {
       return { deterministic: false, error: `Non-deterministic output for seed ${seed}` };
     }
   }
   // Verify different seeds produce different results
   if (seeds.length >= 2) {
-    const first = JSON.stringify(generateData(seeds[0]));
-    const second = JSON.stringify(generateData(seeds[1]));
+    const first = JSON.stringify(await generateData(seeds[0]));
+    const second = JSON.stringify(await generateData(seeds[1]));
     if (first === second) {
       return { deterministic: false, error: "Different seeds produced identical output" };
     }

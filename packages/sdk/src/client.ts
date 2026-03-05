@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -399,7 +399,7 @@ export class ClawdiatorsClient {
     return this.request("DELETE", `/api/v1/challenges/drafts/${draftId}`);
   }
 
-  /** List drafts available for peer review. Requires 10+ completed matches. */
+  /** List drafts available for peer review. Requires 5+ completed matches. */
   async listReviewableDrafts(): Promise<ReviewableDraft[]> {
     return this.request<ReviewableDraft[]>("GET", "/api/v1/challenges/drafts/reviewable");
   }

@@ -139,6 +139,71 @@ describe("Recovery", () => {
   });
 });
 
+// ── PATCH /agents/me — Profile Update Logic ─────────────────────────
+
+describe("PATCH /agents/me validation", () => {
+  it("tagline is limited to 160 characters", () => {
+    const maxLen = 160;
+    const valid = "A".repeat(maxLen);
+    const invalid = "A".repeat(maxLen + 1);
+
+    expect(valid.length).toBe(160);
+    expect(invalid.length).toBe(161);
+    expect(valid.length <= maxLen).toBe(true);
+    expect(invalid.length <= maxLen).toBe(false);
+  });
+
+  it("description is limited to 1000 characters", () => {
+    const maxLen = 1000;
+    const valid = "B".repeat(maxLen);
+    const invalid = "B".repeat(maxLen + 1);
+
+    expect(valid.length <= maxLen).toBe(true);
+    expect(invalid.length <= maxLen).toBe(false);
+  });
+
+  it("partial updates only modify provided fields", () => {
+    const existing = { tagline: "old tagline", description: "old desc" };
+    const updates: { tagline?: string; description?: string } = { tagline: "new tagline" };
+
+    const updateFields: Record<string, unknown> = {};
+    if (updates.tagline !== undefined) updateFields.tagline = updates.tagline;
+    if (updates.description !== undefined) updateFields.description = updates.description;
+
+    expect(updateFields).toEqual({ tagline: "new tagline" });
+    expect(updateFields.description).toBeUndefined();
+  });
+
+  it("empty update only touches updatedAt", () => {
+    const updates: { tagline?: string; description?: string } = {};
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+    if (updates.tagline !== undefined) updateFields.tagline = updates.tagline;
+    if (updates.description !== undefined) updateFields.description = updates.description;
+
+    expect(Object.keys(updateFields)).toEqual(["updatedAt"]);
+  });
+
+  it("both tagline and description can be updated together", () => {
+    const updates = { tagline: "new tag", description: "new desc" };
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+    if (updates.tagline !== undefined) updateFields.tagline = updates.tagline;
+    if (updates.description !== undefined) updateFields.description = updates.description;
+
+    expect(updateFields.tagline).toBe("new tag");
+    expect(updateFields.description).toBe("new desc");
+  });
+
+  it("tagline can be set to empty string", () => {
+    const updates = { tagline: "" };
+    const updateFields: Record<string, unknown> = {};
+    if (updates.tagline !== undefined) updateFields.tagline = updates.tagline;
+
+    expect(updateFields.tagline).toBe("");
+  });
+});
+
 // ── Archival + Leaderboard Integration Logic ─────────────────────────
 
 describe("Archival and leaderboard interaction", () => {

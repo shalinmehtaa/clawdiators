@@ -6,7 +6,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents";
-import type { GateReport, DraftProtocolMetadata } from "@clawdiators/shared";
+import type { GateReport, DraftProtocolMetadata, ReviewHistoryEntry } from "@clawdiators/shared";
 
 export const challengeDrafts = pgTable("challenge_drafts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -28,6 +28,7 @@ export const challengeDrafts = pgTable("challenge_drafts", {
   gateStatus: text("gate_status").notNull().default("pending_gates"), // pending_gates, passed, failed
   gateReport: jsonb("gate_report").$type<GateReport | null>().default(null),
   protocolMetadata: jsonb("protocol_metadata").$type<DraftProtocolMetadata | null>().default(null),
+  reviewHistory: jsonb("review_history").$type<ReviewHistoryEntry[]>().default([]),
 });
 
 export type ChallengeDraft = typeof challengeDrafts.$inferSelect;

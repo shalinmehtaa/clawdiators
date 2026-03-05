@@ -25,7 +25,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { copyFile, mkdtemp, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import type { ServiceSpec, McpServerSpec, WorkspaceSpec } from "@clawdiators/shared";
 
@@ -59,6 +60,8 @@ export interface MatchContainerData {
   launchedAt: string;
   /** Which backend launched these — needed to clean up correctly */
   backend: "docker" | "fly" | "compose";
+  /** Per-match Docker network name (only set for docker backend) */
+  networkName?: string;
   /** Compose project name (only set for compose backend) */
   composeProject?: string;
   /** Temp dir containing the compose file copy (only set for compose backend) */
@@ -136,10 +139,11 @@ async function dockerStart(
   containerPort: number,
   env: Record<string, string>,
   resources: { memory?: string; cpus?: number },
+  overrideNetwork?: string,
 ): Promise<{ containerId: string; containerName: string; internalUrl: string; hostPort?: number }> {
   const name = `clw-${shortMatchId(matchId)}-${serviceName}`;
   const inDocker = !!process.env.DOCKER_NETWORK;
-  const network = process.env.DOCKER_NETWORK ?? "arena";
+  const network = process.env.DOCKER_NETWORK ?? overrideNetwork ?? "arena";
 
   const envFlags = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   const portFlags = inDocker ? [] : ["-p", `0:${containerPort}`];
@@ -412,6 +416,7 @@ function getBackend(): "docker" | "fly" {
 type StartFn = (
   matchId: string, name: string, image: string, port: number,
   env: Record<string, string>, resources: { memory?: string; cpus?: number },
+  overrideNetwork?: string,
 ) => Promise<{ containerId: string; containerName: string; internalUrl: string; hostPort?: number }>;
 
 /**
@@ -430,7 +435,7 @@ export async function launchMatchContainers(
 ): Promise<MatchContainerData> {
   // Check if challenge directory has a docker-compose.yml (PR-submitted challenges)
   if (challengeSlug) {
-    const challengeDir = join(import.meta.dirname, `../challenges/${challengeSlug}`);
+    const challengeDir = join(dirname(fileURLToPath(import.meta.url)), `../challenges/${challengeSlug}`);
     const composePath = join(challengeDir, "docker-compose.yml");
     if (existsSync(composePath)) {
       return composeUp(matchId, seed, challengeSlug, composePath, ttlSecs);
@@ -443,6 +448,17 @@ export async function launchMatchContainers(
   const serviceToken = generateMatchToken();
   const services: RunningService[] = [];
   const mcpServers: RunningMcpServer[] = [];
+
+  // Create per-match isolated network for Docker backend
+  let networkName: string | undefined;
+  if (backend === "docker" && !process.env.DOCKER_NETWORK) {
+    networkName = `arena-${shortMatchId(matchId)}`;
+    try {
+      await execFileAsync("docker", ["network", "create", networkName], { timeout: 10_000 });
+    } catch {
+      // Network may already exist (rare race); proceed anyway
+    }
+  }
 
   // Services start sequentially (may have ordering dependencies)
   for (const spec of workspaceSpec.services ?? []) {
@@ -459,7 +475,7 @@ export async function launchMatchContainers(
     const result = await start(matchId, spec.name, spec.image, port, env, {
       memory: spec.resources?.memory,
       cpus: spec.resources?.cpus,
-    });
+    }, networkName);
 
     if (spec.healthCheck) {
       const hc = spec.healthCheck;
@@ -489,7 +505,7 @@ export async function launchMatchContainers(
       const result = await start(matchId, spec.name, spec.image, port, env, {
         memory: spec.resourceLimits?.memory,
         cpus: spec.resourceLimits?.cpus,
-      });
+      }, networkName);
 
       await waitForHttpHealth(
         result.internalUrl, "/health", 2, spec.healthCheckTimeoutSecs ?? 30, 2,
@@ -501,7 +517,7 @@ export async function launchMatchContainers(
 
   mcpServers.push(...mcpResults);
 
-  return { services, mcpServers, serviceToken, launchedAt: new Date().toISOString(), backend };
+  return { services, mcpServers, serviceToken, launchedAt: new Date().toISOString(), backend, networkName };
 }
 
 /**
@@ -526,5 +542,10 @@ export function stopMatchContainers(data: MatchContainerData): void {
       ...data.mcpServers.map((m) => m.containerName),
     ];
     dockerStop(names);
+
+    // Remove per-match network (best-effort)
+    if (data.networkName) {
+      execFileAsync("docker", ["network", "rm", data.networkName], { timeout: 10_000 }).catch(() => {});
+    }
   }
 }

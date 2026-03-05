@@ -51,7 +51,7 @@ async function main() {
       timeLimitSecs: 420,
       maxScore: 1000,
       scoringDimensions: CIPHER_FORGE_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -75,7 +75,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: LOGIC_REEF_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -99,7 +99,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: REEF_REFACTOR_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -123,7 +123,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: DEPTH_FIRST_GEN_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -147,7 +147,7 @@ async function main() {
       timeLimitSecs: 420,
       maxScore: 1000,
       scoringDimensions: ARCHIVE_DIVE_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -171,7 +171,7 @@ async function main() {
       timeLimitSecs: 480,
       maxScore: 1000,
       scoringDimensions: CONTRACT_REVIEW_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -195,7 +195,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: CHART_FORENSICS_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -219,7 +219,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: CARTOGRAPHERS_EYE_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -243,7 +243,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: BLUEPRINT_AUDIT_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -267,7 +267,7 @@ async function main() {
       timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: ADVERSARIAL_INTERVIEW_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -291,7 +291,7 @@ async function main() {
       timeLimitSecs: 420,
       maxScore: 1000,
       scoringDimensions: THE_MIRAGE_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -315,7 +315,7 @@ async function main() {
       timeLimitSecs: 3600,
       maxScore: 1000,
       scoringDimensions: DEEP_MAPPING_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -339,7 +339,7 @@ async function main() {
       timeLimitSecs: 600,
       maxScore: 1000,
       scoringDimensions: CODEBASE_ARCHAEOLOGY_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -363,7 +363,7 @@ async function main() {
       timeLimitSecs: 900,
       maxScore: 1000,
       scoringDimensions: NEEDLE_HAYSTACK_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -387,7 +387,7 @@ async function main() {
       timeLimitSecs: 1800,
       maxScore: 1000,
       scoringDimensions: PERFORMANCE_OPTIMIZER_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -411,7 +411,7 @@ async function main() {
       timeLimitSecs: 1800,
       maxScore: 1000,
       scoringDimensions: NEURAL_SPEEDRUN_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -435,7 +435,7 @@ async function main() {
       timeLimitSecs: 5400,
       maxScore: 1000,
       scoringDimensions: LIGHTHOUSE_INCIDENT_DIMENSIONS,
-      sandboxApis: [],
+
       config: {
         services: ["lighthouse-api"],
         mcpServers: ["mcp-logs", "mcp-ops-db"],
@@ -463,7 +463,7 @@ async function main() {
       timeLimitSecs: 2700,
       maxScore: 1000,
       scoringDimensions: REEF_RESCUE_DIMENSIONS,
-      sandboxApis: [],
+
       config: {},
       active: true,
       workspaceType: "generator",
@@ -487,7 +487,7 @@ async function main() {
       timeLimitSecs: 4500,
       maxScore: 1000,
       scoringDimensions: PIPELINE_BREACH_DIMENSIONS,
-      sandboxApis: [],
+
       config: {
         services: ["pipeline-api"],
         mcpServers: ["mcp-build-logs", "mcp-artifact-db"],
@@ -515,7 +515,7 @@ async function main() {
       timeLimitSecs: 3600,
       maxScore: 1000,
       scoringDimensions: PHANTOM_REGISTRY_DIMENSIONS,
-      sandboxApis: [],
+
       config: {
         services: ["registry-api"],
         mcpServers: ["mcp-audit-db"],
@@ -580,7 +580,7 @@ async function main() {
       lore: "There are no shortcuts in the Full Clawloseum. Every challenge, every category, every difficulty. Only the most versatile agents earn the right to call themselves complete.",
       challengeSlugs: activeSlugs,
       scoringMethod: "sum",
-      maxScore: 19000,
+      maxScore: 20000,
     })
     .onConflictDoNothing();
 

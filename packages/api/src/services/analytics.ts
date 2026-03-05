@@ -1,5 +1,5 @@
 import { eq, and, sql, desc } from "drizzle-orm";
-import { db, matches, challengeAnalytics } from "@clawdiators/db";
+import { db, matches, challengeAnalytics, modelPricing } from "@clawdiators/db";
 import type { BenchmarkMetrics } from "@clawdiators/shared";
 
 export function median(sorted: number[]): number {
@@ -131,7 +131,7 @@ export async function computeChallengeAnalytics(challengeId: string) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // ── Benchmark Metrics Suite ──────────────────────────────────────
-  // See plans/scoring-methodology.md for definitions
+  // See plans/challenge-design-guide.md for definitions
 
   // Group scores by agent + attempt number
   const agentAttempts: Record<string, { attempt: number; score: number; result: string }[]> = {};
@@ -207,6 +207,59 @@ export async function computeChallengeAnalytics(challengeId: string) {
     agents_sampled: Object.keys(agentAttempts).length,
   };
 
+  // ── Cost-Efficiency Analytics ─────────────────────────────────────
+  // Join token_count from submission metadata with model_pricing to compute cost-per-point
+
+  const pricingRows = await db.query.modelPricing.findMany({
+    where: eq(modelPricing.active, true),
+  });
+
+  function lookupCost(modelId: string, tokenCount: number): number | null {
+    // Find best matching pricing row (exact match or prefix match)
+    const row = pricingRows.find(p => modelId === p.pattern)
+      ?? pricingRows.find(p => modelId.startsWith(p.pattern));
+    if (!row) return null;
+    // Assume 60/40 input/output split when we only have total token count
+    const inputTokens = Math.round(tokenCount * 0.6);
+    const outputTokens = tokenCount - inputTokens;
+    return (inputTokens * row.inputPer1m + outputTokens * row.outputPer1m) / 1_000_000;
+  }
+
+  let medianCostPerPoint: number | null = null;
+  const costByModel: Record<string, { mean_cost_per_point: number; count: number }> = {};
+
+  if (pricingRows.length > 0) {
+    const costPerPointValues: number[] = [];
+    const costByModelAccum: Record<string, { total: number; count: number }> = {};
+
+    for (const m of allMatches) {
+      const meta = m.submissionMetadata as { token_count?: number; model_id?: string } | null;
+      if (!meta?.token_count || !meta?.model_id || m.score === null || m.score <= 0) continue;
+
+      const cost = lookupCost(meta.model_id, meta.token_count);
+      if (cost === null) continue;
+
+      const cpp = cost / (m.score / 1000); // cost per 1000 score points
+      costPerPointValues.push(cpp);
+
+      if (!costByModelAccum[meta.model_id]) costByModelAccum[meta.model_id] = { total: 0, count: 0 };
+      costByModelAccum[meta.model_id].total += cpp;
+      costByModelAccum[meta.model_id].count += 1;
+    }
+
+    if (costPerPointValues.length > 0) {
+      costPerPointValues.sort((a, b) => a - b);
+      medianCostPerPoint = Math.round(median(costPerPointValues) * 10000) / 10000;
+    }
+
+    for (const [modelId, acc] of Object.entries(costByModelAccum)) {
+      costByModel[modelId] = {
+        mean_cost_per_point: Math.round((acc.total / acc.count) * 10000) / 10000,
+        count: acc.count,
+      };
+    }
+  }
+
   const analyticsData = {
     challengeId,
     computedAt: new Date(),
@@ -226,6 +279,8 @@ export async function computeChallengeAnalytics(challengeId: string) {
     scoreTrend,
     scoreByAttemptNumber,
     benchmarkMetrics,
+    medianCostPerPoint,
+    costByModel,
   };
 
   // Upsert

@@ -246,7 +246,7 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
   }
 
   try {
-    const archive = buildWorkspaceArchive(mod, seed, challenge.config, workspaceCtx);
+    const archive = await buildWorkspaceArchive(mod, seed, challenge.config, workspaceCtx);
 
     return new Response(new Uint8Array(archive), {
       status: 200,
@@ -291,6 +291,8 @@ challengeRoutes.get("/:slug/analytics", async (c) => {
     score_trend: analytics.scoreTrend,
     score_by_attempt_number: analytics.scoreByAttemptNumber ?? {},
     benchmark_metrics: analytics.benchmarkMetrics ?? {},
+    median_cost_per_point: (analytics as any).medianCostPerPoint ?? null,
+    cost_by_model: (analytics as any).costByModel ?? {},
     computed_at: analytics.computedAt instanceof Date
       ? analytics.computedAt.toISOString()
       : analytics.computedAt,

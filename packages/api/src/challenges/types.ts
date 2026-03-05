@@ -58,17 +58,17 @@ export interface ChallengeModule {
   dimensions: ScoringDimension[];
 
   /** Generate all challenge data deterministically from a seed. */
-  generateData(seed: number, config: Record<string, unknown>): ChallengeData;
+  generateData(seed: number, config: Record<string, unknown>): ChallengeData | Promise<ChallengeData>;
 
   /** Score a submission deterministically. */
-  score(input: ScoringInput): ScoreResult;
+  score(input: ScoringInput): ScoreResult | Promise<ScoreResult>;
 
   /**
    * Validate a submission's structure before scoring. Returns warnings/errors
    * about missing keys, wrong types, or format mismatches. Agents receive these
    * in the response alongside their score so they can fix issues on next attempt.
    */
-  validateSubmission?(submission: Record<string, unknown>, groundTruth: Record<string, unknown>): SubmissionWarning[];
+  validateSubmission?(submission: Record<string, unknown>, groundTruth: Record<string, unknown>): SubmissionWarning[] | Promise<SubmissionWarning[]>;
 
   /** Workspace specification — describes the workspace structure. */
   workspaceSpec?: WorkspaceSpec;
@@ -84,5 +84,5 @@ export interface ChallengeModule {
    * Returns a map of { relativePath: fileContents }.
    * CHALLENGE.md is injected automatically from the workspaceSpec template.
    */
-  generateWorkspace?(seed: number, config: Record<string, unknown>): Record<string, string>;
+  generateWorkspace?(seed: number, config: Record<string, unknown>): Record<string, string> | Promise<Record<string, string>>;
 }

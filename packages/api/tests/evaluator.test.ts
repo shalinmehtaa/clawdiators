@@ -7,11 +7,11 @@ import type { ChallengeModule, ScoringInput } from "../src/challenges/types.js";
 
 const SEED = 42;
 
-function makeScoringInput(
+async function makeScoringInput(
   mod: ChallengeModule,
   submission: Record<string, unknown>,
-): ScoringInput {
-  const data = mod.generateData(SEED, {});
+): Promise<ScoringInput> {
+  const data = await mod.generateData(SEED, {});
   return {
     submission,
     groundTruth: data.groundTruth,
@@ -29,10 +29,10 @@ describe("evaluate() dispatcher", () => {
     const mod = getChallenge("cipher-forge")!;
     expect(mod).toBeDefined();
 
-    const data = mod.generateData(SEED, {});
-    const input = makeScoringInput(mod, {});
+    const data = await mod.generateData(SEED, {});
+    const input = await makeScoringInput(mod, {});
 
-    const directResult = mod.score(input);
+    const directResult = await mod.score(input);
     const { result, log } = await evaluate(mod, input);
 
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
@@ -49,7 +49,7 @@ describe("evaluate() dispatcher", () => {
 
   it("deterministic: populates rawScores and finalScores correctly", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const { log } = await evaluate(mod, input);
 
@@ -65,7 +65,7 @@ describe("evaluate() dispatcher", () => {
 
   it("deterministic: runtime is undefined for deterministic challenges", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const { log } = await evaluate(mod, input);
 
@@ -76,7 +76,7 @@ describe("evaluate() dispatcher", () => {
 
   it("unknown method: falls back to mod.score() with error", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     // Create a fake module with an unknown method
     const fakeMod = {
@@ -94,13 +94,13 @@ describe("evaluate() dispatcher", () => {
     expect(log.errors[0]).toContain("Unknown scoring method");
 
     // Should still produce a valid result via fallback
-    const directResult = mod.score(input);
+    const directResult = await mod.score(input);
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 
   it("test-suite without evaluator: uses module scorer silently", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const fakeMod = {
       ...mod,
@@ -117,13 +117,13 @@ describe("evaluate() dispatcher", () => {
     expect(log.errors).toEqual([]);
 
     // Should use mod.score()
-    const directResult = mod.score(input);
+    const directResult = await mod.score(input);
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 
   it("custom-script without evaluator: uses module scorer silently", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const fakeMod = {
       ...mod,
@@ -139,7 +139,7 @@ describe("evaluate() dispatcher", () => {
     expect(log.errors).toEqual([]);
 
     // Should use mod.score()
-    const directResult = mod.score(input);
+    const directResult = await mod.score(input);
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 });
@@ -170,9 +170,9 @@ describe("evaluate() with registered modules", () => {
       const mod = getChallenge(slug)!;
       expect(mod).toBeDefined();
 
-      const input = makeScoringInput(mod, {});
+      const input = await makeScoringInput(mod, {});
 
-      const directResult = mod.score(input);
+      const directResult = await mod.score(input);
       const { result, log } = await evaluate(mod, input);
 
       expect(result.breakdown.total).toBe(directResult.breakdown.total);
@@ -202,7 +202,7 @@ describe("evaluate() with Docker (mocked)", () => {
     });
 
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, { "test.js": "test code" });
+    const input = await makeScoringInput(mod, { "test.js": "test code" });
 
     const fakeMod: ChallengeModule = {
       ...mod,
@@ -234,7 +234,7 @@ describe("evaluate() with Docker (mocked)", () => {
     });
 
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const fakeMod: ChallengeModule = {
       ...mod,
@@ -266,7 +266,7 @@ describe("evaluate() with Docker (mocked)", () => {
     });
 
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const fakeMod: ChallengeModule = {
       ...mod,
@@ -298,7 +298,7 @@ describe("evaluate() with Docker (mocked)", () => {
     });
 
     const mod = getChallenge("cipher-forge")!;
-    const input = makeScoringInput(mod, {});
+    const input = await makeScoringInput(mod, {});
 
     const fakeMod: ChallengeModule = {
       ...mod,
@@ -318,7 +318,7 @@ describe("evaluate() with Docker (mocked)", () => {
     expect(log.errors).toContain("Evaluator returned no scores; falling back to module scorer");
 
     // Should get the same result as mod.score()
-    const directResult = mod.score(input);
+    const directResult = await mod.score(input);
     expect(result.breakdown.total).toBe(directResult.breakdown.total);
   });
 });

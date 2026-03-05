@@ -17,7 +17,19 @@
 // ── Env setup (must be before app import) ────────────────────────────
 process.env.ADMIN_API_KEY = "test-admin-key-integ-pipeline";
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+
+vi.mock("../src/challenges/docker-evaluator.js", async () => {
+  const actual = await vi.importActual("../src/challenges/docker-evaluator.js");
+  const { mockGenerateDataInDocker, mockScoreInDocker, mockExecuteCodeInDocker } = await import("./helpers/inline-executor.js");
+  return {
+    ...actual,
+    generateDataInDocker: mockGenerateDataInDocker,
+    scoreInDocker: mockScoreInDocker,
+    executeCodeInDocker: mockExecuteCodeInDocker,
+  };
+});
+
 import app from "../src/index.js";
 import { createCodeModule } from "../src/challenges/primitives/code-module.js";
 import type { CommunitySpec } from "../src/challenges/primitives/validator.js";
@@ -328,7 +340,7 @@ describe("Integration: Sort Sprint full lifecycle", () => {
 
   it("submits a challenge draft", async () => {
     // Compute reference answer for seed 42
-    const data42 = mod.generateData(42, {});
+    const data42 = await mod.generateData(42, {});
     expect(data42.groundTruth.sorted).toBeDefined();
     expect(Array.isArray(data42.groundTruth.sorted)).toBe(true);
 
@@ -425,7 +437,7 @@ describe("Integration: Sort Sprint full lifecycle", () => {
     const seed = extractSeed(reEnter.data.workspace_url);
 
     // Generate correct answer for this seed
-    const data = mod.generateData(seed, {});
+    const data = await mod.generateData(seed, {});
     const correctAnswer = { sorted: data.groundTruth.sorted };
 
     // Submit
@@ -518,7 +530,7 @@ describe("Integration: Sort Sprint full lifecycle", () => {
     const seed = extractSeed(enterJson.data.workspace_url);
 
     // Get correct answer, then modify it to be partially correct
-    const data = mod.generateData(seed, {});
+    const data = await mod.generateData(seed, {});
     const correct = data.groundTruth.sorted as number[];
 
     // Submit a sorted array with only some of the right elements
@@ -586,8 +598,8 @@ describe("Integration: Sort Sprint full lifecycle", () => {
 
   // ── Step 11: Workspace generation ──────────────────────────────────
 
-  it("module generates valid workspace files", () => {
-    const files = mod.generateWorkspace(42, {});
+  it("module generates valid workspace files", async () => {
+    const files = await mod.generateWorkspace(42, {});
     expect(files["numbers.json"]).toBeDefined();
     expect(files["instructions.txt"]).toBeDefined();
 
@@ -603,13 +615,13 @@ describe("Integration: Sort Sprint full lifecycle", () => {
 
   // ── Step 12: Determinism ───────────────────────────────────────────
 
-  it("generates deterministic data across runs", () => {
-    const a = mod.generateData(42, {});
-    const b = mod.generateData(42, {});
+  it("generates deterministic data across runs", async () => {
+    const a = await mod.generateData(42, {});
+    const b = await mod.generateData(42, {});
     expect(a.groundTruth.sorted).toEqual(b.groundTruth.sorted);
 
     // Different seeds produce different data
-    const c = mod.generateData(999, {});
+    const c = await mod.generateData(999, {});
     expect(a.groundTruth.sorted).not.toEqual(c.groundTruth.sorted);
   });
 

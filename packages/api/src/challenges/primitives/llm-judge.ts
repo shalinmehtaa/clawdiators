@@ -30,11 +30,6 @@ export interface LLMJudgeResult {
  * Rate-limited to MAX_JUDGE_CALLS per invocation (including retries).
  */
 
-/** @deprecated No longer needed — call count is per-invocation. Kept for test compat. */
-export function resetJudgeCallCount(): void {
-  // no-op: callCount is now local to each llmJudge() invocation
-}
-
 export async function llmJudge(
   prompt: string,
   response: string,

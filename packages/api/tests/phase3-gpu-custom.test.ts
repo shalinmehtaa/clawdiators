@@ -1,8 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../src/challenges/docker-evaluator.js", async () => {
+  const actual = await vi.importActual("../src/challenges/docker-evaluator.js");
+  const { mockGenerateDataInDocker, mockScoreInDocker, mockExecuteCodeInDocker } = await import("./helpers/inline-executor.js");
+  return {
+    ...actual,
+    generateDataInDocker: mockGenerateDataInDocker,
+    scoreInDocker: mockScoreInDocker,
+    executeCodeInDocker: mockExecuteCodeInDocker,
+  };
+});
+
 import {
-  TIER_FLAGS,
   SANDBOXED_FLAGS,
-  getDockerFlags,
 } from "../src/challenges/docker-evaluator.js";
 import {
   isImageAllowed,
@@ -71,42 +81,7 @@ describe("Image allowlist", () => {
   });
 });
 
-// ── getDockerFlags ───────────────────────────────────────────────────
-
-describe("getDockerFlags", () => {
-  it("includes --network=none", () => {
-    expect(getDockerFlags()).toContain("--network=none");
-  });
-
-  it("has 512m memory", () => {
-    expect(getDockerFlags()).toContain("--memory=512m");
-  });
-
-  it("has 1 cpu", () => {
-    expect(getDockerFlags()).toContain("--cpus=1");
-  });
-
-  it("has 50 pids limit", () => {
-    expect(getDockerFlags()).toContain("--pids-limit=50");
-  });
-
-  it("includes --read-only", () => {
-    expect(getDockerFlags()).toContain("--read-only");
-  });
-
-  it("returns a defensive copy (not the same reference)", () => {
-    const a = getDockerFlags();
-    const b = getDockerFlags();
-    expect(a).toEqual(b);
-    expect(a).not.toBe(b);
-    expect(a).not.toBe(SANDBOXED_FLAGS);
-  });
-
-  it("backward-compat TIER_FLAGS.sandboxed is the SANDBOXED_FLAGS array", () => {
-    expect(TIER_FLAGS.sandboxed).toBe(SANDBOXED_FLAGS);
-    expect(TIER_FLAGS.sandboxed).toContain("--network=none");
-  });
-});
+// getDockerFlags and TIER_FLAGS removed — SANDBOXED_FLAGS tested in docker-evaluator.test.ts
 
 // ── EvaluationLog: durationMs and estimatedCostUsd ──────────────────
 
@@ -114,7 +89,7 @@ describe("EvaluationLog: durationMs and estimatedCostUsd", () => {
   it("durationMs is populated and non-negative", async () => {
     const mod = getChallenge("cipher-forge")!;
     expect(mod).toBeDefined();
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const input = {
       submission: {},
       groundTruth: data.groundTruth,
@@ -130,7 +105,7 @@ describe("EvaluationLog: durationMs and estimatedCostUsd", () => {
 
   it("estimatedCostUsd is undefined for non-GPU tiers", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const input = {
       submission: {},
       groundTruth: data.groundTruth,
@@ -145,7 +120,7 @@ describe("EvaluationLog: durationMs and estimatedCostUsd", () => {
 
   it("estimatedCostUsd is always undefined (tier system removed)", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const input = {
       submission: {},
       groundTruth: data.groundTruth,
@@ -197,17 +172,17 @@ describe("generateBenchmarkInlineScript", () => {
 // ── Backward compatibility ──────────────────────────────────────────
 
 describe("Backward compatibility: Tier 1-2 unaffected", () => {
-  it("existing challenges still load and score correctly", () => {
+  it("existing challenges still load and score correctly", async () => {
     const mod = getChallenge("cipher-forge")!;
     expect(mod).toBeDefined();
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     expect(data.objective).toBeDefined();
     expect(data.groundTruth).toBeDefined();
   });
 
   it("evaluate() still works for deterministic challenges", async () => {
     const mod = getChallenge("cipher-forge")!;
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const input = {
       submission: {},
       groundTruth: data.groundTruth,

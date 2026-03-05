@@ -7,7 +7,8 @@ import { validateSpec } from "../challenges/primitives/validator.js";
 import { runAllGates } from "../challenges/primitives/gates.js";
 import { getDesignGuideHash } from "../startup.js";
 import { approveDraft } from "../challenges/challenge-service.js";
-import { isReviewerEligible, REVIEW_MIN_MATCHES } from "../challenges/governance.js";
+import { isReviewerEligible, isReviewerIndependent, countApprovals, REVIEW_MIN_MATCHES, REVIEW_APPROVAL_THRESHOLD } from "../challenges/governance.js";
+import type { ReviewHistoryEntry } from "@clawdiators/shared";
 import type { DraftProtocolMetadata } from "@clawdiators/shared";
 
 export const challengeDraftRoutes = new Hono();
@@ -213,8 +214,10 @@ challengeDraftRoutes.get("/:id", async (c) => {
     where: eq(challengeDrafts.id, id),
   });
 
-  // Authors can always see their drafts; reviewers can see pending_review drafts
-  if (!draft || (draft.authorAgentId !== agent.id && draft.status !== "pending_review")) {
+  // Authors can always see their drafts; only eligible reviewers can see pending_review drafts
+  const isAuthor = draft?.authorAgentId === agent.id;
+  const isEligibleReviewer = draft?.status === "pending_review" && isReviewerEligible(agent);
+  if (!draft || (!isAuthor && !isEligibleReviewer)) {
     return errorEnvelope(c, "Draft not found", 404, "No such blueprint exists.");
   }
 
@@ -406,8 +409,12 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
     return errorEnvelope(c, `Draft status is "${draft.status}" — only pending_review drafts can be reviewed`, 400);
   }
 
-  if (draft.authorAgentId === agent.id) {
-    return errorEnvelope(c, "Cannot review your own draft", 403, "Self-review is not permitted.");
+  // Check reviewer independence (self-review, duplicate review)
+  const history: ReviewHistoryEntry[] = (draft.reviewHistory as ReviewHistoryEntry[] | null) ?? [];
+  const existingReviewerIds = history.map((e) => e.reviewerAgentId);
+  const independence = isReviewerIndependent(agent.id, draft.authorAgentId, existingReviewerIds);
+  if (!independence.ok) {
+    return errorEnvelope(c, independence.reason!, 403, independence.reason!);
   }
 
   const body = await c.req.json() as { verdict: string; reason: string };
@@ -419,12 +426,22 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
     return errorEnvelope(c, "reason is required (min 10 characters)", 400);
   }
 
-  if (body.verdict === "approve") {
-    // Approve the draft — creates the challenge
-    try {
-      const result = await approveDraft(id);
+  // Append to review history
+  const newEntry: ReviewHistoryEntry = {
+    reviewerAgentId: agent.id,
+    verdict: body.verdict as "approve" | "reject",
+    reason: body.reason.trim(),
+    reviewedAt: new Date().toISOString(),
+  };
+  const updatedHistory = [...history, newEntry];
+  const approvalCount = countApprovals(updatedHistory);
 
-      // Record reviewer info on the draft
+  if (approvalCount >= REVIEW_APPROVAL_THRESHOLD) {
+    // Enough approvals — create the challenge
+    try {
+      await approveDraft(id);
+
+      // Record last reviewer + full history
       await db
         .update(challengeDrafts)
         .set({
@@ -432,6 +449,7 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
           reviewVerdict: "approve",
           reviewReason: body.reason.trim(),
           reviewedAt: new Date(),
+          reviewHistory: updatedHistory,
         })
         .where(eq(challengeDrafts.id, id));
 
@@ -443,7 +461,7 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
 
       return envelope(
         c,
-        { draft_id: id, verdict: "approve", draft_status: "approved" },
+        { draft_id: id, verdict: body.verdict, draft_status: "approved" },
         200,
         "A new trial enters the arena!",
       );
@@ -452,14 +470,15 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
       return errorEnvelope(c, msg, 400, "The blueprint crumbles under scrutiny.");
     }
   } else {
-    // Rejection is advisory — draft stays pending_review so another reviewer can still approve
+    // Not enough approvals yet — record the review, draft stays pending
     await db
       .update(challengeDrafts)
       .set({
         reviewerAgentId: agent.id,
-        reviewVerdict: "reject",
+        reviewVerdict: body.verdict,
         reviewReason: body.reason.trim(),
         reviewedAt: new Date(),
+        reviewHistory: updatedHistory,
       })
       .where(eq(challengeDrafts.id, id));
 
@@ -471,7 +490,7 @@ challengeDraftRoutes.post("/:id/review", async (c) => {
 
     return envelope(
       c,
-      { draft_id: id, verdict: "reject", draft_status: "pending_review" },
+      { draft_id: id, verdict: body.verdict, draft_status: "pending_review" },
       200,
       "Your review is recorded. The blueprint remains open for other reviewers.",
     );

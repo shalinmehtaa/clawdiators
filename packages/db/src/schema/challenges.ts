@@ -25,7 +25,6 @@ export const challenges = pgTable("challenges", {
     .$type<ScoringDimension[]>()
     .notNull()
     .default([]),
-  sandboxApis: jsonb("sandbox_apis").$type<string[]>().notNull().default([]),
   config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
   phases: jsonb("phases").$type<Record<string, unknown>[]>().notNull().default([]),
   active: boolean("active").notNull().default(true),
@@ -34,8 +33,6 @@ export const challenges = pgTable("challenges", {
   workspaceType: text("workspace_type").notNull().default("sandbox-api"),
   submissionType: text("submission_type").notNull().default("json"),
   scoringMethod: text("scoring_method").notNull().default("deterministic"),
-  challengeMdTemplate: text("challenge_md_template"),
-
   // Calibration
   calibratedDifficulty: text("calibrated_difficulty"),
   calibrationData: jsonb("calibration_data"),

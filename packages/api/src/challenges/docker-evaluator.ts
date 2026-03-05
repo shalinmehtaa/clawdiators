@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EvalRuntime } from "@clawdiators/shared";
+import type { ChallengeData, ScoringInput, ScoreResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,12 +33,9 @@ export const SANDBOXED_FLAGS: string[] = [
   "--tmpfs", "/tmp:exec,size=64m",
 ];
 
-/** @deprecated Backward-compat alias. Use `SANDBOXED_FLAGS` directly. */
-export const TIER_FLAGS = { sandboxed: SANDBOXED_FLAGS };
-
 /**
  * Return Docker CLI flags for API-submitted challenge evaluation.
- * Always returns sandboxed flags — PR challenges use Docker Compose, not tier flags.
+ * Always returns sandboxed flags — PR challenges use Docker Compose, not these flags.
  */
 export function getDockerFlags(): string[] {
   return [...SANDBOXED_FLAGS];
@@ -48,9 +46,6 @@ export interface DockerEvalOpts {
   envVars?: Record<string, string>;
   image?: string;
 }
-
-/** @deprecated Backward-compat alias. Use `DockerEvalOpts`. */
-export type TierEvalOpts = DockerEvalOpts;
 
 /** Size limits. */
 const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB
@@ -264,6 +259,11 @@ export async function evaluateInSubprocess(
   timeoutSecs: number,
   opts?: DockerEvalOpts,
 ): Promise<DockerEvalResult> {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "evaluateInSubprocess is disabled in production — use Docker evaluation",
+    );
+  }
   const evaluatorFilename =
     runtime === "python" ? "evaluator.py" : "evaluator.js";
   let dir: string | undefined;
@@ -352,4 +352,174 @@ function parseEvalOutput(
     stderr,
     error: "Evaluator output did not contain a JSON line with 'scores' key",
   };
+}
+
+// ── Code execution helpers for community modules ─────────────────────
+
+/**
+ * Execute a JS script in Docker and return stdout.
+ * Used for community challenge data generation and scoring.
+ */
+export async function executeCodeInDocker(
+  script: string,
+  timeoutSecs: number = 10,
+): Promise<{ stdout: string; exitCode: number }> {
+  const dockerOk = await isDockerAvailable();
+  if (!dockerOk) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Docker required for community code execution in production");
+    }
+    // Dev fallback: run as subprocess
+    const result = await evaluateInSubprocess(
+      {},
+      script,
+      "node",
+      timeoutSecs,
+    );
+    return { stdout: result.stdout, exitCode: result.exitCode };
+  }
+
+  const image = RUNTIME_IMAGES.node;
+  const imageOk = await isImageAvailable(image);
+  if (!imageOk) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(`Docker image "${image}" not available for community code execution`);
+    }
+    const result = await evaluateInSubprocess(
+      {},
+      script,
+      "node",
+      timeoutSecs,
+    );
+    return { stdout: result.stdout, exitCode: result.exitCode };
+  }
+
+  const result = await evaluateInDocker(
+    {},
+    script,
+    "node",
+    timeoutSecs,
+  );
+  return { stdout: result.stdout, exitCode: result.exitCode };
+}
+
+/**
+ * Generate challenge data by executing community data.js in Docker.
+ */
+export async function generateDataInDocker(
+  source: string,
+  seed: number,
+  cachedAssets?: Record<string, unknown>,
+): Promise<ChallengeData> {
+  const script = [
+    `"use strict";`,
+    source,
+    ``,
+    `// --- runner ---`,
+    `var genFn = module.exports.generateData || exports.generateData;`,
+    `if (typeof genFn !== "function") {`,
+    `  var err = "data.js must export a generateData(seed) function";`,
+    `  console.error(err);`,
+    `  process.exit(1);`,
+    `}`,
+    cachedAssets
+      ? `var CACHED_ASSETS = ${JSON.stringify(cachedAssets)};`
+      : ``,
+    `var result = genFn(${seed});`,
+    `console.log(JSON.stringify(result));`,
+  ].join("\n");
+
+  const { stdout, exitCode } = await executeCodeInDocker(script, 10);
+
+  if (exitCode !== 0) {
+    throw new Error(`generateData failed with exit code ${exitCode}: ${stdout}`);
+  }
+
+  const lines = stdout.trim().split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed && typeof parsed === "object" && typeof parsed.objective === "string") {
+        return parsed as ChallengeData;
+      }
+    } catch {
+      // Not valid JSON — try next line
+    }
+  }
+
+  throw new Error("generateData did not produce valid JSON output with 'objective' field");
+}
+
+/**
+ * Score a submission by executing community scorer.js in Docker.
+ */
+export async function scoreInDocker(
+  source: string,
+  input: ScoringInput,
+  maxScore: number,
+  cachedAssets?: Record<string, unknown>,
+): Promise<ScoreResult> {
+  const scorerInput = {
+    submission: input.submission,
+    groundTruth: input.groundTruth,
+    startedAt: input.startedAt.toISOString(),
+    submittedAt: input.submittedAt.toISOString(),
+    apiCallCount: input.apiCallCount,
+    checkpoints: input.checkpoints ?? [],
+  };
+
+  const script = [
+    `"use strict";`,
+    source,
+    ``,
+    `// --- runner ---`,
+    `var scoreFn = module.exports.score || exports.score;`,
+    `if (typeof scoreFn !== "function") {`,
+    `  console.error("scorer.js must export a score(input) function");`,
+    `  process.exit(1);`,
+    `}`,
+    cachedAssets
+      ? `var CACHED_ASSETS = ${JSON.stringify(cachedAssets)};`
+      : ``,
+    `var input = ${JSON.stringify(scorerInput)};`,
+    `var result = scoreFn(input);`,
+    `console.log(JSON.stringify(result));`,
+  ].join("\n");
+
+  const { stdout, exitCode } = await executeCodeInDocker(script, 10);
+
+  if (exitCode !== 0) {
+    throw new Error(`score() failed with exit code ${exitCode}: ${stdout}`);
+  }
+
+  const lines = stdout.trim().split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed && typeof parsed === "object" && parsed.breakdown) {
+        // Validate dimension scores
+        for (const [key, value] of Object.entries(parsed.breakdown)) {
+          if (typeof value !== "number" || isNaN(value as number)) {
+            throw new Error(`score() breakdown.${key} must be a number`);
+          }
+        }
+        // Ensure total exists
+        if (parsed.breakdown.total === undefined) {
+          let total = 0;
+          for (const [key, value] of Object.entries(parsed.breakdown)) {
+            if (key !== "total") total += value as number;
+          }
+          parsed.breakdown.total = total;
+        }
+        // Clamp total to maxScore
+        parsed.breakdown.total = Math.min(parsed.breakdown.total, maxScore);
+        return { breakdown: parsed.breakdown };
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("breakdown")) throw e;
+      // Not valid JSON — try next line
+    }
+  }
+
+  throw new Error("score() did not produce valid JSON output with 'breakdown' field");
 }

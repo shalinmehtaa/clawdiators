@@ -1,4 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../src/challenges/docker-evaluator.js", async () => {
+  const actual = await vi.importActual("../src/challenges/docker-evaluator.js");
+  const { mockGenerateDataInDocker, mockScoreInDocker, mockExecuteCodeInDocker } = await import("./helpers/inline-executor.js");
+  return {
+    ...actual,
+    generateDataInDocker: mockGenerateDataInDocker,
+    scoreInDocker: mockScoreInDocker,
+    executeCodeInDocker: mockExecuteCodeInDocker,
+  };
+});
+
 import { validateSpec } from "../src/challenges/primitives/validator.js";
 import { createDeclarativeModule } from "../src/challenges/primitives/declarative-module.js";
 import { runAllGates } from "../src/challenges/primitives/gates.js";
@@ -107,26 +119,26 @@ describe("Color Match spec (happy path)", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("generates deterministic data", () => {
+  it("generates deterministic data", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const d1 = mod.generateData(42, {});
-    const d2 = mod.generateData(42, {});
+    const d1 = await mod.generateData(42, {});
+    const d2 = await mod.generateData(42, {});
     expect(d1).toEqual(d2);
   });
 
-  it("generates different data for different seeds", () => {
+  it("generates different data for different seeds", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const d42 = mod.generateData(42, {});
-    const d99 = mod.generateData(99, {});
+    const d42 = await mod.generateData(42, {});
+    const d99 = await mod.generateData(99, {});
     // With 10 colors and different seeds, outputs should differ
     expect(JSON.stringify(d42)).not.toBe(JSON.stringify(d99));
   });
 
-  it("scores a perfect answer above 60% threshold", () => {
+  it("scores a perfect answer above 60% threshold", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const answer = { color: data.groundTruth.color, reasoning: "Read the workspace file" };
-    const result = mod.score({
+    const result = await mod.score({
       submission: answer,
       groundTruth: data.groundTruth,
       startedAt: new Date(Date.now() - 5000),
@@ -136,10 +148,10 @@ describe("Color Match spec (happy path)", () => {
     expect(result.breakdown.total).toBeGreaterThanOrEqual(600);
   });
 
-  it("scores an empty answer near zero", () => {
+  it("scores an empty answer near zero", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const data = mod.generateData(42, {});
-    const result = mod.score({
+    const data = await mod.generateData(42, {});
+    const result = await mod.score({
       submission: {},
       groundTruth: data.groundTruth,
       startedAt: new Date(Date.now() - 1000),
@@ -151,7 +163,7 @@ describe("Color Match spec (happy path)", () => {
 
   it("passes all gates with correct reference answer", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const correctAnswer = { color: data.groundTruth.color, reasoning: "I read the workspace" };
     const report = await runAllGates(
       colorMatchSpec,
@@ -184,9 +196,9 @@ describe("Multi-field spec (multi-primitive scoring)", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("generates data with all expected fields", () => {
+  it("generates data with all expected fields", async () => {
     const mod = createDeclarativeModule(multiFieldSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     expect(data.groundTruth).toHaveProperty("value");
     expect(data.groundTruth).toHaveProperty("label");
     expect(data.groundTruth).toHaveProperty("tags");
@@ -195,10 +207,10 @@ describe("Multi-field spec (multi-primitive scoring)", () => {
     expect(Array.isArray(data.groundTruth.tags)).toBe(true);
   });
 
-  it("scores perfect answer above threshold", () => {
+  it("scores perfect answer above threshold", async () => {
     const mod = createDeclarativeModule(multiFieldSpec);
-    const data = mod.generateData(42, {});
-    const result = mod.score({
+    const data = await mod.generateData(42, {});
+    const result = await mod.score({
       submission: {
         value: data.groundTruth.value,
         label: data.groundTruth.label,
@@ -214,7 +226,7 @@ describe("Multi-field spec (multi-primitive scoring)", () => {
 
   it("passes all gates with correct reference answer", async () => {
     const mod = createDeclarativeModule(multiFieldSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const report = await runAllGates(
       multiFieldSpec,
       {
@@ -420,11 +432,11 @@ describe("Workspace generation", () => {
 // ── Scoring Edge Cases ───────────────────────────────────────────────
 
 describe("Scoring edge cases", () => {
-  it("partial match on multi-field spec", () => {
+  it("partial match on multi-field spec", async () => {
     const mod = createDeclarativeModule(multiFieldSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     // Submit only correct value, wrong label and tags
-    const result = mod.score({
+    const result = await mod.score({
       submission: {
         value: data.groundTruth.value,
         label: "wrong-label",
@@ -440,11 +452,11 @@ describe("Scoring edge cases", () => {
     expect(result.breakdown.total).toBeLessThan(900);
   });
 
-  it("near-timeout submission gets low speed score", () => {
+  it("near-timeout submission gets low speed score", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const now = new Date();
-    const result = mod.score({
+    const result = await mod.score({
       submission: { color: data.groundTruth.color, reasoning: "took forever" },
       groundTruth: data.groundTruth,
       startedAt: new Date(now.getTime() - 59000), // 59 seconds — near 60s limit
@@ -455,11 +467,11 @@ describe("Scoring edge cases", () => {
     expect(result.breakdown.speed).toBeLessThan(100);
   });
 
-  it("instant submission gets high speed score", () => {
+  it("instant submission gets high speed score", async () => {
     const mod = createDeclarativeModule(colorMatchSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const now = new Date();
-    const result = mod.score({
+    const result = await mod.score({
       submission: { color: data.groundTruth.color, reasoning: "instant solve" },
       groundTruth: data.groundTruth,
       startedAt: new Date(now.getTime() - 100), // 0.1 seconds

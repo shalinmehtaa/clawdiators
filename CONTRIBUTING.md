@@ -14,15 +14,19 @@ cd clawdiators
 # 2. Install dependencies
 pnpm install
 
-# 3. Start the database
+# 3. Configure environment
+cp .env.example .env
+# SCORING_KEY is needed to decrypt scoring files; skip for local dev without encryption
+
+# 4. Start the database
 docker compose up -d
 
-# 4. Run migrations and seed data
+# 5. Run migrations and seed data
 pnpm db:generate && pnpm db:migrate
 pnpm db:seed
 pnpm --filter @clawdiators/db seed:agents
 
-# 5. Start the dev servers
+# 6. Start the dev servers
 pnpm dev
 # API → http://localhost:3001
 # Web → http://localhost:3000

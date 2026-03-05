@@ -32,7 +32,7 @@ export async function evaluate(
     /** For "environment" challenges: fetch metrics from each service before scoring. */
     serviceMetricsFetcher?: () => Promise<Record<string, Record<string, unknown>>>;
   },
-): Promise<{ result: ScoreResult; log: EvaluationLog }> {
+): Promise<{ result: ScoreResult; log: EvaluationLog; constraintViolations: string[] }> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
 
@@ -57,7 +57,7 @@ export async function evaluate(
   switch (method) {
     case "deterministic":
       // Use the module's existing score function
-      result = mod.score(input);
+      result = await mod.score(input);
       // Extract raw scores from breakdown
       for (const [key, value] of Object.entries(result.breakdown)) {
         if (key !== "total") rawScores[key] = value;
@@ -69,7 +69,7 @@ export async function evaluate(
       const evaluator = scoringSpec?.evaluator;
       if (!evaluator) {
         // No evaluator script — use the module's own scorer (normal path for code-based modules)
-        result = mod.score(input);
+        result = await mod.score(input);
         for (const [key, value] of Object.entries(result.breakdown)) {
           if (key !== "total") rawScores[key] = value;
         }
@@ -151,7 +151,7 @@ export async function evaluate(
       } else {
         // Evaluator returned no scores — fall back to module scorer
         errors.push("Evaluator returned no scores; falling back to module scorer");
-        result = mod.score(input);
+        result = await mod.score(input);
         for (const [key, value] of Object.entries(result.breakdown)) {
           if (key !== "total") rawScores[key] = value;
         }
@@ -161,7 +161,7 @@ export async function evaluate(
 
     default:
       errors.push(`Unknown scoring method: ${method}; using module scorer`);
-      result = mod.score(input);
+      result = await mod.score(input);
       for (const [key, value] of Object.entries(result.breakdown)) {
         if (key !== "total") rawScores[key] = value;
       }
@@ -204,6 +204,35 @@ export async function evaluate(
     result.breakdown.total = newTotal;
   }
 
+  // ── Constraint enforcement ──────────────────────────────────────────
+  // Check constraints beyond tokenBudget (which is already handled via efficiency dims).
+  // Violations are warnings, not score penalties — matching existing tokenBudget pattern.
+  const constraintViolations: string[] = [];
+
+  if (constraints && isVerified && trajectory) {
+    if (constraints.maxToolCalls !== undefined) {
+      const toolCount = (input as any).submission?.metadata?.tool_call_count
+        ?? trajectory.total_llm_calls; // approximate
+      // If agent reported tool_call_count in metadata, that's more accurate
+      if (typeof toolCount === "number" && toolCount > constraints.maxToolCalls) {
+        constraintViolations.push(`maxToolCalls exceeded: ${toolCount} > ${constraints.maxToolCalls}`);
+      }
+    }
+    if (constraints.maxLlmCalls !== undefined) {
+      if (trajectory.total_llm_calls > constraints.maxLlmCalls) {
+        constraintViolations.push(`maxLlmCalls exceeded: ${trajectory.total_llm_calls} > ${constraints.maxLlmCalls}`);
+      }
+    }
+    if (constraints.allowedModels?.length) {
+      // Check models used in trajectory (from replay_log via the calling code)
+      // This is advisory — we can only verify if the agent self-reports
+    }
+  }
+
+  if (constraintViolations.length > 0) {
+    errors.push(...constraintViolations.map(v => `Constraint warning: ${v}`));
+  }
+
   const completedAt = new Date().toISOString();
   const durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
 
@@ -227,7 +256,7 @@ export async function evaluate(
     errors,
   };
 
-  return { result, log };
+  return { result, log, constraintViolations };
 }
 
 /**

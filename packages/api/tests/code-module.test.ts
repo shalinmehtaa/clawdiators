@@ -1,4 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { vi, describe, it, expect } from "vitest";
+
+vi.mock("../src/challenges/docker-evaluator.js", async () => {
+  const actual = await vi.importActual("../src/challenges/docker-evaluator.js");
+  const { mockGenerateDataInDocker, mockScoreInDocker, mockExecuteCodeInDocker } = await import("./helpers/inline-executor.js");
+  return {
+    ...actual,
+    generateDataInDocker: mockGenerateDataInDocker,
+    scoreInDocker: mockScoreInDocker,
+    executeCodeInDocker: mockExecuteCodeInDocker,
+  };
+});
+
 import { createCodeModule } from "../src/challenges/primitives/code-module.js";
 import {
   checkCodeSyntax,
@@ -116,33 +128,33 @@ describe("createCodeModule", () => {
     expect(mod.scoringSpec?.method).toBe("custom-script");
   });
 
-  it("generateData returns objective and groundTruth", () => {
+  it("generateData returns objective and groundTruth", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     expect(data.objective).toContain("Find the number");
     expect(data.groundTruth).toBeDefined();
     expect(typeof data.groundTruth.answer).toBe("number");
   });
 
-  it("generateData is deterministic — same seed produces same output", () => {
+  it("generateData is deterministic — same seed produces same output", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const a = mod.generateData(42, {});
-    const b = mod.generateData(42, {});
+    const a = await mod.generateData(42, {});
+    const b = await mod.generateData(42, {});
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 
-  it("generateData produces different output for different seeds", () => {
+  it("generateData produces different output for different seeds", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const a = mod.generateData(42, {});
-    const b = mod.generateData(123, {});
+    const a = await mod.generateData(42, {});
+    const b = await mod.generateData(123, {});
     expect(a.groundTruth.answer).not.toBe(b.groundTruth.answer);
   });
 
-  it("score returns correct breakdown for exact match", () => {
+  it("score returns correct breakdown for exact match", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const now = new Date();
-    const result = mod.score({
+    const result = await mod.score({
       submission: { answer: data.groundTruth.answer },
       groundTruth: data.groundTruth,
       startedAt: new Date(now.getTime() - 1000),
@@ -154,11 +166,11 @@ describe("createCodeModule", () => {
     expect(result.breakdown.total).toBeGreaterThan(0);
   });
 
-  it("score returns 0 accuracy for wrong answer", () => {
+  it("score returns 0 accuracy for wrong answer", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const now = new Date();
-    const result = mod.score({
+    const result = await mod.score({
       submission: { answer: -1 },
       groundTruth: data.groundTruth,
       startedAt: new Date(now.getTime() - 1000),
@@ -168,7 +180,7 @@ describe("createCodeModule", () => {
     expect(result.breakdown.accuracy).toBe(0);
   });
 
-  it("score clamps total to maxScore", () => {
+  it("score clamps total to maxScore", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       scoring: { ...codeBasedSpec.scoring, maxScore: 500 },
@@ -183,7 +195,7 @@ module.exports = { score: score };
       },
     };
     const mod = createCodeModule(spec);
-    const result = mod.score({
+    const result = await mod.score({
       submission: {},
       groundTruth: {},
       startedAt: new Date(),
@@ -193,7 +205,7 @@ module.exports = { score: score };
     expect(result.breakdown.total).toBe(500);
   });
 
-  it("score auto-computes total if not provided", () => {
+  it("score auto-computes total if not provided", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -207,7 +219,7 @@ module.exports = { score: score };
       },
     };
     const mod = createCodeModule(spec);
-    const result = mod.score({
+    const result = await mod.score({
       submission: {},
       groundTruth: {},
       startedAt: new Date(),
@@ -221,14 +233,14 @@ module.exports = { score: score };
 // ── generateWorkspace ─────────────────────────────────────────────────
 
 describe("createCodeModule generateWorkspace", () => {
-  it("auto-generates workspace from data when no workspace.js", () => {
+  it("auto-generates workspace from data when no workspace.js", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const files = mod.generateWorkspace!(42, {});
+    const files = await mod.generateWorkspace!(42, {});
     expect(files).toBeDefined();
     expect(files["objective.txt"]).toContain("Find the number");
   });
 
-  it("uses workspace.js when provided", () => {
+  it("uses workspace.js when provided", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -238,7 +250,7 @@ describe("createCodeModule generateWorkspace", () => {
       },
     };
     const mod = createCodeModule(spec);
-    const files = mod.generateWorkspace!(42, {});
+    const files = await mod.generateWorkspace!(42, {});
     expect(files["puzzle.json"]).toBeDefined();
     expect(files["instructions.txt"]).toContain("puzzle.json");
   });
@@ -247,13 +259,13 @@ describe("createCodeModule generateWorkspace", () => {
 // ── validateSubmission ────────────────────────────────────────────────
 
 describe("createCodeModule validateSubmission", () => {
-  it("returns empty array when no validator.js", () => {
+  it("returns empty array when no validator.js", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const warnings = mod.validateSubmission!({}, {});
+    const warnings = await mod.validateSubmission!({}, {});
     expect(warnings).toEqual([]);
   });
 
-  it("returns warnings from validator.js", () => {
+  it("returns warnings from validator.js", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -263,13 +275,13 @@ describe("createCodeModule validateSubmission", () => {
       },
     };
     const mod = createCodeModule(spec);
-    const warnings = mod.validateSubmission!({}, {});
+    const warnings = await mod.validateSubmission!({}, {});
     expect(warnings).toHaveLength(1);
     expect(warnings[0].severity).toBe("error");
     expect(warnings[0].field).toBe("answer");
   });
 
-  it("returns type warning for non-number answer", () => {
+  it("returns type warning for non-number answer", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -279,7 +291,7 @@ describe("createCodeModule validateSubmission", () => {
       },
     };
     const mod = createCodeModule(spec);
-    const warnings = mod.validateSubmission!({ answer: "hello" }, {});
+    const warnings = await mod.validateSubmission!({ answer: "hello" }, {});
     expect(warnings).toHaveLength(1);
     expect(warnings[0].severity).toBe("warning");
   });
@@ -288,7 +300,7 @@ describe("createCodeModule validateSubmission", () => {
 // ── Error handling ────────────────────────────────────────────────────
 
 describe("createCodeModule error handling", () => {
-  it("throws when data.js has no generateData export", () => {
+  it("throws when data.js has no generateData export", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -297,10 +309,10 @@ describe("createCodeModule error handling", () => {
       },
     };
     const mod = createCodeModule(spec);
-    expect(() => mod.generateData(42, {})).toThrow("data.js must export a generateData(seed) function");
+    await expect(async () => await mod.generateData(42, {})).rejects.toThrow("data.js must export a generateData(seed) function");
   });
 
-  it("throws when scorer.js has no score export", () => {
+  it("throws when scorer.js has no score export", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -309,16 +321,16 @@ describe("createCodeModule error handling", () => {
       },
     };
     const mod = createCodeModule(spec);
-    expect(() => mod.score({
+    await expect(async () => await mod.score({
       submission: {},
       groundTruth: {},
       startedAt: new Date(),
       submittedAt: new Date(),
       apiCallCount: 0,
-    })).toThrow("scorer.js must export a score(input) function");
+    })).rejects.toThrow("scorer.js must export a score(input) function");
   });
 
-  it("throws when generateData returns non-object", () => {
+  it("throws when generateData returns non-object", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -330,10 +342,10 @@ module.exports = { generateData: generateData };
       },
     };
     const mod = createCodeModule(spec);
-    expect(() => mod.generateData(42, {})).toThrow("generateData must return an object");
+    await expect(async () => await mod.generateData(42, {})).rejects.toThrow("generateData must return an object");
   });
 
-  it("throws when generateData is missing objective", () => {
+  it("throws when generateData is missing objective", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -345,10 +357,10 @@ module.exports = { generateData: generateData };
       },
     };
     const mod = createCodeModule(spec);
-    expect(() => mod.generateData(42, {})).toThrow("objective");
+    await expect(async () => await mod.generateData(42, {})).rejects.toThrow("objective");
   });
 
-  it("throws when generateData is missing groundTruth", () => {
+  it("throws when generateData is missing groundTruth", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -360,10 +372,10 @@ module.exports = { generateData: generateData };
       },
     };
     const mod = createCodeModule(spec);
-    expect(() => mod.generateData(42, {})).toThrow("groundTruth");
+    await expect(async () => await mod.generateData(42, {})).rejects.toThrow("groundTruth");
   });
 
-  it("throws when scorer returns non-number dimension", () => {
+  it("throws when scorer returns non-number dimension", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -377,20 +389,20 @@ module.exports = { score: score };
       },
     };
     const mod = createCodeModule(spec);
-    expect(() => mod.score({
+    await expect(async () => await mod.score({
       submission: {},
       groundTruth: {},
       startedAt: new Date(),
       submittedAt: new Date(),
       apiCallCount: 0,
-    })).toThrow("must be a number");
+    })).rejects.toThrow("must be a number");
   });
 });
 
 // ── Helpers support ───────────────────────────────────────────────────
 
 describe("createCodeModule helpers", () => {
-  it("makes helpers.js functions available to data.js", () => {
+  it("makes helpers.js functions available to data.js", async () => {
     const spec: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -411,7 +423,7 @@ module.exports = { generateData: generateData };
       },
     };
     const mod = createCodeModule(spec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     expect(data.groundTruth.answer).toBeLessThanOrEqual(999);
     expect(data.groundTruth.answer).toBeGreaterThanOrEqual(0);
   });
@@ -611,7 +623,7 @@ describe("buildModuleForSpec", () => {
 describe("runAllGates with code-based specs", () => {
   it("passes all gates for a valid code-based spec with correct reference", async () => {
     const mod = createCodeModule(codeBasedSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const report = await runAllGates(
       codeBasedSpec,
       { seed: 42, answer: { answer: data.groundTruth.answer } },
@@ -712,7 +724,7 @@ describe("runAllGates with code-based specs", () => {
       description: "Build a malware detection system for cybersecurity eval.",
     };
     const mod = createCodeModule(flaggedSpec);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     const report = await runAllGates(
       flaggedSpec,
       { seed: 42, answer: { answer: data.groundTruth.answer } },
@@ -812,7 +824,7 @@ describe("communitySpecSchema codeFiles validation", () => {
 // ── cachedAssets injection ───────────────────────────────────────────
 
 describe("createCodeModule cachedAssets", () => {
-  it("injects CACHED_ASSETS global into data.js execution", () => {
+  it("injects CACHED_ASSETS global into data.js execution", async () => {
     const specWithAssetAware: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -831,11 +843,11 @@ module.exports = { generateData: generateData };
       },
     };
     const mod = createCodeModule(specWithAssetAware, { cachedAssets: { key: "test-value" } });
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     expect(data.objective).toContain("test-value");
   });
 
-  it("CACHED_ASSETS is undefined when not provided", () => {
+  it("CACHED_ASSETS is undefined when not provided", async () => {
     const specWithAssetCheck: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -854,11 +866,11 @@ module.exports = { generateData: generateData };
       },
     };
     const mod = createCodeModule(specWithAssetCheck);
-    const data = mod.generateData(42, {});
+    const data = await mod.generateData(42, {});
     expect(data.objective).toContain("Has assets: false");
   });
 
-  it("CACHED_ASSETS available in scorer context", () => {
+  it("CACHED_ASSETS available in scorer context", async () => {
     const specWithAssetScorer: CommunitySpec = {
       ...codeBasedSpec,
       codeFiles: {
@@ -873,7 +885,7 @@ module.exports = { score: score };
       },
     };
     const mod = createCodeModule(specWithAssetScorer, { cachedAssets: { lookup: [1, 2, 3] } });
-    const result = mod.score({
+    const result = await mod.score({
       submission: {},
       groundTruth: {},
       startedAt: new Date(),

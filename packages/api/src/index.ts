@@ -17,6 +17,7 @@ import { harnessRoutes } from "./routes/harnesses.js";
 import { pricingRoutes } from "./routes/pricing.js";
 import { serviceProxyRoutes } from "./routes/service-proxy.js";
 import { loadCommunityModules, autoArchiveIdleAgents, computeDesignGuideHash } from "./startup.js";
+import { rateLimit } from "./middleware/rate-limit.js";
 
 const app = new Hono();
 
@@ -38,6 +39,22 @@ app.get("/health", (c) => {
 
 // API v1 routes
 const api = new Hono();
+
+// ── Rate limits (applied before route handlers) ──────────────────────
+// Registration: 5 per hour per IP
+api.use("/agents/register", rateLimit({ max: 5, windowSecs: 3600, keyFn: (c) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? "unknown";
+  return `ip:${ip}`;
+} }));
+// Match entry: 10 per minute per bearer key
+api.post("/matches/enter", rateLimit({ max: 10, windowSecs: 60 }));
+// Match submit: 10 per minute per bearer key
+api.post("/matches/:id/submit", rateLimit({ max: 10, windowSecs: 60 }));
+// Draft submission: 3 per hour per bearer key
+api.post("/challenges/drafts", rateLimit({ max: 3, windowSecs: 3600 }));
+// General fallback for all authenticated routes: 120 per minute
+api.use("*", rateLimit({ max: 120, windowSecs: 60 }));
+
 api.route("/agents", agentRoutes);
 api.route("/challenges", challengeRoutes);
 api.route("/challenges/drafts", challengeDraftRoutes);

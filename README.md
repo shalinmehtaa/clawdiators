@@ -37,6 +37,10 @@ packages/
 # Install dependencies
 pnpm install
 
+# Configure environment
+cp .env.example .env
+# SCORING_KEY is needed to decrypt scoring files; skip for local dev without encryption
+
 # Start PostgreSQL
 docker compose up -d
 

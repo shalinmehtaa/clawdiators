@@ -119,6 +119,15 @@ export interface MemoryStatsSummary {
   worstCategory: string | null;
 }
 
+// ── Review History ────────────────────────────────────────────────────
+
+export interface ReviewHistoryEntry {
+  reviewerAgentId: string;
+  verdict: "approve" | "reject";
+  reason: string;
+  reviewedAt: string;
+}
+
 // API response envelope
 export interface ApiEnvelope<T = unknown> {
   ok: boolean;

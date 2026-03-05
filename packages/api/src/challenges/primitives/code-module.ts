@@ -1,15 +1,15 @@
 /**
  * Code-based Challenge Adapter — wraps community-submitted JS code files
- * into a ChallengeModule, executing them in a sandboxed Node.js VM context.
+ * into a ChallengeModule, executing them in Docker containers.
  *
  * Code files: data.js (required), scorer.js (required), workspace.js, validator.js, helpers.js
- * All executed with mulberry32 PRNG and restricted globals.
+ * All executed with mulberry32 PRNG in sandboxed Docker containers.
  */
-import { createContext, runInContext, Script } from "node:vm";
 import type { ChallengeModule, ChallengeData, ScoringInput, ScoreResult, SubmissionWarning } from "../types.js";
 import type { CommunitySpec, CodeFiles } from "./validator.js";
 import { generateLLMJudgeInlineScript } from "./llm-judge.js";
 import { generateBenchmarkInlineScript } from "./benchmark.js";
+import { generateDataInDocker, scoreInDocker, executeCodeInDocker } from "../docker-evaluator.js";
 
 /** Mulberry32 PRNG source — inlined into every code execution context. */
 const MULBERRY32_SOURCE = `
@@ -23,74 +23,6 @@ function rng(seed) {
   };
 }
 `;
-
-/** Default VM execution timeout in milliseconds. */
-const VM_TIMEOUT_MS = 5000;
-
-/**
- * Execute a JS code string in a sandboxed VM context.
- * Returns the module's exports via a synthetic `module.exports` object.
- */
-function executeInVM(
-  code: string,
-  globals: Record<string, unknown> = {},
-  timeout = VM_TIMEOUT_MS,
-): Record<string, unknown> {
-  const moduleExports: Record<string, unknown> = {};
-  const moduleObj = { exports: moduleExports };
-
-  const sandbox: Record<string, unknown> = {
-    module: moduleObj,
-    exports: moduleExports,
-    console: {
-      log: (...args: unknown[]) => { /* captured but silenced in production */ },
-      warn: (...args: unknown[]) => {},
-      error: (...args: unknown[]) => {},
-    },
-    JSON,
-    Math,
-    Date,
-    Array,
-    Object,
-    String,
-    Number,
-    Boolean,
-    RegExp,
-    Map,
-    Set,
-    parseInt,
-    parseFloat,
-    isNaN,
-    isFinite,
-    encodeURIComponent,
-    decodeURIComponent,
-    ...globals,
-  };
-
-  const context = createContext(sandbox);
-
-  // Compile and run with timeout
-  const script = new Script(code, { filename: "community-code.js" });
-  script.runInContext(context, { timeout });
-
-  // If module.exports has entries, use those (explicit exports)
-  const explicitExports = moduleObj.exports;
-  if (Object.keys(explicitExports).length > 0) {
-    return explicitExports;
-  }
-
-  // Fall back to top-level function declarations in the context.
-  // This allows authors to write plain `function generateData(seed) { ... }`
-  // without needing `module.exports = { generateData }`.
-  const KNOWN_EXPORTS = ["generateData", "score", "generateWorkspace", "validate", "setup"];
-  const contextExports: Record<string, unknown> = {};
-  for (const key of KNOWN_EXPORTS) {
-    if (typeof context[key] === "function") {
-      contextExports[key] = context[key];
-    }
-  }
-  return Object.keys(contextExports).length > 0 ? contextExports : explicitExports;
-}
 
 /**
  * Build the full source for a code file, prepending helpers and the rng global.
@@ -186,7 +118,7 @@ function buildTier2EvaluatorWrapper(spec: CommunitySpec): string {
 
 /**
  * Create a ChallengeModule from community-submitted code files.
- * Executes data.js / scorer.js / workspace.js / validator.js in Node.js VM contexts.
+ * Executes data.js / scorer.js / workspace.js in Docker containers.
  *
  * For Tier 2+ (networked/gpu/custom), also generates a self-contained evaluator
  * wrapper script that runs inside Docker with appropriate isolation.
@@ -226,144 +158,103 @@ export function createCodeModule(spec: CommunitySpec, opts?: CreateCodeModuleOpt
       rubric: spec.scoring.rubric,
     },
 
-    generateData(seed: number, _config: Record<string, unknown>): ChallengeData {
+    async generateData(seed: number, _config: Record<string, unknown>): Promise<ChallengeData> {
       const source = buildSource(codeFiles["data.js"], helpersCode);
-      const vmGlobals: Record<string, unknown> = {};
-      if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
-      const exports = executeInVM(source, vmGlobals);
-
-      const generateData = exports.generateData as
-        | ((seed: number) => { objective: string; groundTruth: Record<string, unknown>; [key: string]: unknown })
-        | undefined;
-
-      if (typeof generateData !== "function") {
-        throw new Error("data.js must export a generateData(seed) function");
-      }
-
-      const result = generateData(seed);
-
-      if (!result || typeof result !== "object") {
-        throw new Error("generateData must return an object");
-      }
-      if (typeof result.objective !== "string") {
-        throw new Error("generateData must return an object with an 'objective' string");
-      }
-      if (!result.groundTruth || typeof result.groundTruth !== "object") {
-        throw new Error("generateData must return an object with a 'groundTruth' object");
-      }
-
-      return result as ChallengeData;
+      return generateDataInDocker(source, seed, cachedAssets);
     },
 
-    score(input: ScoringInput): ScoreResult {
+    async score(input: ScoringInput): Promise<ScoreResult> {
       const source = buildSource(codeFiles["scorer.js"], helpersCode);
-      const vmGlobals: Record<string, unknown> = {};
-      if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
-      const exports = executeInVM(source, vmGlobals);
-
-      const scoreFn = exports.score as
-        | ((input: Record<string, unknown>) => { breakdown: Record<string, number> })
-        | undefined;
-
-      if (typeof scoreFn !== "function") {
-        throw new Error("scorer.js must export a score(input) function");
-      }
-
-      // Serialize dates to ISO strings for the scorer
-      const scorerInput = {
-        submission: input.submission,
-        groundTruth: input.groundTruth,
-        startedAt: input.startedAt.toISOString(),
-        submittedAt: input.submittedAt.toISOString(),
-        apiCallCount: input.apiCallCount,
-        checkpoints: input.checkpoints ?? [],
-      };
-
-      const result = scoreFn(scorerInput);
-
-      if (!result || typeof result !== "object" || !result.breakdown) {
-        throw new Error("score() must return { breakdown: { [dimension]: number, total: number } }");
-      }
-
-      // Validate all dimension scores are numbers
-      for (const [key, value] of Object.entries(result.breakdown)) {
-        if (typeof value !== "number" || isNaN(value)) {
-          throw new Error(`score() breakdown.${key} must be a number, got ${typeof value}`);
-        }
-      }
-
-      // Ensure total exists
-      if (result.breakdown.total === undefined) {
-        let total = 0;
-        for (const [key, value] of Object.entries(result.breakdown)) {
-          if (key !== "total") total += value;
-        }
-        result.breakdown.total = total;
-      }
-
-      // Clamp total to maxScore
-      result.breakdown.total = Math.min(result.breakdown.total, spec.scoring.maxScore);
-
-      return { breakdown: result.breakdown };
+      return scoreInDocker(source, input, spec.scoring.maxScore, cachedAssets);
     },
 
-    validateSubmission(submission: Record<string, unknown>, groundTruth: Record<string, unknown>): SubmissionWarning[] {
+    async validateSubmission(submission: Record<string, unknown>, groundTruth: Record<string, unknown>): Promise<SubmissionWarning[]> {
       if (!codeFiles["validator.js"]) return [];
 
       const source = buildSource(codeFiles["validator.js"], helpersCode);
-      const vmGlobals: Record<string, unknown> = {};
-      if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
-      const exports = executeInVM(source, vmGlobals);
 
-      const validateFn = exports.validate as
-        | ((submission: Record<string, unknown>, groundTruth: Record<string, unknown>) => SubmissionWarning[])
-        | undefined;
-
-      if (typeof validateFn !== "function") return [];
+      const script = [
+        `"use strict";`,
+        source,
+        ``,
+        `var validateFn = module.exports.validate || exports.validate;`,
+        `if (typeof validateFn !== "function") {`,
+        `  console.log(JSON.stringify([]));`,
+        `} else {`,
+        `  try {`,
+        `    var result = validateFn(${JSON.stringify(submission)}, ${JSON.stringify(groundTruth)});`,
+        `    console.log(JSON.stringify(Array.isArray(result) ? result : []));`,
+        `  } catch(e) {`,
+        `    console.log(JSON.stringify([]));`,
+        `  }`,
+        `}`,
+      ].join("\n");
 
       try {
-        const warnings = validateFn(submission, groundTruth);
-        if (!Array.isArray(warnings)) return [];
-        return warnings.filter(
-          (w) => w && typeof w.severity === "string" && typeof w.field === "string" && typeof w.message === "string",
-        );
+        const { stdout } = await executeCodeInDocker(script, 10);
+        const lines = stdout.trim().split("\n");
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const parsed = JSON.parse(lines[i]);
+            if (Array.isArray(parsed)) {
+              return parsed.filter(
+                (w: any) => w && typeof w.severity === "string" && typeof w.field === "string" && typeof w.message === "string",
+              );
+            }
+          } catch {
+            // Not valid JSON
+          }
+        }
       } catch {
-        return [];
+        // Validator failure is non-fatal
       }
+      return [];
     },
 
-    generateWorkspace(seed: number, _config: Record<string, unknown>): Record<string, string> {
+    async generateWorkspace(seed: number, _config: Record<string, unknown>): Promise<Record<string, string>> {
       if (codeFiles["workspace.js"]) {
-        const source = buildSource(codeFiles["workspace.js"], helpersCode);
-
-        // Also make generateData available in workspace context
         const dataSource = buildSource(codeFiles["data.js"], helpersCode);
-        const fullSource = `${dataSource}\n\n${source}`;
-        const vmGlobals: Record<string, unknown> = {};
-        if (cachedAssets) vmGlobals.CACHED_ASSETS = cachedAssets;
-        const exports = executeInVM(fullSource, vmGlobals);
+        const wsSource = buildSource(codeFiles["workspace.js"], helpersCode);
 
-        const genWorkspace = exports.generateWorkspace as
-          | ((seed: number) => Record<string, string>)
-          | undefined;
+        const script = [
+          `"use strict";`,
+          dataSource,
+          ``,
+          wsSource,
+          ``,
+          `var genWorkspace = module.exports.generateWorkspace || exports.generateWorkspace;`,
+          `if (typeof genWorkspace !== "function") {`,
+          `  console.error("workspace.js must export a generateWorkspace(seed) function");`,
+          `  process.exit(1);`,
+          `}`,
+          cachedAssets ? `var CACHED_ASSETS = ${JSON.stringify(cachedAssets)};` : ``,
+          `var files = genWorkspace(${seed});`,
+          `console.log(JSON.stringify(files));`,
+        ].join("\n");
 
-        if (typeof genWorkspace !== "function") {
-          throw new Error("workspace.js must export a generateWorkspace(seed) function");
+        const { stdout, exitCode } = await executeCodeInDocker(script, 10);
+        if (exitCode !== 0) {
+          throw new Error(`generateWorkspace failed with exit code ${exitCode}`);
         }
 
-        const files = genWorkspace(seed);
-        if (!files || typeof files !== "object") {
-          throw new Error("generateWorkspace must return a Record<string, string>");
+        const lines = stdout.trim().split("\n");
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const parsed = JSON.parse(lines[i]);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              return parsed;
+            }
+          } catch {
+            // Not valid JSON
+          }
         }
-
-        return files;
+        throw new Error("generateWorkspace did not produce valid JSON output");
       }
 
       // Default: auto-generate from data.js output
-      const data = this.generateData(seed, {});
+      const data = await this.generateData(seed, {});
       const files: Record<string, string> = {};
 
-      // Include all non-groundTruth fields as workspace files
       for (const [key, value] of Object.entries(data)) {
         if (key === "groundTruth") continue;
         if (key === "objective") {

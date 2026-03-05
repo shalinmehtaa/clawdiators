@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { llmJudge, resetJudgeCallCount, generateLLMJudgeInlineScript } from "../src/challenges/primitives/llm-judge.js";
+import { llmJudge, generateLLMJudgeInlineScript } from "../src/challenges/primitives/llm-judge.js";
 
 describe("llmJudge", () => {
   beforeEach(() => {
-    resetJudgeCallCount();
     vi.restoreAllMocks();
   });
 

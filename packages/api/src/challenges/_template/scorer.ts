@@ -15,29 +15,34 @@ export function score(input: ScoringInput): ScoreResult {
 
   // TODO: Implement your scoring logic
 
-  // Accuracy: compare submission to ground truth
+  // Correctness: compare submission to ground truth
   const correct = submission?.answer === groundTruth?.answer;
-  const accuracyRaw = correct ? 1.0 : 0.0;
+  const correctnessRaw = correct ? 1.0 : 0.0;
 
-  // Speed and methodology only awarded when accuracy > 0 (anti-gaming)
+  // Speed, methodology, completeness only awarded when correctness > 0 (anti-gaming)
   let speed = 0;
   let methodology = 0;
-  const accuracy = Math.round(accuracyRaw * 0.5 * maxScore);
+  let completeness = 0;
+  const correctness = Math.round(correctnessRaw * 0.50 * maxScore);
 
-  if (accuracy > 0) {
+  if (correctness > 0) {
     const durationSecs = (submittedAt.getTime() - startedAt.getTime()) / 1000;
     const speedRaw = Math.max(0, Math.min(1, 1 - (durationSecs - 30) / 30));
-    speed = Math.round(speedRaw * 0.2 * maxScore);
+    speed = Math.round(speedRaw * 0.15 * maxScore);
 
     const methodologyRaw = submission ? 1.0 : 0.0;
-    methodology = Math.round(methodologyRaw * 0.3 * maxScore);
+    methodology = Math.round(methodologyRaw * 0.25 * maxScore);
+
+    const completenessRaw = submission ? 1.0 : 0.0;
+    completeness = Math.round(completenessRaw * 0.10 * maxScore);
   }
 
-  const total = accuracy + speed + methodology;
+  const total = correctness + speed + methodology + completeness;
 
   return {
     breakdown: {
-      accuracy,
+      correctness,
+      completeness,
       speed,
       methodology,
       total,

@@ -34,9 +34,9 @@ export function checkSpecValidity(raw: unknown): GateResult {
 /**
  * Verify that generateData produces identical output for the same seed.
  */
-export function checkDeterminism(mod: ChallengeModule): GateResult {
+export async function checkDeterminism(mod: ChallengeModule): Promise<GateResult> {
   try {
-    const result = verifyDeterminism((seed) => mod.generateData(seed, {}));
+    const result = await verifyDeterminism(async (seed) => mod.generateData(seed, {}));
     if (result.deterministic) {
       return { passed: true, details: { seeds_tested: [42, 123, 7777] } };
     }
@@ -111,16 +111,16 @@ export function checkContractConsistency(spec: CommunitySpec): GateResult {
 /**
  * Score a reference answer — must reach 60% of maxScore.
  */
-export function checkBaselineSolveability(
+export async function checkBaselineSolveability(
   spec: CommunitySpec,
   mod: ChallengeModule,
   referenceAnswer: { seed: number; answer: Record<string, unknown> },
-): GateResult {
+): Promise<GateResult> {
   const threshold = GATE_PASS_SCORE_THRESHOLD * spec.scoring.maxScore;
 
-  let data: ReturnType<typeof mod.generateData>;
+  let data: Awaited<ReturnType<typeof mod.generateData>>;
   try {
-    data = mod.generateData(referenceAnswer.seed, {});
+    data = await mod.generateData(referenceAnswer.seed, {});
   } catch (err) {
     return {
       passed: false,
@@ -132,9 +132,9 @@ export function checkBaselineSolveability(
   const now = new Date();
   const startedAt = new Date(now.getTime() - 1000); // 1s ago
 
-  let result: ReturnType<typeof mod.score>;
+  let result: Awaited<ReturnType<typeof mod.score>>;
   try {
-    result = mod.score({
+    result = await mod.score({
       submission: referenceAnswer.answer,
       groundTruth: data.groundTruth,
       startedAt,
@@ -171,17 +171,17 @@ export function checkBaselineSolveability(
  * Run adversarial probes — all must score below 30% of maxScore.
  * Probes: empty submission, all-null fields, random UUID values.
  */
-export function checkAntiGaming(
+export async function checkAntiGaming(
   spec: CommunitySpec,
   mod: ChallengeModule,
   referenceAnswer: { seed: number; answer: Record<string, unknown> },
-): GateResult {
+): Promise<GateResult> {
   const ceiling = GATE_PROBE_SCORE_CEILING * spec.scoring.maxScore;
   const probeKeys = Object.keys(referenceAnswer.answer);
 
-  let data: ReturnType<typeof mod.generateData>;
+  let data: Awaited<ReturnType<typeof mod.generateData>>;
   try {
-    data = mod.generateData(referenceAnswer.seed, {});
+    data = await mod.generateData(referenceAnswer.seed, {});
   } catch (err) {
     return {
       passed: false,
@@ -218,9 +218,9 @@ export function checkAntiGaming(
   const probeResults: Array<{ name: string; score: number }> = [];
 
   for (const probe of probes) {
-    let result: ReturnType<typeof mod.score>;
+    let result: Awaited<ReturnType<typeof mod.score>>;
     try {
-      result = mod.score({
+      result = await mod.score({
         submission: probe.submission,
         groundTruth: data.groundTruth,
         startedAt,
@@ -569,16 +569,16 @@ export async function runAllGates(
   }
 
   // Gate — determinism
-  const determinismResult = checkDeterminism(mod);
+  const determinismResult = await checkDeterminism(mod);
 
   // Gate — contract consistency
   const contractResult = checkContractConsistency(spec);
 
   // Gate — baseline solveability
-  const baselineResult = checkBaselineSolveability(spec, mod, referenceAnswer);
+  const baselineResult = await checkBaselineSolveability(spec, mod, referenceAnswer);
 
   // Gate — anti-gaming
-  const antiGamingResult = checkAntiGaming(spec, mod, referenceAnswer);
+  const antiGamingResult = await checkAntiGaming(spec, mod, referenceAnswer);
 
   // Gate — score distribution (derived)
   const probeResults = (antiGamingResult.details as {

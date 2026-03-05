@@ -104,14 +104,14 @@ describe("checkSpecValidity", () => {
 // ── Gate 2: Determinism ───────────────────────────────────────────────
 
 describe("checkDeterminism", () => {
-  it("passes for a deterministic module", () => {
+  it("passes for a deterministic module", async () => {
     const mod = createDeclarativeModule(baseSpec);
-    const result = checkDeterminism(mod);
+    const result = await checkDeterminism(mod);
     expect(result.passed).toBe(true);
     expect(result.details).toHaveProperty("seeds_tested");
   });
 
-  it("fails for a non-deterministic module", () => {
+  it("fails for a non-deterministic module", async () => {
     const mod = createDeclarativeModule(baseSpec);
     // Monkey-patch to inject randomness
     const original = mod.generateData.bind(mod);
@@ -119,7 +119,7 @@ describe("checkDeterminism", () => {
       const data = original(seed, cfg);
       return { ...data, nonce: Math.random() };
     };
-    const result = checkDeterminism(mod);
+    const result = await checkDeterminism(mod);
     expect(result.passed).toBe(false);
     expect(result.error).toBeDefined();
   });
@@ -198,21 +198,21 @@ describe("checkContractConsistency", () => {
 // ── Gate 4: Baseline Solveability ─────────────────────────────────────
 
 describe("checkBaselineSolveability", () => {
-  it("passes when reference answer meets threshold", () => {
+  it("passes when reference answer meets threshold", async () => {
     const mod = createDeclarativeModule(baseSpec);
     // Generate actual ground truth for seed 42 and submit exact match
     const data = mod.generateData(42, {});
     const correctAnswer = { value: data.groundTruth.value };
-    const result = checkBaselineSolveability(baseSpec, mod, { seed: 42, answer: correctAnswer });
+    const result = await checkBaselineSolveability(baseSpec, mod, { seed: 42, answer: correctAnswer });
     expect(result.passed).toBe(true);
     expect(result.details).toHaveProperty("score");
     expect(result.details).toHaveProperty("threshold");
   });
 
-  it("fails when reference answer is completely wrong", () => {
+  it("fails when reference answer is completely wrong", async () => {
     const mod = createDeclarativeModule(baseSpec);
     // Submit a value that is wildly off from the generated int
-    const result = checkBaselineSolveability(baseSpec, mod, {
+    const result = await checkBaselineSolveability(baseSpec, mod, {
       seed: 42,
       answer: { value: -999999999 },
     });
@@ -222,18 +222,18 @@ describe("checkBaselineSolveability", () => {
     expect(result.details).toHaveProperty("maxScore");
   });
 
-  it("handles generateData throwing gracefully", () => {
+  it("handles generateData throwing gracefully", async () => {
     const mod = createDeclarativeModule(baseSpec);
     mod.generateData = () => { throw new Error("explode"); };
-    const result = checkBaselineSolveability(baseSpec, mod, { seed: 42, answer: {} });
+    const result = await checkBaselineSolveability(baseSpec, mod, { seed: 42, answer: {} });
     expect(result.passed).toBe(false);
     expect(result.error).toMatch(/explode/);
   });
 
-  it("handles score() throwing gracefully", () => {
+  it("handles score() throwing gracefully", async () => {
     const mod = createDeclarativeModule(baseSpec);
     mod.score = () => { throw new Error("score explode"); };
-    const result = checkBaselineSolveability(baseSpec, mod, { seed: 42, answer: {} });
+    const result = await checkBaselineSolveability(baseSpec, mod, { seed: 42, answer: {} });
     expect(result.passed).toBe(false);
     expect(result.error).toMatch(/score explode/);
   });
@@ -242,17 +242,17 @@ describe("checkBaselineSolveability", () => {
 // ── Gate 5: Anti-Gaming ───────────────────────────────────────────────
 
 describe("checkAntiGaming", () => {
-  it("passes when all probes score below ceiling (numeric_tolerance + wrong answers score 0)", () => {
+  it("passes when all probes score below ceiling (numeric_tolerance + wrong answers score 0)", async () => {
     const mod = createDeclarativeModule(baseSpec);
     const data = mod.generateData(42, {});
     const correctAnswer = { value: data.groundTruth.value };
-    const result = checkAntiGaming(baseSpec, mod, { seed: 42, answer: correctAnswer });
+    const result = await checkAntiGaming(baseSpec, mod, { seed: 42, answer: correctAnswer });
     expect(result.passed).toBe(true);
     expect(result.details).toHaveProperty("probe_results");
     expect(result.details).toHaveProperty("worst_probe_score");
   });
 
-  it("fails when empty submission scores too high", () => {
+  it("fails when empty submission scores too high", async () => {
     // Use a spec where the scorer gives high scores to empty submissions
     const easySpec: CommunitySpec = {
       ...baseSpec,
@@ -261,15 +261,15 @@ describe("checkAntiGaming", () => {
       scorer: undefined,
     };
     const mod = createDeclarativeModule(easySpec);
-    const result = checkAntiGaming(easySpec, mod, { seed: 42, answer: { methodology: "approach" } });
+    const result = await checkAntiGaming(easySpec, mod, { seed: 42, answer: { methodology: "approach" } });
     expect(result.passed).toBe(false);
     expect(result.details).toHaveProperty("ceiling");
   });
 
-  it("returns probe results with names and scores", () => {
+  it("returns probe results with names and scores", async () => {
     const mod = createDeclarativeModule(baseSpec);
     const data = mod.generateData(42, {});
-    const result = checkAntiGaming(baseSpec, mod, {
+    const result = await checkAntiGaming(baseSpec, mod, {
       seed: 42,
       answer: { value: data.groundTruth.value },
     });

@@ -47,7 +47,7 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
   const mod = isCodeBased
     ? createCodeModule(spec)
     : createDeclarativeModule(spec);
-  const deterCheck = verifyDeterminism((seed) => mod.generateData(seed, {}));
+  const deterCheck = await verifyDeterminism(async (seed) => mod.generateData(seed, {}));
   if (!deterCheck.deterministic) {
     throw new Error(`Determinism check failed: ${deterCheck.error}`);
   }
@@ -85,7 +85,6 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
       timeLimitSecs: spec.timeLimitSecs,
       maxScore: spec.scoring.maxScore,
       scoringDimensions: spec.scoring.dimensions,
-      sandboxApis: [],
       config: { communitySpec: draft.spec },
       phases: spec.phases ?? [],
       active: true,
@@ -93,7 +92,6 @@ export async function approveDraft(draftId: string): Promise<{ id: string; slug:
       workspaceType: spec.workspace.type,
       submissionType: spec.submission.type,
       scoringMethod: isCodeBased ? "custom-script" : spec.scoring.method,
-      challengeMdTemplate: spec.workspace.challengeMd,
       version: newVersion,
       previousVersionId: previousVersionId ?? null,
       changelog: updatesSlug ? `Updated from v${newVersion - 1}` : null,

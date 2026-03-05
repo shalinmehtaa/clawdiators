@@ -208,22 +208,22 @@ describe("Declarative module creation", () => {
 // ── Determinism Verification ───────────────────────────────────────
 
 describe("verifyDeterminism", () => {
-  it("passes for deterministic generators", () => {
+  it("passes for deterministic generators", async () => {
     const generate = (seed: number) => ({ value: seed * 2 });
-    const result = verifyDeterminism(generate);
+    const result = await verifyDeterminism(generate);
     expect(result.deterministic).toBe(true);
   });
 
-  it("fails for non-deterministic generators", () => {
+  it("fails for non-deterministic generators", async () => {
     let callCount = 0;
     const generate = (_seed: number) => ({ value: callCount++ });
-    const result = verifyDeterminism(generate);
+    const result = await verifyDeterminism(generate);
     expect(result.deterministic).toBe(false);
   });
 
-  it("fails when all seeds produce same output", () => {
+  it("fails when all seeds produce same output", async () => {
     const generate = (_seed: number) => ({ value: "always_same" });
-    const result = verifyDeterminism(generate);
+    const result = await verifyDeterminism(generate);
     expect(result.deterministic).toBe(false);
     expect(result.error).toContain("identical");
   });

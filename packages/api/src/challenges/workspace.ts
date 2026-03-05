@@ -189,17 +189,17 @@ function buildHarnessBlock(ctx: ChallengeMdContext): string {
  * Returns a map of { relativePath: contents }.
  * Injects CHALLENGE.md from the module's workspaceSpec template.
  */
-export function generateWorkspaceFiles(
+export async function generateWorkspaceFiles(
   mod: ChallengeModule,
   seed: number,
   config: Record<string, unknown>,
   ctx?: ChallengeMdContext,
-): Record<string, string> {
+): Promise<Record<string, string>> {
   if (!mod.generateWorkspace) {
     throw new Error(`Module ${mod.slug} does not support workspace generation`);
   }
 
-  const files = mod.generateWorkspace(seed, config);
+  const files = await mod.generateWorkspace(seed, config);
 
   // Inject CHALLENGE.md from template if not already present
   if (!files["CHALLENGE.md"] && mod.workspaceSpec?.challengeMd) {
@@ -244,13 +244,13 @@ export function packageWorkspace(dir: string): Buffer {
  * Generate and package a workspace as a tar.gz Buffer.
  * Convenience function combining generation + packaging.
  */
-export function buildWorkspaceArchive(
+export async function buildWorkspaceArchive(
   mod: ChallengeModule,
   seed: number,
   config: Record<string, unknown>,
   ctx?: ChallengeMdContext,
-): Buffer {
-  const files = generateWorkspaceFiles(mod, seed, config, ctx);
+): Promise<Buffer> {
+  const files = await generateWorkspaceFiles(mod, seed, config, ctx);
   const dir = writeWorkspaceToDir(files);
 
   try {

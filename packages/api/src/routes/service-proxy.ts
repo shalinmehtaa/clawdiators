@@ -28,8 +28,63 @@ import { authMiddleware } from "../middleware/auth.js";
 import { errorEnvelope } from "../middleware/envelope.js";
 import { getChallenge } from "../challenges/registry.js";
 import type { MatchContainerData } from "../services/container-orchestrator.js";
+import type { ServiceInteraction, McpToolCallRecord, McpResourceReadRecord } from "@clawdiators/shared";
 
 export const serviceProxyRoutes = new Hono();
+
+// ── Interaction logging buffer (in-memory, per matchId) ─────────────
+
+export interface InteractionBuffer {
+  interactions: ServiceInteraction[];
+  mcpToolCalls: McpToolCallRecord[];
+  mcpResourceReads: McpResourceReadRecord[];
+}
+
+const interactionBuffers = new Map<string, InteractionBuffer>();
+
+function getBuffer(matchId: string): InteractionBuffer {
+  let buf = interactionBuffers.get(matchId);
+  if (!buf) {
+    buf = { interactions: [], mcpToolCalls: [], mcpResourceReads: [] };
+    interactionBuffers.set(matchId, buf);
+  }
+  return buf;
+}
+
+/** Flush and remove the interaction buffer for a match. */
+export function flushInteractionBuffer(matchId: string): InteractionBuffer | null {
+  const buf = interactionBuffers.get(matchId);
+  interactionBuffers.delete(matchId);
+  return buf ?? null;
+}
+
+/** Clear a match's interaction buffer (e.g. on expiry). */
+export function clearInteractionBuffer(matchId: string): void {
+  interactionBuffers.delete(matchId);
+}
+
+const MAX_BODY_PREVIEW = 5120; // 5KB
+
+async function captureBodyPreview(body: ReadableStream<Uint8Array> | string | null | undefined): Promise<string | undefined> {
+  if (!body) return undefined;
+  if (typeof body === "string") return body.slice(0, MAX_BODY_PREVIEW);
+  try {
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalLen = 0;
+    while (totalLen < MAX_BODY_PREVIEW) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      totalLen += value.length;
+    }
+    reader.releaseLock();
+    const decoder = new TextDecoder();
+    return chunks.map(c => decoder.decode(c, { stream: true })).join("").slice(0, MAX_BODY_PREVIEW);
+  } catch {
+    return undefined;
+  }
+}
 
 // ── Rate limit store (in-memory, per matchId) ─────────────────────────
 
@@ -115,6 +170,8 @@ serviceProxyRoutes.all(
     headers.delete("connection");
     headers.delete("transfer-encoding");
 
+    const startMs = Date.now();
+
     try {
       const upstream = await fetch(forwardUrl, {
         method: c.req.method,
@@ -125,14 +182,41 @@ serviceProxyRoutes.all(
         duplex: "half",
       });
 
+      const durationMs = Date.now() - startMs;
       const responseHeaders = new Headers(upstream.headers);
       responseHeaders.delete("transfer-encoding");
+
+      // Log interaction
+      const responseText = upstream.headers.get("content-type")?.includes("json")
+        ? await upstream.clone().text().then(t => t.slice(0, MAX_BODY_PREVIEW)).catch(() => undefined)
+        : undefined;
+
+      const buf = getBuffer(matchId);
+      buf.interactions.push({
+        ts: new Date(startMs).toISOString(),
+        service: serviceName,
+        method: c.req.method,
+        path: forwardPath,
+        status: upstream.status,
+        responseBodyPreview: responseText,
+        durationMs,
+      });
 
       return new Response(upstream.body, {
         status: upstream.status,
         headers: responseHeaders,
       });
     } catch (err: any) {
+      const durationMs = Date.now() - startMs;
+      const buf = getBuffer(matchId);
+      buf.interactions.push({
+        ts: new Date(startMs).toISOString(),
+        service: serviceName,
+        method: c.req.method,
+        path: forwardPath,
+        status: 502,
+        durationMs,
+      });
       return errorEnvelope(c, `Service unreachable: ${err.message}`, 502);
     }
   },
@@ -179,18 +263,84 @@ serviceProxyRoutes.all(
     const isSSE = (c.req.header("accept") ?? "").includes("text/event-stream");
     const mcpTimeoutMs = isSSE ? 3 * 60 * 60 * 1000 : 30_000;
 
+    const startMs = Date.now();
+
+    // Try to parse MCP request body for tool call / resource read logging
+    let mcpRequestBody: Record<string, unknown> | null = null;
+    if (c.req.method === "POST" && !isSSE) {
+      try {
+        mcpRequestBody = await c.req.json();
+      } catch {
+        // Not JSON or body already consumed — skip MCP-specific logging
+      }
+    }
+
     try {
       const upstream = await fetch(forwardUrl, {
         method: c.req.method,
         headers,
-        body: ["GET", "HEAD"].includes(c.req.method) ? undefined : c.req.raw.body,
+        body: mcpRequestBody ? JSON.stringify(mcpRequestBody) : (
+          ["GET", "HEAD"].includes(c.req.method) ? undefined : c.req.raw.body
+        ),
         signal: AbortSignal.timeout(mcpTimeoutMs),
         // @ts-ignore
         duplex: "half",
       });
 
+      const durationMs = Date.now() - startMs;
       const responseHeaders = new Headers(upstream.headers);
       responseHeaders.delete("transfer-encoding");
+
+      // Log MCP interactions (non-SSE only — SSE is long-lived)
+      if (!isSSE) {
+        const buf = getBuffer(matchId);
+
+        // Detect MCP tool calls vs resource reads from JSON-RPC method
+        if (mcpRequestBody && mcpRequestBody.method === "tools/call") {
+          const params = mcpRequestBody.params as { name?: string; arguments?: Record<string, unknown> } | undefined;
+          let resultData: unknown;
+          try {
+            const respJson = await upstream.clone().json() as { result?: unknown };
+            resultData = respJson?.result;
+          } catch { /* best-effort */ }
+          buf.mcpToolCalls.push({
+            ts: new Date(startMs).toISOString(),
+            server: serverName,
+            tool: params?.name ?? "unknown",
+            arguments: params?.arguments ?? {},
+            result: resultData,
+            durationMs,
+          });
+        } else if (mcpRequestBody && mcpRequestBody.method === "resources/read") {
+          const params = mcpRequestBody.params as { uri?: string } | undefined;
+          let contentPreview: string | undefined;
+          let mimeType: string | undefined;
+          try {
+            const respJson = await upstream.clone().json() as { result?: { contents?: Array<{ text?: string; mimeType?: string }> } };
+            const first = respJson?.result?.contents?.[0];
+            contentPreview = first?.text?.slice(0, MAX_BODY_PREVIEW);
+            mimeType = first?.mimeType;
+          } catch { /* best-effort */ }
+          buf.mcpResourceReads.push({
+            ts: new Date(startMs).toISOString(),
+            server: serverName,
+            uri: params?.uri ?? "unknown",
+            mimeType,
+            contentPreview,
+            durationMs,
+          });
+        } else {
+          // Generic MCP interaction — log as service interaction
+          buf.interactions.push({
+            ts: new Date(startMs).toISOString(),
+            service: `mcp:${serverName}`,
+            method: c.req.method,
+            path: forwardPath,
+            status: upstream.status,
+            durationMs,
+          });
+        }
+      }
 
       return new Response(upstream.body, {
         status: upstream.status,
@@ -256,6 +406,8 @@ serviceProxyRoutes.all(
     const headers = new Headers();
     headers.set("authorization", `Bearer ${resolved.containerData.serviceToken}`);
 
+    const startMs = Date.now();
+
     try {
       const upstream = await fetch(forwardUrl, {
         method: "GET",
@@ -263,10 +415,23 @@ serviceProxyRoutes.all(
         signal: AbortSignal.timeout(10_000),
       });
 
+      const durationMs = Date.now() - startMs;
       const responseHeaders = new Headers();
       const contentType = upstream.headers.get("content-type");
       if (contentType) responseHeaders.set("content-type", contentType);
-      responseHeaders.set("x-proxy-rate-remaining", String(rateLimit));
+      const rlEntry = proxyRateLimit.get(matchId);
+      responseHeaders.set("x-proxy-rate-remaining", String(rateLimit - (rlEntry?.count ?? 0)));
+
+      // Log proxy interaction
+      const buf = getBuffer(matchId);
+      buf.interactions.push({
+        ts: new Date(startMs).toISOString(),
+        service: "proxy",
+        method: "GET",
+        path: docPath,
+        status: upstream.status,
+        durationMs,
+      });
 
       return new Response(upstream.body, {
         status: upstream.status,

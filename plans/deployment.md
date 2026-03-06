@@ -125,19 +125,23 @@ sudo apt update && sudo apt install caddy
 
 ```
 # /etc/caddy/Caddyfile
+# Cloudflare terminates TLS — Caddy serves HTTP on port 80.
+# Cloudflare SSL mode must be set to "Full" (not "Full strict").
 
-clawdiators.ai {
-    # Web frontend
-    reverse_proxy localhost:3000
-}
+:80 {
+    @web host clawdiators.ai
+    handle @web {
+        reverse_proxy localhost:3000
+    }
 
-api.clawdiators.ai {
-    # API server
-    reverse_proxy localhost:3001
+    @api host api.clawdiators.ai
+    handle @api {
+        reverse_proxy localhost:3001
+    }
 }
 ```
 
-Caddy auto-provisions TLS certificates via Let's Encrypt. No cert management needed.
+Cloudflare handles TLS on its edge and proxies to Caddy over HTTP. No origin certificate management needed.
 
 Note: `docs.clawdiators.ai` is NOT proxied through Caddy — it's hosted by Mintlify directly (see Phase 4).
 
@@ -168,6 +172,10 @@ DATABASE_URL=<neon-url> pnpm db:seed
 
 # Build Next.js
 NEXT_PUBLIC_API_URL=https://api.clawdiators.ai pnpm --filter @clawdiators/web build
+
+# Copy static assets into standalone output (Next.js standalone doesn't include these)
+cp -r packages/web/.next/static packages/web/.next/standalone/packages/web/.next/static
+cp -r packages/web/public packages/web/.next/standalone/packages/web/public 2>/dev/null || true
 ```
 
 ### 1.5 Environment Variables
@@ -216,7 +224,7 @@ Type=simple
 User=deploy
 WorkingDirectory=/home/deploy/clawdiators
 EnvironmentFile=/home/deploy/clawdiators/.env.production
-ExecStart=/home/deploy/.nvm/versions/node/v22/bin/node --import tsx packages/api/src/server.ts
+ExecStart=/home/deploy/.nvm/versions/node/v22.22.1/bin/node --import tsx packages/api/src/server.ts
 Restart=always
 RestartSec=5
 
@@ -245,7 +253,7 @@ Type=simple
 User=deploy
 WorkingDirectory=/home/deploy/clawdiators/packages/web
 EnvironmentFile=/home/deploy/clawdiators/packages/web/.env.production
-ExecStart=/home/deploy/.nvm/versions/node/v22/bin/node .next/standalone/packages/web/server.js
+ExecStart=/home/deploy/.nvm/versions/node/v22.22.1/bin/node .next/standalone/packages/web/server.js
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
@@ -269,7 +277,7 @@ api.clawdiators.ai   A     <hetzner-ipv4>
 
 Cloudflare settings:
 - Proxy: On (orange cloud) — CDN + DDoS protection
-- SSL: Full (strict) — Caddy provides origin certs via Let's Encrypt
+- SSL: **Full** (not "Full strict") — Cloudflare terminates TLS, Caddy serves HTTP on port 80. "Full strict" requires a valid origin cert which conflicts with the Cloudflare-proxied setup.
 - Cache: Default (static assets cached, API bypassed via Cache-Control headers)
 
 ---
@@ -309,7 +317,11 @@ for compose in packages/api/src/challenges/*/docker-compose.yml; do
 done
 
 # Build web
-pnpm --filter @clawdiators/web build
+NEXT_PUBLIC_API_URL=https://api.clawdiators.ai pnpm --filter @clawdiators/web build
+
+# Copy static assets into standalone output (Next.js standalone doesn't include these)
+cp -r packages/web/.next/static packages/web/.next/standalone/packages/web/.next/static
+cp -r packages/web/public packages/web/.next/standalone/packages/web/public 2>/dev/null || true
 
 # Restart services
 sudo systemctl restart clawdiators-api
@@ -474,44 +486,12 @@ Required for deployment:
 
 ## Recommended Architectural Changes
 
-### Must-Fix Before Deploy
+### Must-Fix Before Deploy — ✅ All Done
 
-1. **API Dockerfile CMD uses dev mode**
-
-   `docker/api/Dockerfile` line 36: `CMD ["pnpm", "--filter", "@clawdiators/api", "dev"]`
-
-   This runs tsx in watch mode, which is wasteful and noisy in production. However, since we're running the API directly via systemd (not in a container), this only matters if you later containerize the API. Fix it anyway:
-
-   ```dockerfile
-   CMD ["node", "--import", "tsx", "packages/api/src/server.ts"]
-   ```
-
-2. **Add `output: "standalone"` to next.config.ts**
-
-   The web Dockerfile copies from `.next/standalone` but the config doesn't explicitly set standalone output. Next.js may infer it during Docker builds, but be explicit:
-
-   ```typescript
-   const nextConfig: NextConfig = {
-     output: "standalone",
-     transpilePackages: ["@clawdiators/shared"],
-     // ...
-   };
-   ```
-
-3. **Add graceful shutdown to the API**
-
-   The Hono server doesn't handle SIGTERM. When systemd restarts the service, in-flight requests (including service proxy streams to MCP servers) are killed abruptly. Add to `packages/api/src/server.ts`:
-
-   ```typescript
-   const server = serve({ fetch: app.fetch, port }, (info) => {
-     console.log(`Arena is OPEN at http://localhost:${info.port}`);
-   });
-
-   process.on("SIGTERM", () => {
-     console.log("SIGTERM received, shutting down gracefully...");
-     server.close(() => process.exit(0));
-   });
-   ```
+1. ~~API Dockerfile CMD uses dev mode~~ — Fixed: uses `node --import tsx`
+2. ~~Add `output: "standalone"` to next.config.ts~~ — Already set
+3. ~~Add graceful shutdown to the API~~ — SIGTERM handler in server.ts
+4. **tsx must be a production dependency** — Moved from devDependencies (PR #69)
 
 ### Should-Fix (Improves Operations)
 

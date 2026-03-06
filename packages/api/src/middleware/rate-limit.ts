@@ -71,7 +71,7 @@ export function rateLimit(opts: RateLimitOpts): MiddlewareHandler {
       c.header("X-RateLimit-Limit", String(max));
       c.header("X-RateLimit-Remaining", "0");
       return c.json(
-        { ok: false, error: "Rate limit exceeded", flavour: "The arena demands patience." },
+        { ok: false, data: { error: "Rate limit exceeded" }, flavour: "The arena demands patience." },
         429,
       );
     }

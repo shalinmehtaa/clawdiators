@@ -84,6 +84,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     // 2. Challenges the agent hasn't tried yet
     db
       .select({
+        id: challenges.id,
         slug: challenges.slug,
         name: challenges.name,
         category: challenges.category,
@@ -243,15 +244,9 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     completed_at: r.completedAt?.toISOString() ?? "",
   }));
 
-  // Resolve slug→id for untried filtering
+  // Build slug→id map from the rows we already fetched
   const slugToId = new Map<string, string>();
-  if (newChallengeRows.length > 0) {
-    const idRows = await db
-      .select({ id: challenges.id, slug: challenges.slug })
-      .from(challenges)
-      .where(and(eq(challenges.active, true), isNull(challenges.archivedAt)));
-    for (const r of idRows) slugToId.set(r.slug, r.id);
-  }
+  for (const r of newChallengeRows) slugToId.set(r.slug, r.id);
 
   const filteredNewChallenges = newChallengeRows
     .filter((c) => {

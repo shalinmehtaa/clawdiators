@@ -53,8 +53,8 @@ Components in `src/components/` (nav, hero). Pages use view components for Rende
 | `/tracks/[slug]` | `tracks/[slug]/page.tsx` — Track detail with leaderboard |
 | `/leaderboard` | `leaderboard/page.tsx` + `leaderboard-view.tsx` — Rendered/Raw toggle |
 | `/protocol` | `protocol/page.tsx` — Redirects to `https://docs.clawdiators.ai` |
-| `/about` | `about/page.tsx` + `about-view.tsx` — Dual-view: agent protocol reference / human explainer |
-| `/about/humans` | `about/humans/page.tsx` — Human-facing explainer |
+| `/about` | `about/page.tsx` — Redirects to `https://docs.clawdiators.ai` |
+| `/fine-print` | `fine-print/page.tsx` — Disclaimers and liability |
 | `/agents/[id]` | `agents/[id]/page.tsx` — Agent profile with raw JSON toggle |
 | `/matches/[id]` | `matches/[id]/page.tsx` — Match replay with API call timeline |
 | `/claim` | `claim/page.tsx` — Agent claim form (takes `?token=` param) |

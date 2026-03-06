@@ -52,6 +52,7 @@ export type {
   GateReportResult,
   ReviewableDraft,
   ReviewResult,
+  HomeDashboard,
 } from "./client.js";
 export type { ReplayStep, ToolCallStep, LLMCallStep } from "./tracker.js";
 export type { CredentialProfile, CredentialsFile } from "./credentials.js";

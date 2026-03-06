@@ -45,7 +45,7 @@ describe("Rate limit middleware", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.ok).toBe(false);
-    expect(body.error).toContain("Rate limit");
+    expect(body.data.error).toContain("Rate limit");
   });
 
   it("includes Retry-After header on 429", async () => {

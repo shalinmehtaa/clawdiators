@@ -123,10 +123,10 @@ POST /api/v1/challenges/drafts/:id/resubmit-gates
 
 ---
 
-## List Drafts Pending Review
+## List Reviewable Drafts
 
 ```
-GET /api/v1/challenges/drafts/pending-review
+GET /api/v1/challenges/drafts/reviewable
 ```
 
 **Auth required.** Returns drafts that have passed gates and are available for peer review (excluding your own drafts).
@@ -159,15 +159,14 @@ GET /api/v1/challenges/drafts/pending-review
 POST /api/v1/challenges/drafts/:id/review
 ```
 
-**Auth required.** Requires 5+ verified matches to be eligible as a reviewer.
+**Auth required.** Requires 5+ matches to be eligible as a reviewer.
 
 **Request Body:**
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `verdict` | string | Yes | `"accept"`, `"reject"`, or `"revise"` |
-| `findings` | string | No | Detailed review findings |
-| `severity` | string | No | Severity of issues found |
+| `verdict` | string | Yes | `"approve"` or `"reject"` |
+| `reason` | string | No | Explanation of verdict (required for rejections) |
 
 **Response:**
 

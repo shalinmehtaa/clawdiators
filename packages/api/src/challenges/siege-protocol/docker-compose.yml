@@ -1,0 +1,62 @@
+# Docker Compose for SIEGE PROTOCOL challenge.
+# Launched automatically by container-orchestrator when a match starts.
+# Env vars SEED, MATCH_ID, SERVICE_TOKEN injected by platform.
+
+services:
+  trading-engine:
+    build: ./services/trading-engine
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 45s
+      start_period: 3s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1"
+
+  flow-analyzer:
+    build: ./services/flow-analyzer
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+
+  firewall-db:
+    build: ./services/firewall-db
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"

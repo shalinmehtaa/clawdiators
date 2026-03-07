@@ -1,0 +1,81 @@
+# Docker Compose for DEAD DROP challenge.
+# Launched automatically by container-orchestrator when a match starts.
+# Env vars SEED, MATCH_ID, SERVICE_TOKEN injected by platform.
+
+services:
+  relay-api:
+    build: ./services/relay-api
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 45s
+      start_period: 3s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+
+  key-server:
+    build: ./services/key-server
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+
+  agent-db:
+    build: ./services/agent-db
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+
+  traffic-analyzer:
+    build: ./services/traffic-analyzer
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"

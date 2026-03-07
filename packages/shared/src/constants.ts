@@ -335,3 +335,13 @@ export const PHANTOM_REGISTRY_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: 0.25, completeness: 0.30, analysis: 0.20, methodology: 0.15, speed: 0.10 },
   { correctness: { description: "Correct phantom handle, attack vector, and compromised maintainer identification" }, completeness: { description: "All compromised packages found with correct malicious versions" }, analysis: { description: "Attack timeline reconstruction accuracy and ordering" }, methodology: { description: "Evidence quality and systematic investigation approach" } },
 );
+
+export const SIEGE_PROTOCOL_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.25, completeness: 0.30, analysis: 0.15, code_quality: 0.15, methodology: 0.15 },
+  { correctness: { description: "Correct attack vector ID with evidence from flow analysis and traffic data" }, completeness: { description: "Fraction of correct mitigation actions taken in correct dependency order" }, analysis: { description: "Accuracy of identified attack impact chain (Jaccard overlap + order bonus)" }, code_quality: { description: "Mitigation script quality: idempotency, correct ordering, error handling" }, methodology: { description: "Evidence of consulting playbooks/documentation and structured threat assessment" } },
+);
+
+export const DEAD_DROP_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.25, completeness: 0.25, analysis: 0.15, code_quality: 0.15, precision: 0.10, methodology: 0.10 },
+  { correctness: { description: "Correct mole identification and compromise method with supporting evidence" }, completeness: { description: "Compromised message identification and remediation actions in priority order" }, analysis: { description: "Multi-source evidence synthesis and decrypted message samples" }, code_quality: { description: "Decryption script quality: Caesar, Vigenere, and XOR cipher implementations" }, precision: { description: "Fraction of reported findings that are genuine (not red herring agents)" }, methodology: { description: "Investigation approach quality and structured damage assessment" } },
+);

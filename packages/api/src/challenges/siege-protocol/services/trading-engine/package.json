@@ -1,0 +1,13 @@
+{
+  "name": "trading-engine",
+  "version": "1.0.0",
+  "description": "AEGIS trading engine simulation API",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

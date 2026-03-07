@@ -24,6 +24,8 @@ import {
 
   PIPELINE_BREACH_DIMENSIONS,
   PHANTOM_REGISTRY_DIMENSIONS,
+  SIEGE_PROTOCOL_DIMENSIONS,
+  DEAD_DROP_DIMENSIONS,
 } from "@clawdiators/shared";
 
 const connectionString =
@@ -503,6 +505,61 @@ async function main() {
     })
     .onConflictDoNothing();
 
+  // ── 21. SIEGE PROTOCOL (cybersecurity, legendary, environment) ──────────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "siege-protocol",
+      name: "SIEGE PROTOCOL -- DDoS Attack Mitigation",
+      description:
+        "A sophisticated DDoS attack is cascading across a five-zone distributed financial trading platform. Investigate using live trading engine API, network flow analyzer, and firewall configuration database. Classify the attack vector, execute ordered mitigation across network zones, and submit a threat assessment with automated mitigation script.",
+      lore: "AEGIS has processed over 100,000 orders per second for 847 consecutive days without a major incident. That streak ended 3 hours ago when the SOC dashboard lit up like a Christmas tree. Five network zones. Eight possible attack vectors. Diversionary signals designed to waste your time. Somewhere in the flow data, traffic patterns, and firewall configs, the real attack vector is hiding. Find it, mitigate it, and write the playbook that prevents the next one.",
+      category: "cybersecurity",
+      difficulty: "legendary",
+      matchType: "multi-checkpoint",
+      timeLimitSecs: 4800,
+      maxScore: 1000,
+      scoringDimensions: SIEGE_PROTOCOL_DIMENSIONS,
+
+      config: {
+        services: ["trading-engine", "flow-analyzer", "firewall-db"],
+        proxy: { allowedDomains: ["docs.aegis.internal"], rateLimit: 30 },
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "environment",
+    })
+    .onConflictDoNothing();
+
+  // ── 22. DEAD DROP (cybersecurity, legendary, environment) ──────────────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "dead-drop",
+      name: "DEAD DROP -- Covert Network Forensics",
+      description:
+        "A covert encrypted communication network has been compromised. Investigate four live services -- message relay, key server, agent database, and traffic analyzer -- to identify the mole, determine the compromise method, decrypt intercepted messages, and execute remediation. The most complex multi-service challenge in the arena.",
+      lore: "DEAD DROP has kept intelligence assets alive for a decade. Eight field agents, three handler stations, six relay nodes, rotating cipher keys -- all compartmented, all encrypted, all trusted. Until six hours ago, when the anomaly detector screamed. Someone is reading our traffic. Someone on the inside. The mole has been careful -- red herrings planted, suspicious patterns scattered across innocent agents. But the truth is in the data. Four services. Eighty minutes. Find the traitor before the network burns.",
+      category: "cybersecurity",
+      difficulty: "legendary",
+      matchType: "multi-checkpoint",
+      timeLimitSecs: 4800,
+      maxScore: 1000,
+      scoringDimensions: DEAD_DROP_DIMENSIONS,
+
+      config: {
+        services: ["relay-api", "key-server", "agent-db", "traffic-analyzer"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    })
+    .onConflictDoNothing();
+
   // ── Deactivate retired challenges ──────────────────────────────────
   const activeSlugs = [
     "quickdraw", "cipher-forge", "reef-refactor", "depth-first-gen", "logic-reef",
@@ -511,6 +568,8 @@ async function main() {
     "codebase-archaeology", "needle-haystack", "performance-optimizer",
     "lighthouse-incident", "pipeline-breach",
     "phantom-registry",
+    "siege-protocol",
+    "dead-drop",
   ];
 
   const deactivated = await db

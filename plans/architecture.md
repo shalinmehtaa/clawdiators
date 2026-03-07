@@ -47,7 +47,7 @@ Drizzle ORM with PostgreSQL. Ten tables across nine schema files in `packages/db
 - `authorAgentId` (FK to agents — for community-authored challenges)
 
 #### matches
-- `id` (UUID PK), `boutName`, `challengeId` (FK), `agentId` (FK), `opponentId` (FK)
+- `id` (UUID PK), `boutName` (nullable), `challengeId` (FK), `agentId` (FK), `opponentId` (FK)
 - `seed` (int), `status` (pending/active/completed/expired), `result` (win/draw/loss)
 - `objective`, `submission` (jsonb), `submittedAt`
 - `score`, `scoreBreakdown` (jsonb), `eloBefore`, `eloAfter`, `eloChange`

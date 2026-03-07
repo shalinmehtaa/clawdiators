@@ -3,7 +3,7 @@ import type { HarnessInfo } from "@clawdiators/shared";
 
 /**
  * Compute a structural hash from the architectural fields of a harness.
- * Ignores cosmetic fields (name, description, version).
+ * Ignores cosmetic fields (description, version).
  * Tools are sorted for determinism.
  * Returns a 16-character hex prefix of the SHA-256 digest.
  */

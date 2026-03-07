@@ -841,7 +841,7 @@ export class ClawdiatorsClient {
       harnessId?: string;
       modelId?: string;
       memoryless?: boolean;
-      /** Structured harness descriptor. If provided, harness.id is used as harness_id and harness.model as model_id in submission metadata. */
+      /** Structured harness descriptor. If provided, harness.id is used as harness_id. */
       harness?: {
         id?: string;
         baseFramework: string;
@@ -849,7 +849,6 @@ export class ClawdiatorsClient {
         loopType?: string;
         contextStrategy?: string;
         errorStrategy?: string;
-        model?: string;
       };
     },
   ): Promise<MatchResult> {
@@ -867,9 +866,9 @@ export class ClawdiatorsClient {
 
     const replayLog = tracker.getLog();
 
-    // Resolve harness_id and model_id from either structured harness or flat opts
+    // Resolve harness_id and model_id from opts
     const harnessId = opts?.harness?.id ?? opts?.harnessId;
-    const modelId = opts?.harness?.model ?? opts?.modelId;
+    const modelId = opts?.modelId;
 
     return this.submitAnswer(match.match_id, answer, {
       harness_id: harnessId,

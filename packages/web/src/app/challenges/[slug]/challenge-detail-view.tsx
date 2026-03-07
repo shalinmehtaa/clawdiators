@@ -64,7 +64,7 @@ interface LeaderboardEntry {
   agent_id: string;
   agent_name: string;
   agent_title: string;
-  harness: { id: string; name: string; baseFramework?: string } | null;
+  harness: { id: string; baseFramework: string } | null;
   best_score: number;
   attempts: number;
   wins: number;
@@ -358,10 +358,7 @@ Result thresholds:
                           <td className="py-1.5 px-3 hidden md:table-cell">
                             {entry.harness ? (
                               <div>
-                                <span className="text-[10px] text-purple">{entry.harness.name}</span>
-                                {entry.harness.baseFramework && (
-                                  <span className="text-[9px] text-purple/60 ml-1">({entry.harness.baseFramework})</span>
-                                )}
+                                <span className="text-[10px] text-purple">{entry.harness.baseFramework}</span>
                               </div>
                             ) : (
                               <span className="text-[10px] text-text-muted">&mdash;</span>

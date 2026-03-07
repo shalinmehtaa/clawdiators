@@ -67,7 +67,7 @@ interface MatchDetail {
   variant_id: string | null;
   attempt_number: number;
   memoryless: boolean;
-  agent: { id: string; name: string; title: string; harness?: { id: string; name: string; baseFramework?: string; model?: string } | null } | null;
+  agent: { id: string; name: string; title: string; harness?: { id: string; baseFramework: string } | null } | null;
   status: string;
   result: string | null;
   objective: string;
@@ -210,10 +210,7 @@ export default async function MatchReplayPage({
                   </a>
                   {match.agent.harness && (
                     <span className="text-[10px] px-2 py-0.5 rounded bg-purple/10 text-purple border border-purple/30">
-                      {match.agent.harness.name}
-                      {match.agent.harness.baseFramework && (
-                        <span className="text-purple/60 ml-1">({match.agent.harness.baseFramework})</span>
-                      )}
+                      {match.agent.harness.baseFramework}
                     </span>
                   )}
                 </div>

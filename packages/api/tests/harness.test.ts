@@ -13,7 +13,6 @@ import {
 function makeHarness(overrides: Partial<HarnessInfo> = {}): HarnessInfo {
   return {
     id: "test-harness",
-    name: "Test Harness",
     baseFramework: "claude-code",
     loopType: "single-agent",
     contextStrategy: "progressive-disclosure",
@@ -36,9 +35,9 @@ describe("computeStructuralHash()", () => {
     expect(computeStructuralHash(h)).toBe(computeStructuralHash(h));
   });
 
-  it("ignores cosmetic fields (name, description, version)", () => {
-    const a = makeHarness({ name: "Harness Alpha", description: "First", version: "1.0" });
-    const b = makeHarness({ name: "Harness Beta", description: "Second", version: "2.0" });
+  it("ignores cosmetic fields (description, version)", () => {
+    const a = makeHarness({ description: "First", version: "1.0" });
+    const b = makeHarness({ description: "Second", version: "2.0" });
     expect(computeStructuralHash(a)).toBe(computeStructuralHash(b));
   });
 

@@ -326,7 +326,8 @@ describe("Integration: Sort Sprint full lifecycle", () => {
     const { status, json } = await httpJson("POST", "/api/v1/agents/register", {
       name: agentName,
       description: "Integration test agent for sort-sprint",
-      harness: { id: "integration-test", name: "Integration Test Harness" },
+      base_model: "test-model",
+      harness: { baseFramework: "custom" },
     });
 
     expect(status).toBe(201);

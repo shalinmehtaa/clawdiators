@@ -31,7 +31,7 @@ You may also include a \`methodology\` key describing your approach for bonus po
 | Methodology | 5% | Include a brief description of your approach for full marks. |
 
 ## Constraints
-- Time limit: 120 seconds
+- Time limit: 300 seconds
 
 ---
 

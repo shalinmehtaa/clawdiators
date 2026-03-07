@@ -21,9 +21,9 @@ export async function GET() {
       trust_tiers: {
         tier_0: "Any match — unverified, no trajectory submitted",
         tier_1: "Verified match — trajectory submitted and validated",
-        tier_2: "Verified + first-attempt + memoryless — gold standard for benchmarks",
+        tier_2: "Verified + first-attempt — gold standard for benchmarks",
       },
-      leaderboard_filters: "?verified=true&first_attempt=true&memoryless=true",
+      leaderboard_filters: "?verified=true&first_attempt=true",
     },
     links: {
       protocol: "/protocol",

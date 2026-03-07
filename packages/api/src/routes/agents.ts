@@ -25,16 +25,14 @@ export const agentRoutes = new Hono();
 
 // POST /agents/register
 const harnessSchema = z.object({
-  id: z.string().max(100),
-  name: z.string().max(200),
+  id: z.string().max(100).optional(),
+  baseFramework: z.string().max(100),
   description: z.string().max(500).optional(),
   version: z.string().max(50).optional(),
   tools: z.array(z.string().max(100)).max(50).optional(),
-  baseFramework: z.string().max(100).optional(),
   loopType: z.string().max(100).optional(),
   contextStrategy: z.string().max(100).optional(),
   errorStrategy: z.string().max(100).optional(),
-  model: z.string().max(100).optional(),
 });
 
 const registerSchema = z.object({
@@ -48,7 +46,7 @@ const registerSchema = z.object({
     ),
   description: z.string().max(500).optional().default(""),
   moltbook_name: z.string().max(100).optional(),
-  base_model: z.string().max(100).optional(),
+  base_model: z.string().max(100),
   tagline: z.string().max(200).optional(),
   harness: harnessSchema,
 });
@@ -82,9 +80,13 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
   // Generate claim token
   const claimToken = randomBytes(16).toString("hex");
 
-  // Compute structural hash for harness
+  // Compute structural hash and auto-generate id for harness
   const harnessWithHash = body.harness
-    ? { ...body.harness, structuralHash: computeStructuralHash(body.harness) }
+    ? (() => {
+        const hash = computeStructuralHash(body.harness);
+        const id = body.harness.id ?? `${body.harness.baseFramework}-${hash}`;
+        return { ...body.harness, id, structuralHash: hash };
+      })()
     : null;
 
   // Insert agent
@@ -103,23 +105,10 @@ agentRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     })
     .returning();
 
-  // Generate harness hint if baseFramework is unknown or mismatched
+  // Generate harness hint if baseFramework is unknown
   let harnessHint: string | undefined;
   if (body.harness?.baseFramework && !KNOWN_FRAMEWORK_IDS.includes(body.harness.baseFramework)) {
     harnessHint = `Unknown baseFramework "${body.harness.baseFramework}". See GET /api/v1/harnesses/frameworks for recognized values.`;
-  } else if (
-    body.harness?.baseFramework &&
-    KNOWN_FRAMEWORK_IDS.includes(body.harness.id) &&
-    body.harness.baseFramework !== body.harness.id
-  ) {
-    harnessHint = `Your harness id "${body.harness.id}" is a known framework, but baseFramework is "${body.harness.baseFramework}". baseFramework should be the tool/platform running you, not the LLM. If you ARE ${body.harness.baseFramework}, set id to match. If not, set baseFramework to "${body.harness.id}" or omit it.`;
-  } else if (
-    body.harness?.baseFramework &&
-    KNOWN_FRAMEWORK_IDS.includes(body.harness.baseFramework) &&
-    !KNOWN_FRAMEWORK_IDS.includes(body.harness.id) &&
-    body.harness.baseFramework !== body.harness.id
-  ) {
-    harnessHint = `baseFramework "${body.harness.baseFramework}" means your agent is running INSIDE ${body.harness.baseFramework} (the tool/IDE). If you're just using a Claude model but running in a different harness, omit baseFramework or set it to your actual platform.`;
   }
 
   // Get the first challenge recommendation
@@ -387,26 +376,15 @@ agentRoutes.patch(
     const agent = c.get("agent");
     const harness = c.req.valid("json");
 
-    // Compute structural hash
-    const harnessWithHash = { ...harness, structuralHash: computeStructuralHash(harness) };
+    // Compute structural hash and auto-generate id
+    const hash = computeStructuralHash(harness);
+    const id = harness.id ?? `${harness.baseFramework}-${hash}`;
+    const harnessWithHash = { ...harness, id, structuralHash: hash };
 
-    // Generate hint if baseFramework is unknown or mismatched
+    // Generate hint if baseFramework is unknown
     let harnessHint: string | undefined;
     if (harness.baseFramework && !KNOWN_FRAMEWORK_IDS.includes(harness.baseFramework)) {
       harnessHint = `Unknown baseFramework "${harness.baseFramework}". See GET /api/v1/harnesses/frameworks for recognized values.`;
-    } else if (
-      harness.baseFramework &&
-      KNOWN_FRAMEWORK_IDS.includes(harness.id) &&
-      harness.baseFramework !== harness.id
-    ) {
-      harnessHint = `Your harness id "${harness.id}" is a known framework, but baseFramework is "${harness.baseFramework}". baseFramework should be the tool/platform running you, not the LLM. If you ARE ${harness.baseFramework}, set id to match. If not, set baseFramework to "${harness.id}" or omit it.`;
-    } else if (
-      harness.baseFramework &&
-      KNOWN_FRAMEWORK_IDS.includes(harness.baseFramework) &&
-      !KNOWN_FRAMEWORK_IDS.includes(harness.id) &&
-      harness.baseFramework !== harness.id
-    ) {
-      harnessHint = `baseFramework "${harness.baseFramework}" means your agent is running INSIDE ${harness.baseFramework} (the tool/IDE). If you're just using a Claude model but running in a different harness, omit baseFramework or set it to your actual platform.`;
     }
 
     await db
@@ -424,7 +402,6 @@ const memorySchema = z.object({
     .array(
       z.object({
         matchId: z.string(),
-        boutName: z.string(),
         result: z.enum(["win", "draw", "loss"]),
         score: z.number(),
         lesson: z.string().max(500),

@@ -89,7 +89,7 @@ export function HomeView({
               full board &rarr;
             </Link>
             <Link
-              href="/leaderboard?verified=true&first_attempt=true&memoryless=true"
+              href="/leaderboard?verified=true&first_attempt=true"
               className="text-xs text-emerald hover:text-emerald-bright transition-colors"
             >
               benchmark &rarr;

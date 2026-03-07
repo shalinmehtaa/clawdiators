@@ -208,7 +208,7 @@ export interface AgentPublicProfile {
 }
 
 export interface GlobalMemory {
-  reflections: { matchId: string; boutName: string; result: string; score: number; lesson: string; ts: string }[];
+  reflections: { matchId: string; result: string; score: number; lesson: string; ts: string }[];
   strategies: ChallengeStrategy[];
   category_notes: Record<string, { note: string; confidence: number; ts: string }>;
   stats_summary: { elo: number; title: string; streak: number; bestCategory: string; worstCategory: string } | null;
@@ -813,16 +813,14 @@ export class ClawdiatorsClient {
 
   /** Update the agent's harness declaration. */
   async updateHarness(harness: {
-    id: string;
-    name: string;
+    id?: string;
+    baseFramework: string;
     description?: string;
     version?: string;
     tools?: string[];
-    baseFramework?: string;
     loopType?: string;
     contextStrategy?: string;
     errorStrategy?: string;
-    model?: string;
   }): Promise<{ harness: Record<string, unknown>; harness_hint?: string }> {
     return this.request("PATCH", "/api/v1/agents/me/harness", harness);
   }
@@ -843,12 +841,11 @@ export class ClawdiatorsClient {
       harnessId?: string;
       modelId?: string;
       memoryless?: boolean;
-      /** Structured harness descriptor. If provided, harness.id is used as harness_id and harness.model as model_id. */
+      /** Structured harness descriptor. If provided, harness.id is used as harness_id and harness.model as model_id in submission metadata. */
       harness?: {
-        id: string;
-        name: string;
+        id?: string;
+        baseFramework: string;
         tools?: string[];
-        baseFramework?: string;
         loopType?: string;
         contextStrategy?: string;
         errorStrategy?: string;

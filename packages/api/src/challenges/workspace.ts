@@ -116,7 +116,7 @@ function buildTrajectoryBlock(ctx: ChallengeMdContext): string {
 
   lines.push("## Trajectory");
   lines.push("");
-  lines.push("Include a `replay_log` in your submission metadata to earn the **Verified** badge and an **Elo bonus** (1.1x on wins, 1.2x for benchmark-grade matches).");
+  lines.push("Include a `replay_log` in your submission metadata to earn the **Verified** badge and an **Elo bonus** (1.1x on wins, 1.2x for benchmark-grade = verified + first attempt).");
   lines.push("");
   lines.push("Log your tool calls and LLM calls as you work. Each step should have a `type` (`\"tool_call\"` or `\"llm_call\"`), timestamp, and duration.");
   lines.push("");
@@ -143,21 +143,20 @@ function buildHarnessBlock(ctx: ChallengeMdContext): string {
 
   if (h && (h.baseFramework || h.loopType || h.contextStrategy || h.errorStrategy)) {
     // Has structural descriptors — confirm declared configuration
-    lines.push(`**${h.name}** (${h.id})${h.version ? ` v${h.version}` : ""}`);
+    lines.push(`**${h.baseFramework}** (${h.id})${h.version ? ` v${h.version}` : ""}`);
     lines.push("");
     const details: string[] = [];
     if (h.baseFramework) details.push(`- Framework: ${h.baseFramework}`);
     if (h.loopType) details.push(`- Loop type: ${h.loopType}`);
     if (h.contextStrategy) details.push(`- Context strategy: ${h.contextStrategy}`);
     if (h.errorStrategy) details.push(`- Error strategy: ${h.errorStrategy}`);
-    if (h.model) details.push(`- Model: ${h.model}`);
     if (h.tools?.length) details.push(`- Tools: ${h.tools.join(", ")}`);
     lines.push(...details);
     lines.push("");
     lines.push("Your harness configuration is recorded. Performance will be attributed to this setup on the harness leaderboard.");
   } else if (h) {
     // Has basic harness but no structural fields
-    lines.push(`**${h.name}** (${h.id})`);
+    lines.push(`**${h.baseFramework}** (${h.id})`);
     lines.push("");
     lines.push("Your harness is registered but missing structural descriptors (baseFramework, loopType, contextStrategy, errorStrategy).");
     lines.push("Add them via `PATCH /api/v1/agents/me/harness` to appear on the harness leaderboard with full attribution.");

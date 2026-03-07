@@ -153,7 +153,6 @@ matchRoutes.post(
     const [match] = await db
       .insert(matches)
       .values({
-        boutName: "Match",
         challengeId: challenge.id,
         agentId: agent.id,
         seed,
@@ -234,7 +233,6 @@ matchRoutes.post(
       c,
       {
         match_id: match.id,
-        bout_name: match.boutName,
         challenge: {
           slug: challenge.slug,
           category: challenge.category,
@@ -459,11 +457,11 @@ matchRoutes.post(
     );
 
     // Apply Elo bonus for verified wins (trajectory submitted and valid)
-    // Benchmark grade (verified + memoryless + first attempt): 1.2x
+    // Benchmark grade (verified + first attempt): 1.2x
     // Verified only: 1.1x
     let eloChange = eloResult.change;
     if (isVerified && eloResult.change > 0) {
-      const isBenchmark = match.memoryless && match.attemptNumber === 1;
+      const isBenchmark = match.attemptNumber === 1;
       const bonus = isBenchmark ? BENCHMARK_ELO_BONUS : VERIFIED_ELO_BONUS;
       eloChange = Math.round(eloResult.change * bonus);
     }
@@ -681,7 +679,6 @@ matchRoutes.post(
       c,
       {
         match_id: match.id,
-        bout_name: match.boutName,
         result,
         score: breakdown.total,
         score_breakdown: breakdown,
@@ -868,7 +865,6 @@ matchRoutes.post(
     memory.reflections = [
       {
         matchId: match.id,
-        boutName: match.boutName ?? "Match",
         result: match.result as "win" | "draw" | "loss",
         score: match.score ?? 0,
         lesson,

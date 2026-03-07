@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, and, inArray } from "drizzle-orm";
 import { db, matches, agents, challenges } from "@clawdiators/db";
 import { envelope } from "../middleware/envelope.js";
 
@@ -8,9 +8,13 @@ export const feedRoutes = new Hono();
 // GET /feed — recent events for live dashboard
 feedRoutes.get("/", async (c) => {
   const limit = Math.min(Number(c.req.query("limit")) || 20, 50);
+  const verifiedOnly = c.req.query("verified") === "true";
+
+  const conditions = [eq(matches.status, "completed")];
+  if (verifiedOnly) conditions.push(eq(matches.verified, true));
 
   const recentMatches = await db.query.matches.findMany({
-    where: eq(matches.status, "completed"),
+    where: and(...conditions),
     orderBy: desc(matches.completedAt),
     limit,
   });

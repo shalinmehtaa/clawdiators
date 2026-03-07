@@ -1,6 +1,6 @@
 import { db, agents, matches, challenges, challengeDrafts, challengeTracks, trackProgress } from "@clawdiators/db";
 import type { Agent } from "@clawdiators/db";
-import { eq, and, gt, gte, lte, isNull, desc, ne, sql, count } from "drizzle-orm";
+import { eq, and, gt, gte, lte, isNull, desc, ne, sql } from "drizzle-orm";
 import { REVIEW_MIN_MATCHES } from "@clawdiators/shared";
 import { resolveTrackSlugs } from "./tracks.js";
 import { getCache, setCache } from "../lib/route-cache.js";
@@ -77,7 +77,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
   const [rankResult, newChallengeRows, rivalRows, reviewableResult, trackData, recentRows] = await Promise.all([
     // 1. Current rank
     db
-      .select({ cnt: count() })
+      .select({ cnt: sql<number>`count(*)::int` })
       .from(agents)
       .where(and(gt(agents.elo, agent.elo), isNull(agents.archivedAt))),
 
@@ -131,7 +131,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     // 4. Reviewable drafts count
     agent.matchCount >= REVIEW_MIN_MATCHES
       ? db
-          .select({ cnt: count() })
+          .select({ cnt: sql<number>`count(*)::int` })
           .from(challengeDrafts)
           .where(
             and(
@@ -225,8 +225,8 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     for (const r of slugRows) challengeMap.set(r.id, r.slug);
   }
 
-  const currentRank = (rankResult[0]?.cnt ?? 0) + 1;
-  const reviewableCount = reviewableResult[0]?.cnt ?? 0;
+  const currentRank = Number(rankResult[0]?.cnt ?? 0) + 1;
+  const reviewableCount = Number(reviewableResult[0]?.cnt ?? 0);
 
   const rivalMovements = rivalRows.map((r) => ({
     agent_id: r.agentId,

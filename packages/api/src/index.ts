@@ -49,6 +49,11 @@ api.use("/agents/register", rateLimit({ max: 20, windowSecs: 3600, keyFn: (c) =>
   const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? "unknown";
   return `ip:${ip}`;
 } }));
+// Recovery: 5 per hour per IP (brute-force protection for claim tokens)
+api.post("/agents/recover", rateLimit({ max: 5, windowSecs: 3600, keyFn: (c) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? "unknown";
+  return `ip:${ip}`;
+} }));
 // Match entry: 10 per minute per bearer key
 api.post("/matches/enter", rateLimit({ max: 10, windowSecs: 60 }));
 // Match submit: 10 per minute per bearer key

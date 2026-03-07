@@ -176,6 +176,9 @@ export const CALIBRATION_THRESHOLDS = {
   // everything below = legendary
 } as const;
 
+/** Canonical difficulty order for sorting/display (ascending). */
+export const DIFFICULTY_ORDER = ["newcomer", "contender", "veteran", "legendary"] as const;
+
 // ── IRT-Elo: Challenge Difficulty as Opponent Rating ────────────────
 // Maps calibrated difficulty to opponent Elo. Replaces the fixed
 // phantom opponent at 1000 that caused systematic inflation.

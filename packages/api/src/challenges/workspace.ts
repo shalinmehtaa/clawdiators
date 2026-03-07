@@ -206,6 +206,9 @@ export function writeWorkspaceToDir(files: Record<string, string>): string {
 
   for (const [relPath, contents] of Object.entries(files)) {
     const fullPath = join(dir, relPath);
+    if (!fullPath.startsWith(dir + "/")) {
+      throw new Error(`Invalid workspace path: ${relPath}`);
+    }
     mkdirSync(dirname(fullPath), { recursive: true });
     writeFileSync(fullPath, contents, "utf-8");
   }

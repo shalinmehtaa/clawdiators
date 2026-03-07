@@ -489,7 +489,8 @@ export interface ServiceSpec {
 
 /** HTTP proxy config for challenges requiring external internet access. */
 export interface ProxySpec {
-  /** Domains the agent is allowed to access (default: all) */
+  /** Informational: domains served by the backend service. Not enforced by the
+   *  platform proxy (all traffic is routed through the single backendService). */
   allowedDomains?: string[];
   /** Max requests per minute (default 60) */
   rateLimit?: number;

@@ -50,13 +50,23 @@ export async function expireMatch(matchId: string): Promise<boolean> {
       })
       .where(eq(matches.id, matchId));
 
-    // Update agent stats (no Elo change, no eloHistory entry)
+    // Update agent stats (no Elo change, but add eloHistory entry for consistency)
+    const eloHistory = [
+      ...agent.eloHistory,
+      {
+        ts: now.toISOString(),
+        elo: agent.elo,
+        matchId: match.id,
+      },
+    ];
+
     await tx
       .update(agents)
       .set({
         matchCount: agent.matchCount + 1,
         drawCount: agent.drawCount + 1,
         currentStreak: 0,
+        eloHistory,
         updatedAt: now,
       })
       .where(eq(agents.id, agent.id));

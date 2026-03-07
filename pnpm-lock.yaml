@@ -7,16 +7,14 @@ settings:
 importers:
 
   .:
+    dependencies:
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
     devDependencies:
       husky:
         specifier: ^9.1.7
         version: 9.1.7
-
-  docker/arena-runner/proxy:
-    devDependencies:
-      typescript:
-        specifier: ^5.4.5
-        version: 5.4.5
 
   packages/api:
     dependencies:
@@ -1596,11 +1594,6 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  typescript@5.4.5:
-    resolution: {integrity: sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==}
-    engines: {node: '>=14.17'}
-    hasBin: true
-
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -2723,8 +2716,6 @@ snapshots:
       get-tsconfig: 4.13.6
     optionalDependencies:
       fsevents: 2.3.3
-
-  typescript@5.4.5: {}
 
   typescript@5.9.3: {}
 

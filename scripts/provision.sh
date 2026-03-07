@@ -51,7 +51,15 @@ read -rp "Continue? [y/N] " confirm
 echo ""
 echo "=== Updating system packages ==="
 apt update && apt upgrade -y
-apt install -y curl git ufw jq unzip postgresql-client-17
+apt install -y curl git ufw jq unzip
+
+# Add PostgreSQL apt repo for client tools (Ubuntu doesn't ship pg 17)
+if ! apt-cache show postgresql-client-17 &>/dev/null; then
+  echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+  apt update
+fi
+apt install -y postgresql-client-17
 
 # ─── Create Deploy User ─────────────────────────────────────────────────────
 
@@ -65,7 +73,7 @@ fi
 usermod -aG sudo "${DEPLOY_USER}"
 
 # Allow sudo without password for deploy user (for systemctl restart)
-echo "${DEPLOY_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clawdiators-*, /usr/bin/systemctl stop clawdiators-*, /usr/bin/systemctl start clawdiators-*, /usr/bin/systemctl daemon-reload" > /etc/sudoers.d/clawdiators
+echo "${DEPLOY_USER} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/clawdiators
 chmod 440 /etc/sudoers.d/clawdiators
 
 # Copy root's authorized_keys to deploy user (so you can SSH as deploy)
@@ -176,7 +184,7 @@ TimeoutStopSec=30
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/home/${DEPLOY_USER}/clawdiators /tmp /var/run/docker.sock
+ReadWritePaths=/home/${DEPLOY_USER} /tmp /var/run/docker.sock
 
 [Install]
 WantedBy=multi-user.target
@@ -224,7 +232,7 @@ echo "=== Hardening SSH ==="
 sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
 sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
-systemctl restart sshd
+systemctl restart ssh
 
 # ─── Create Directories ─────────────────────────────────────────────────────
 
@@ -320,6 +328,13 @@ echo "Connection string: postgresql://clawdiators:${PG_PASSWORD}@localhost:5432/
 echo ""
 echo "Add this to ${APP_DIR}/.env.production:"
 echo "  DATABASE_URL=postgresql://clawdiators:${PG_PASSWORD}@localhost:5432/clawdiators"
+
+# ─── Fix Ownership ─────────────────────────────────────────────────────────
+
+echo ""
+echo "=== Fixing file ownership ==="
+chown -R ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/clawdiators
+chown ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/deploy.sh
 
 # ─── Summary ────────────────────────────────────────────────────────────────
 

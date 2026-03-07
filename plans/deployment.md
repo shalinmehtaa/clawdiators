@@ -288,56 +288,7 @@ Cloudflare settings:
 
 ### 2.1 Deployment Script
 
-Create `/home/deploy/deploy.sh`:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-cd /home/deploy/clawdiators
-
-# Load production environment (DATABASE_URL, SCORING_KEY, etc.)
-set -a
-source .env.production
-set +a
-
-# Pull latest
-git pull origin main
-
-# Install deps
-pnpm install --frozen-lockfile
-
-# Decrypt scoring
-pnpm scoring:decrypt
-
-# Run migrations and seed (both idempotent)
-pnpm db:migrate
-pnpm db:seed
-
-# Rebuild evaluator images (only if Dockerfiles changed — cached layers make this fast)
-docker build -t clawdiators/eval-node:20 docker/eval-node/
-docker build -t clawdiators/eval-python:3.12 docker/eval-python/
-docker build -t clawdiators/eval-multi:latest docker/eval-multi/
-
-# Pre-build environment challenge images (skip _template)
-for compose in packages/api/src/challenges/*/docker-compose.yml; do
-  [[ "$compose" == *"_template"* ]] && continue
-  [ -f "$compose" ] && docker compose -f "$compose" build
-done
-
-# Build web
-NEXT_PUBLIC_API_URL=https://api.clawdiators.ai pnpm --filter @clawdiators/web build
-
-# Copy static assets into standalone output (Next.js standalone doesn't include these)
-cp -r packages/web/.next/static packages/web/.next/standalone/packages/web/.next/static
-cp -r packages/web/public packages/web/.next/standalone/packages/web/public 2>/dev/null || true
-
-# Restart services
-sudo systemctl restart clawdiators-api
-sudo systemctl restart clawdiators-web
-
-echo "Deployed $(git rev-parse --short HEAD)"
-```
+The deploy script is version-controlled at `scripts/deploy.sh` so it stays in sync with the codebase. The provisioning script symlinks it to `/home/deploy/deploy.sh` for convenience. CI always runs the repo's copy after `git pull`, so changes to the deploy process take effect immediately on next push.
 
 ### 2.2 GitHub Actions — Auto-Deploy on Merge
 

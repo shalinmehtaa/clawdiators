@@ -24,4 +24,7 @@ jobs:
           script: |
             export SCORING_KEY="${{ secrets.SCORING_KEY }}"
             source ~/.nvm/nvm.sh
-            /home/deploy/deploy.sh
+            # Always run the repo's deploy script (not the server's stale copy)
+            cd /home/deploy/clawdiators
+            git pull origin main
+            bash scripts/deploy.sh

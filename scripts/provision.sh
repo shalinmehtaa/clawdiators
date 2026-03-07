@@ -242,63 +242,14 @@ else
   su - "${DEPLOY_USER}" -c "git clone ${REPO_URL} ${APP_DIR}"
 fi
 
-# ─── Create Deploy Script ───────────────────────────────────────────────────
+# ─── Link Deploy Script ────────────────────────────────────────────────────
 
 echo ""
-echo "=== Creating deploy script ==="
-cat > /home/${DEPLOY_USER}/deploy.sh << 'DEPLOYEOF'
-#!/bin/bash
-set -euo pipefail
-
-cd /home/deploy/clawdiators
-
-# Load production environment
-set -a
-source .env.production
-set +a
-
-# Pull latest code
-git pull origin main
-
-# Install dependencies
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-pnpm install --frozen-lockfile
-
-# Decrypt scoring files
-pnpm scoring:decrypt
-
-# Run database migrations and seed (idempotent — onConflictDoNothing)
-pnpm db:migrate
-pnpm db:seed
-
-# Build evaluator Docker images (cached layers make this fast if unchanged)
-docker build -t clawdiators/eval-node:20 docker/eval-node/
-docker build -t clawdiators/eval-python:3.12 docker/eval-python/
-docker build -t clawdiators/eval-multi:latest docker/eval-multi/
-
-# Pre-build environment challenge images (skip _template)
-for compose in packages/api/src/challenges/*/docker-compose.yml; do
-  [[ "$compose" == *"_template"* ]] && continue
-  [ -f "$compose" ] && docker compose -f "$compose" build
-done
-
-# Build Next.js
-NEXT_PUBLIC_API_URL=https://api.clawdiators.ai pnpm --filter @clawdiators/web build
-
-# Copy static assets into standalone output
-cp -r packages/web/.next/static packages/web/.next/standalone/packages/web/.next/static
-cp -r packages/web/public packages/web/.next/standalone/packages/web/public 2>/dev/null || true
-
-# Restart services
-sudo systemctl restart clawdiators-api
-sudo systemctl restart clawdiators-web
-
-echo "Deployed $(git rev-parse --short HEAD) at $(date)"
-DEPLOYEOF
-
-chown ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/deploy.sh
-chmod +x /home/${DEPLOY_USER}/deploy.sh
+echo "=== Linking deploy script ==="
+# The deploy script lives in the repo (scripts/deploy.sh) so it stays
+# in sync with the codebase. Symlink it for convenience.
+ln -sf ${APP_DIR}/scripts/deploy.sh /home/${DEPLOY_USER}/deploy.sh
+echo "Linked /home/${DEPLOY_USER}/deploy.sh → ${APP_DIR}/scripts/deploy.sh"
 
 # ─── Cron Jobs ──────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import { db, agents, matches, challenges, challengeDrafts, challengeTracks, trackProgress } from "@clawdiators/db";
 import type { Agent } from "@clawdiators/db";
-import { eq, and, gt, gte, lte, isNull, desc, ne, sql } from "drizzle-orm";
+import { eq, and, gt, gte, lte, isNull, desc, ne, sql, inArray } from "drizzle-orm";
 import { REVIEW_MIN_MATCHES } from "@clawdiators/shared";
 import { resolveTrackSlugs } from "./tracks.js";
 import { getCache, setCache } from "../lib/route-cache.js";
@@ -156,6 +156,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
       if (progressRows.length === 0) return [];
 
       const trackIds = progressRows.map((r) => r.trackId);
+      if (trackIds.length === 0) return [];
       const tracks = await db
         .select({
           id: challengeTracks.id,
@@ -168,7 +169,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
         .where(
           and(
             eq(challengeTracks.active, true),
-            sql`${challengeTracks.id} = ANY(${trackIds})`,
+            inArray(challengeTracks.id, trackIds),
           ),
         );
 
@@ -221,7 +222,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     const slugRows = await db
       .select({ id: challenges.id, slug: challenges.slug })
       .from(challenges)
-      .where(sql`${challenges.id} = ANY(${challengeIds})`);
+      .where(inArray(challenges.id, challengeIds));
     for (const r of slugRows) challengeMap.set(r.id, r.slug);
   }
 

@@ -138,18 +138,20 @@ fi
 echo ""
 echo "=== Configuring Caddy ==="
 cat > /etc/caddy/Caddyfile << 'CADDYEOF'
-# Cloudflare terminates TLS — Caddy serves HTTP on port 80.
-# Cloudflare SSL mode must be set to "Full" (not "Full strict").
+# Cloudflare proxies to origin over HTTPS (SSL mode: Full).
+# "tls internal" generates a self-signed cert that Cloudflare accepts.
 
-:80 {
-    @web host clawdiators.ai
-    handle @web {
-        reverse_proxy localhost:3000
-    }
+clawdiators.ai, api.clawdiators.ai {
+    tls internal
 
     @api host api.clawdiators.ai
     handle @api {
         reverse_proxy localhost:3001
+    }
+
+    @web host clawdiators.ai
+    handle @web {
+        reverse_proxy localhost:3000
     }
 }
 CADDYEOF
@@ -173,7 +175,7 @@ Type=simple
 User=${DEPLOY_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env.production
-ExecStart=${NODE_BIN} --max-old-space-size=2048 --import tsx packages/api/src/server.ts
+ExecStart=${NODE_BIN} --max-old-space-size=4096 --import tsx packages/api/src/server.ts
 Restart=always
 RestartSec=5
 
@@ -200,7 +202,7 @@ Type=simple
 User=${DEPLOY_USER}
 WorkingDirectory=${APP_DIR}/packages/web
 EnvironmentFile=${APP_DIR}/packages/web/.env.production
-ExecStart=${NODE_BIN} --max-old-space-size=512 .next/standalone/packages/web/server.js
+ExecStart=${NODE_BIN} --max-old-space-size=1024 .next/standalone/packages/web/server.js
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
@@ -300,13 +302,25 @@ services:
       POSTGRES_DB: clawdiators
       POSTGRES_USER: clawdiators
       POSTGRES_PASSWORD: ${PG_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - effective_cache_size=6GB
+      - -c
+      - wal_buffers=64MB
     volumes:
       - pgdata:/var/lib/postgresql/data
     deploy:
       resources:
         limits:
-          memory: 2g
-    shm_size: 256mb
+          memory: 8g
+    shm_size: 512mb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U clawdiators"]
       interval: 10s

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { MultiSelect } from "@/components/multi-select";
+import { DIFFICULTY_ORDER } from "@clawdiators/shared";
 
 interface ScoringDimension {
   key: string;
@@ -59,7 +60,7 @@ const CATEGORY_BG_COLORS: Record<string, string> = {
   cybersecurity: "bg-coral/20 text-coral border-coral/30",
 };
 
-const DIFFICULTY_ORDER = ["newcomer", "contender", "veteran", "legendary"];
+// DIFFICULTY_ORDER imported from @clawdiators/shared
 
 const DIMENSION_COLORS: Record<string, string> = {
   emerald: "text-emerald",
@@ -127,7 +128,7 @@ export function ChallengesView({
   const difficulties = useMemo(
     () =>
       [...new Set(active.map((c) => c.difficulty))].sort(
-        (a, b) => DIFFICULTY_ORDER.indexOf(a) - DIFFICULTY_ORDER.indexOf(b)
+        (a, b) => (DIFFICULTY_ORDER as readonly string[]).indexOf(a) - (DIFFICULTY_ORDER as readonly string[]).indexOf(b)
       ),
     [active]
   );

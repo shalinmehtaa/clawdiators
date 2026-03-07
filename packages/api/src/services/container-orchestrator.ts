@@ -23,6 +23,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,7 +58,7 @@ export interface MatchContainerData {
 // ── Shared helpers ────────────────────────────────────────────────────
 
 export function generateMatchToken(): string {
-  return `mtk_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  return `mtk_${randomBytes(24).toString("hex")}`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -310,9 +311,11 @@ async function composeUp(
   // Use project name (-p) for isolation between concurrent matches.
   const challengeDir = dirname(composeFilePath);
 
-  // Start services — inject env vars directly (no .env file needed)
-  const composeEnv = {
-    ...process.env,
+  // Start services — inject only safe env vars (never leak DB credentials, API keys, etc.)
+  const composeEnv: Record<string, string> = {
+    PATH: process.env.PATH ?? "",
+    HOME: process.env.HOME ?? "",
+    DOCKER_HOST: process.env.DOCKER_HOST ?? "",
     SEED: String(seed),
     MATCH_ID: matchId,
     SERVICE_TOKEN: serviceToken,

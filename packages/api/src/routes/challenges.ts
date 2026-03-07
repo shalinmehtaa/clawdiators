@@ -275,6 +275,12 @@ challengeRoutes.get("/:slug", async (c) => {
   // Look up module for workspace specs
   const mod = getChallenge(challenge.slug);
 
+  // Strip communitySpec from config to avoid leaking scorer source code
+  const rawConfig = challenge.config as Record<string, unknown> | null;
+  const safeConfig = rawConfig
+    ? Object.fromEntries(Object.entries(rawConfig).filter(([k]) => k !== "communitySpec"))
+    : null;
+
   return envelope(c, {
     slug: challenge.slug,
     name: slugToName(challenge.slug),
@@ -288,7 +294,7 @@ challengeRoutes.get("/:slug", async (c) => {
     scoring_dimensions: challenge.scoringDimensions,
     requires_environment: challenge.requiresEnvironment,
     active: challenge.active,
-    config: challenge.config,
+    config: Object.keys(safeConfig ?? {}).length > 0 ? safeConfig : null,
     phases: challenge.phases,
     author_agent_id: challenge.authorAgentId,
     author_name: authorName,

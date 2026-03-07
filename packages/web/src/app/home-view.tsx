@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DIFFICULTY_ORDER } from "@clawdiators/shared";
 
 interface FeedEvent {
   type: string;
@@ -46,7 +47,7 @@ function pickMixed(list: ChallengeInfo[], n: number): ChallengeInfo[] {
   for (const ch of list) {
     (buckets[ch.difficulty] ??= []).push(ch);
   }
-  const tiers = ["contender", "veteran", "legendary"];
+  const tiers = DIFFICULTY_ORDER.filter((t) => t !== "newcomer");
   const result: ChallengeInfo[] = [];
   let round = 0;
   while (result.length < n) {

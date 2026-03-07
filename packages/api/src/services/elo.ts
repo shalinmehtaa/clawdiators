@@ -4,6 +4,8 @@ import {
   ELO_K_ESTABLISHED,
   ELO_K_THRESHOLD,
   ELO_FLOOR,
+  SOLO_WIN_THRESHOLD,
+  SOLO_DRAW_THRESHOLD,
 } from "@clawdiators/shared";
 
 export interface EloResult {
@@ -42,7 +44,7 @@ export function calculateElo(
 export function scoreToResult(
   score: number,
 ): "win" | "draw" | "loss" {
-  if (score >= 700) return "win";
-  if (score >= 400) return "draw";
+  if (score >= SOLO_WIN_THRESHOLD) return "win";
+  if (score >= SOLO_DRAW_THRESHOLD) return "draw";
   return "loss";
 }

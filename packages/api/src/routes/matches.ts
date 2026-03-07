@@ -390,11 +390,13 @@ matchRoutes.post(
     const communitySpec = challengeConfig?.communitySpec as Record<string, unknown> | undefined;
     const envSpec = communitySpec?.environment as { timeout?: number; image?: string; capabilities?: string[] } | undefined;
 
-    // Pass ANTHROPIC_API_KEY when LLM-as-judge scoring is configured
+    // Pass a dedicated judge API key when LLM-as-judge scoring is configured.
+    // Uses JUDGE_API_KEY (scoped/limited key) to avoid leaking the main platform key.
     const evalEnvVars: Record<string, string> = {};
     const scoringConfig = communitySpec?.scoring as { judgeModel?: string } | undefined;
-    if (scoringConfig?.judgeModel && process.env.ANTHROPIC_API_KEY) {
-      evalEnvVars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    const judgeKey = process.env.JUDGE_API_KEY ?? process.env.ANTHROPIC_API_KEY;
+    if (scoringConfig?.judgeModel && judgeKey) {
+      evalEnvVars.ANTHROPIC_API_KEY = judgeKey;
     }
 
     // For environment challenges: build a metrics fetcher to query live services before scoring
@@ -601,12 +603,6 @@ matchRoutes.post(
     const { opponentElo, eloChange, flavourText, finalEloAfter, newTitle, newSampleSize } = txOut;
 
     // Recalibrate outside transaction (best-effort, doesn't need atomicity)
-    if (newSampleSize % 20 === 0) {
-      recalibrateChallenge(challenge.id).catch(() => {
-        // Best-effort calibration
-      });
-    }
-
     if (newSampleSize % 20 === 0) {
       recalibrateChallenge(challenge.id).catch(() => {
         // Best-effort calibration

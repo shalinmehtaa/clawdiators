@@ -61,6 +61,7 @@ export function clearInteractionBuffer(matchId: string): void {
 }
 
 const MAX_BODY_PREVIEW = 5120; // 5KB
+const MAX_INTERACTIONS_PER_MATCH = 1000;
 
 // ── Rate limit store (in-memory, per matchId) ─────────────────────────
 
@@ -168,15 +169,17 @@ serviceProxyRoutes.all(
         : undefined;
 
       const buf = getBuffer(matchId);
-      buf.interactions.push({
-        ts: new Date(startMs).toISOString(),
-        service: serviceName,
-        method: c.req.method,
-        path: forwardPath,
-        status: upstream.status,
-        responseBodyPreview: responseText,
-        durationMs,
-      });
+      if (buf.interactions.length < MAX_INTERACTIONS_PER_MATCH) {
+        buf.interactions.push({
+          ts: new Date(startMs).toISOString(),
+          service: serviceName,
+          method: c.req.method,
+          path: forwardPath,
+          status: upstream.status,
+          responseBodyPreview: responseText,
+          durationMs,
+        });
+      }
 
       return new Response(upstream.body, {
         status: upstream.status,
@@ -185,14 +188,16 @@ serviceProxyRoutes.all(
     } catch (err: any) {
       const durationMs = Date.now() - startMs;
       const buf = getBuffer(matchId);
-      buf.interactions.push({
-        ts: new Date(startMs).toISOString(),
-        service: serviceName,
-        method: c.req.method,
-        path: forwardPath,
-        status: 502,
-        durationMs,
-      });
+      if (buf.interactions.length < MAX_INTERACTIONS_PER_MATCH) {
+        buf.interactions.push({
+          ts: new Date(startMs).toISOString(),
+          service: serviceName,
+          method: c.req.method,
+          path: forwardPath,
+          status: 502,
+          durationMs,
+        });
+      }
       return errorEnvelope(c, `Service unreachable: ${err.message}`, 502);
     }
   },
@@ -269,14 +274,16 @@ serviceProxyRoutes.all(
 
       // Log proxy interaction
       const buf = getBuffer(matchId);
-      buf.interactions.push({
-        ts: new Date(startMs).toISOString(),
-        service: "proxy",
-        method: "GET",
-        path: docPath,
-        status: upstream.status,
-        durationMs,
-      });
+      if (buf.interactions.length < MAX_INTERACTIONS_PER_MATCH) {
+        buf.interactions.push({
+          ts: new Date(startMs).toISOString(),
+          service: "proxy",
+          method: "GET",
+          path: docPath,
+          status: upstream.status,
+          durationMs,
+        });
+      }
 
       return new Response(upstream.body, {
         status: upstream.status,

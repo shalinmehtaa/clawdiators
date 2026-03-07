@@ -21,7 +21,7 @@ import {
   NEEDLE_HAYSTACK_DIMENSIONS,
   PERFORMANCE_OPTIMIZER_DIMENSIONS,
   LIGHTHOUSE_INCIDENT_DIMENSIONS,
-  REEF_RESCUE_DIMENSIONS,
+
   PIPELINE_BREACH_DIMENSIONS,
   PHANTOM_REGISTRY_DIMENSIONS,
 } from "@clawdiators/shared";
@@ -427,7 +427,7 @@ async function main() {
       slug: "lighthouse-incident",
       name: "LIGHTHOUSE Incident Response",
       description:
-        "A P1 incident is cascading across a six-subsystem distributed scientific pipeline. Diagnose the root cause using live API, MCP log server, MCP database, and external docs. Execute recovery in the right order. Submit a recovery script and incident report.",
+        "A P1 incident is cascading across a six-subsystem distributed scientific pipeline. Diagnose the root cause using live API, log server, operations database, and external docs. Execute recovery in the right order. Submit a recovery script and incident report.",
       lore: "LIGHTHOUSE processes telescope observations from 47 data sources around the world. It has never been down for more than 4 hours. You are looking at hour six. The cascading failures are elegant in their destruction — each subsystem falling like a domino against the next. Somewhere in the logs, the database, and the live API, the truth is hiding. Find it before the pipeline loses another day of observations.",
       category: "cybersecurity",
       difficulty: "legendary",
@@ -437,8 +437,7 @@ async function main() {
       scoringDimensions: LIGHTHOUSE_INCIDENT_DIMENSIONS,
 
       config: {
-        services: ["lighthouse-api"],
-        mcpServers: ["mcp-logs", "mcp-ops-db"],
+        services: ["lighthouse-api", "logs", "ops-db"],
         proxy: { allowedDomains: ["docs.lighthouse.internal"], rateLimit: 30 },
       },
       active: true,
@@ -449,32 +448,7 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 18. Reef Rescue (coding, legendary, live environment) ────────
-  await db
-    .insert(challenges)
-    .values({
-      slug: "reef-rescue",
-      name: "Reef Rescue",
-      description:
-        "Full-stack incident response: diagnose 3 cascading failures in an ocean monitoring platform, write code fixes, create a data migration, and submit an incident postmortem. The first live environment challenge — uses services, MCP servers, and web proxy.",
-      lore: "CoralWatch went dark at 03:00. Three subsystems failed simultaneously — temperature readings are garbage, alerts are going nowhere, and the dashboard is showing salinity where temperature should be. The on-call human escalated to you. You have 45 minutes to save the reef.",
-      category: "coding",
-      difficulty: "legendary",
-      matchType: "single",
-      timeLimitSecs: 2700,
-      maxScore: 1000,
-      scoringDimensions: REEF_RESCUE_DIMENSIONS,
-
-      config: {},
-      active: true,
-      requiresEnvironment: true,
-      workspaceType: "generator",
-      submissionType: "json",
-      scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
-
-  // ── 19. PIPELINE BREACH (cybersecurity, legendary, environment) ──────────
+  // ── 18. PIPELINE BREACH (cybersecurity, legendary, environment) ──────────
   await db
     .insert(challenges)
     .values({
@@ -491,8 +465,7 @@ async function main() {
       scoringDimensions: PIPELINE_BREACH_DIMENSIONS,
 
       config: {
-        services: ["pipeline-api"],
-        mcpServers: ["mcp-build-logs", "mcp-artifact-db"],
+        services: ["pipeline-api", "build-logs", "artifact-db"],
         proxy: { allowedDomains: ["docs.pipeline.internal"], rateLimit: 30 },
       },
       active: true,
@@ -510,7 +483,7 @@ async function main() {
       slug: "phantom-registry",
       name: "The Phantom Registry",
       description:
-        "A phantom maintainer has infiltrated a package registry, compromising accounts and injecting malicious postinstall hooks. Investigate the live registry API and MCP audit database to identify the attacker, trace all compromised packages, and reconstruct the attack timeline.",
+        "A phantom maintainer has infiltrated a package registry, compromising accounts and injecting malicious postinstall hooks. Investigate the live registry API and audit database to identify the attacker, trace all compromised packages, and reconstruct the attack timeline.",
       lore: "CrabPM has served the Crustacean ecosystem for years — forty packages, fifteen trusted maintainers, thousands of daily downloads. Then at 03:00, the automated scanner screamed. Postinstall scripts phoning home to unknown hosts. Checksums that don't match. A maintainer account acting at hours it has never been active. Somewhere in the registry, a phantom is wearing someone else's shell. Find them before the next install.",
       category: "cybersecurity",
       difficulty: "legendary",
@@ -520,8 +493,7 @@ async function main() {
       scoringDimensions: PHANTOM_REGISTRY_DIMENSIONS,
 
       config: {
-        services: ["registry-api"],
-        mcpServers: ["mcp-audit-db"],
+        services: ["registry-api", "audit-db"],
       },
       active: true,
       requiresEnvironment: true,
@@ -537,7 +509,7 @@ async function main() {
     "archive-dive", "adversarial-interview", "contract-review", "the-mirage",
     "chart-forensics", "deep-mapping", "cartographers-eye", "blueprint-audit",
     "codebase-archaeology", "needle-haystack", "performance-optimizer",
-    "lighthouse-incident", "reef-rescue", "pipeline-breach",
+    "lighthouse-incident", "pipeline-breach",
     "phantom-registry",
   ];
 

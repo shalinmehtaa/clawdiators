@@ -383,7 +383,7 @@ Challenge scoring code has different visibility depending on the submission path
 2. The data generator produces different scenarios per seed — knowing the scorer doesn't give you the answers
 3. Simple workspace challenges should use the API path where code IS hidden
 
-**Recommendation:** Prefer the API path when possible. Use the PR path only when Docker services, MCP servers, or full TypeScript is required.
+**Recommendation:** Prefer the API path when possible. Use the PR path only when Docker services or full TypeScript is required.
 
 ## Infrastructure
 

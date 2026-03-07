@@ -1,13 +1,14 @@
 /**
- * PIPELINE BREACH — MCP Artifact Database Server
+ * PIPELINE BREACH — Artifact Database Server
  *
- * MCP server providing SQL query access to build artifact and dependency data.
+ * REST server providing SQL query access to build artifact and dependency data.
  * Generates seeded tables matching the data.ts generator.
  *
- * Tools:
- *   list_tables  — List available tables
- *   schema       — Show table schema
- *   query        — Execute read-only SQL queries
+ * Endpoints:
+ *   POST /tools/list_tables  — List available tables
+ *   POST /tools/schema       — Show table schema
+ *   POST /tools/query        — Execute read-only SQL queries
+ *   GET  /tools              — List available tools
  */
 
 import express from "express";
@@ -248,48 +249,37 @@ function simpleQuery(sql) {
   return { rows, count: rows.length };
 }
 
-// ── MCP tool handlers ─────────────────────────────────────────────────
+// ── Tool metadata ─────────────────────────────────────────────────────
 const TOOLS = [
-  { name: "list_tables", description: "List all available tables", inputSchema: { type: "object", properties: {} } },
-  { name: "schema", description: "Show schema for a table", inputSchema: { type: "object", properties: { table_name: { type: "string" } }, required: ["table_name"] } },
-  { name: "query", description: "Execute read-only SQL query", inputSchema: { type: "object", properties: { sql: { type: "string" } }, required: ["sql"] } },
+  { name: "list_tables", description: "List all available tables", parameters: {} },
+  { name: "schema", description: "Show schema for a table", parameters: { table_name: "string (required)" } },
+  { name: "query", description: "Execute read-only SQL query", parameters: { sql: "string (required)" } },
 ];
 
 // Health endpoint
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// MCP tools/list
-app.get("/mcp/tools", (_req, res) => res.json({ tools: TOOLS }));
+// List available tools
+app.get("/tools", (_req, res) => res.json({ tools: TOOLS }));
 
-// MCP tools/call
-app.post("/mcp/tools/call", (req, res) => {
-  const { name, arguments: args } = req.body || {};
-  let result;
-
-  switch (name) {
-    case "list_tables":
-      result = Object.entries(tables).map(([name, rows]) => ({ name, row_count: rows.length, description: SCHEMAS[name] }));
-      break;
-    case "schema":
-      result = SCHEMAS[args?.table_name] || `Unknown table: ${args?.table_name}`;
-      break;
-    case "query":
-      result = simpleQuery(args?.sql || "");
-      break;
-    default:
-      return res.status(404).json({ error: `Unknown tool: ${name}` });
-  }
-
-  res.json({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+// Individual tool endpoints
+app.post("/tools/list_tables", (_req, res) => {
+  const result = Object.entries(tables).map(([name, rows]) => ({ name, row_count: rows.length, description: SCHEMAS[name] }));
+  res.json({ ok: true, data: result });
 });
 
-// SSE endpoint for MCP protocol
-app.get("/sse", (req, res) => {
-  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-  res.write(`data: ${JSON.stringify({ type: "endpoint", url: "/mcp" })}\n\n`);
-  req.on("close", () => res.end());
+app.post("/tools/schema", (req, res) => {
+  const { table_name } = req.body || {};
+  const result = SCHEMAS[table_name] || `Unknown table: ${table_name}`;
+  res.json({ ok: true, data: result });
+});
+
+app.post("/tools/query", (req, res) => {
+  const { sql } = req.body || {};
+  const result = simpleQuery(sql || "");
+  res.json({ ok: true, data: result });
 });
 
 app.listen(PORT, () => {
-  console.log(`MCP Artifact DB server running on port ${PORT} with SEED=${SEED}`);
+  console.log(`Artifact DB server running on port ${PORT} with SEED=${SEED}`);
 });

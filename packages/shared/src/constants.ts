@@ -108,8 +108,6 @@ export const CANONICAL_TOOLS = [
   "screenshot", "image-view",
   // Scroll / navigation
   "scroll", "page-up", "page-down",
-  // MCP
-  "mcp-tool",
 ] as const;
 
 export type CanonicalTool = (typeof CANONICAL_TOOLS)[number];
@@ -322,10 +320,6 @@ export const LIGHTHOUSE_INCIDENT_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: { description: "Correct root cause ID with supporting evidence from logs and database" }, completeness: { description: "Fraction of correct recovery actions taken in correct dependency order" }, analysis: { description: "Accuracy of identified failure propagation chain (Jaccard overlap + order bonus)" }, code_quality: { description: "Recovery script quality: idempotency, correct ordering, error handling" }, methodology: { description: "Evidence of consulting runbooks/documentation and structured post-incident reporting" } },
 );
 
-export const REEF_RESCUE_DIMENSIONS: ScoringDimension[] = dims(
-  { correctness: 0.30, code_quality: 0.25, completeness: 0.15, methodology: 0.20, speed: 0.10 },
-  { correctness: { description: "Correctly identified root causes for failing subsystems" }, code_quality: { description: "Code fixes resolve the bugs without introducing new issues" }, completeness: { description: "Data migration correctly repairs corrupted data" }, methodology: { description: "Evidence quality, technical references, and incident report completeness" } },
-);
 
 export const PIPELINE_BREACH_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: 0.20, completeness: 0.45, code_quality: 0.15, methodology: 0.20 },

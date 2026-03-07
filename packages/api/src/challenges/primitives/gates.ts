@@ -2,7 +2,7 @@
  * Machine gates for community challenge validation.
  * All gates run before a draft enters human/agent review.
  */
-import type { GateResult, GateReport } from "@clawdiators/shared";
+import type { GateResult, GateReport, GateFixSuggestion } from "@clawdiators/shared";
 import { validateSpec, verifyDeterminism } from "./validator.js";
 import { createDeclarativeModule } from "./declarative-module.js";
 import { createCodeModule } from "./code-module.js";
@@ -49,6 +49,10 @@ export function checkSpecValidity(raw: unknown): GateResult {
     passed: false,
     details: { errors: result.errors },
     error: `Spec validation failed: ${result.errors.join("; ")}`,
+    fix_suggestion: {
+      issue: "Spec does not match the required Zod schema.",
+      fix: "Use camelCase for all field names (timeLimitSecs, matchType, not time_limit_secs). Ensure scoring.dimensions weights sum to 1.0. Use GET /api/v1/challenges/scaffold to generate a valid starting spec.",
+    },
   };
 }
 
@@ -67,12 +71,21 @@ export async function checkDeterminism(mod: ChallengeModule): Promise<GateResult
       passed: false,
       details: { seeds_tested: [42, 123, 7777] },
       error: result.error,
+      fix_suggestion: {
+        issue: "generateData() produces different output for the same seed, or identical output for different seeds.",
+        fix: "Use rng(seed) for ALL random generation. Never use Math.random(), Date.now(), or any other non-deterministic source. Call rng(seed) once and use the returned function for all random values.",
+        example_code: "var r = rng(seed);\nvar val = Math.floor(r() * 100);",
+      },
     };
   } catch (err) {
     return {
       passed: false,
       details: { seeds_tested: [42, 123, 7777] },
       error: `generateData threw: ${err instanceof Error ? err.message : String(err)}`,
+      fix_suggestion: {
+        issue: "generateData() threw an error during execution.",
+        fix: "Ensure generateData(seed) handles all seeds without throwing. Check for undefined variables, missing return values, and division by zero.",
+      },
     };
   }
 }
@@ -126,6 +139,10 @@ export function checkContractConsistency(spec: CommunitySpec): GateResult {
     passed: false,
     details: { issues },
     error: `Contract consistency issues: ${issues.join("; ")}`,
+    fix_suggestion: {
+      issue: "Structural mismatch between spec fields.",
+      fix: "If seedable is true, challengeMd must contain '{{seed}}'. Scorer field keys must exist in submission.schema. If scorer.timeDimension is set, it must match a key in scoring.dimensions.",
+    },
   };
 }
 
@@ -185,6 +202,10 @@ export async function checkBaselineSolveability(
     },
     ...(!passed && {
       error: `Reference answer scored ${total} < threshold ${threshold} (${Math.round(pct * 100)}% of ${spec.scoring.maxScore} for ${spec.difficulty} difficulty)`,
+      fix_suggestion: {
+        issue: `Reference answer scored ${total} but needs at least ${threshold} (${Math.round(pct * 100)}% of ${spec.scoring.maxScore}).`,
+        fix: "Ensure referenceAnswer.seed matches the seed used to compute the answer. Verify that referenceAnswer.answer contains the correct keys your scorer expects in input.submission. Run generateData(seed) locally to check groundTruth matches your answer.",
+      },
     }),
   };
 }
@@ -274,6 +295,11 @@ export async function checkAntiGaming(
     },
     ...(!passed && {
       error: `Anti-gaming probe scored ${worstScore} >= ceiling ${ceiling} (${Math.round(pct * 100)}% of ${spec.scoring.maxScore} for ${spec.difficulty} difficulty)`,
+      fix_suggestion: {
+        issue: "Empty/null/random submissions score too high — your scorer awards points without checking correctness.",
+        fix: "Gate speed, methodology, and bonus dimensions on correctness > 0. Only award non-correctness points when the primary answer is at least partially correct. This prevents gaming probes (empty {}, all-null, random UUIDs) from earning free points.",
+        example_code: "var correctness = sub.answer === gt.answer ? 500 : 0;\nvar speed = 0;\nif (correctness > 0) {\n  speed = Math.round(200 * (1 - elapsed / limit));\n}",
+      },
     }),
   };
 }
@@ -320,6 +346,10 @@ export function checkScoreDistribution(
     passed: false,
     details: { reference_score: referenceScore, max_probe_score: maxProbeScore, max_score: maxScore, issues },
     error: issues.join("; "),
+    fix_suggestion: {
+      issue: "Score distribution is unhealthy — reference answer scores too low, gaming probes score too high, or both are inverted.",
+      fix: "Increase the reference answer score (fix your answer or relax scoring) and ensure gaming probes score near zero (gate bonus dimensions on correctness > 0).",
+    },
   };
 }
 
@@ -384,6 +414,10 @@ export function checkCodeSyntax(codeFiles: Record<string, string>): GateResult {
     passed: false,
     details: { issues },
     error: `Syntax errors: ${issues.join("; ")}`,
+    fix_suggestion: {
+      issue: "One or more code files have JavaScript syntax errors.",
+      fix: "Code files must be valid JavaScript (not TypeScript). Use var instead of let/const if targeting maximum compatibility. Use function declarations, not arrow functions with const. Escape backticks inside template literals as \\` or use string concatenation instead.",
+    },
   };
 }
 
@@ -419,6 +453,11 @@ export function checkCodeSecurity(
     passed: false,
     details: { violations },
     error: `Prohibited patterns in sandboxed code: ${violations.map((v) => `${v.file}:${v.line} — ${v.pattern}`).join("; ")}`,
+    fix_suggestion: {
+      issue: "Code files contain prohibited patterns (require, import, process, eval, fetch, setTimeout, etc.).",
+      fix: "API-path code runs in a sandboxed VM — no imports, network, timers, or filesystem access. If a prohibited word appears inside a string literal (e.g. in data), break it with string concatenation: 'imp' + 'ort'. If your challenge genuinely needs these APIs, use the PR path instead (see /pr-authoring.md).",
+      example_code: "// Instead of: var msg = 'do not import this';\n// Use: var msg = 'do not imp' + 'ort this';",
+    },
   };
 }
 

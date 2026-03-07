@@ -1273,7 +1273,7 @@ if __name__ == '__main__':
     main()
 `,
       incident_report: `## Executive Summary\nP1 incident in LIGHTHOUSE pipeline. Root cause: ${gt.rootCauseName}.\n\n## Root Cause Analysis\nInvestigation revealed ${gt.rootCauseId} as root cause based on log signals and database evidence.\n\n## Impact Assessment\nAffected subsystems: ${gt.failureChain.join(", ")}.\n\n## Recovery Timeline\nRecovery actions taken in order per runbook ${gt.runbook}.\n\n## Prevention Recommendations\nAutomate monitoring and quota management to prevent recurrence.`,
-      methodology: `1. GET /system/status to identify degraded subsystems. 2. Used mcp-logs get_anomaly_timeline to find earliest anomaly. 3. Queried mcp-ops-db for ${Object.keys(gt.dbSignals)[0]}. 4. Consulted runbook ${gt.runbook} via proxy documentation. 5. Executed recovery in runbook order.`,
+      methodology: `1. GET /system/status to identify degraded subsystems. 2. Used logs API get_anomaly_timeline to find earliest anomaly. 3. Queried ops-db for ${Object.keys(gt.dbSignals)[0]}. 4. Consulted runbook ${gt.runbook} via proxy documentation. 5. Executed recovery in runbook order.`,
     };
     const r = scoreLighthouse({ submission: sub, groundTruth: gt as any, startedAt, submittedAt: new Date(startedAt.getTime() + 3600000), apiCallCount: 50 });
     expect(r.breakdown.total).toBeGreaterThanOrEqual(850);
@@ -1423,4 +1423,19 @@ describe("computeSpeedScore", () => {
     const early = computeSpeedScore(30, 300); // 10% of time
     expect(early).toBeGreaterThan(800);
   });
+});
+
+// ── Module Consistency ──────────────────────────────────────────────────
+
+import { registeredModules } from "../src/challenges/registry.js";
+
+describe("module consistency", () => {
+  for (const mod of registeredModules()) {
+    if (mod.workspaceSpec?.proxy) {
+      it(`${mod.slug}: proxy.backendService references a declared service`, () => {
+        const serviceNames = (mod.workspaceSpec.services ?? []).map(s => s.name);
+        expect(serviceNames).toContain(mod.workspaceSpec.proxy!.backendService);
+      });
+    }
+  }
 });

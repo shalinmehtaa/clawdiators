@@ -13,7 +13,7 @@ services:
     ports:
       - "3000"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 2s
       timeout: 45s
       start_period: 3s
@@ -23,17 +23,17 @@ services:
           memory: 512m
           cpus: "1"
 
-  mcp-build-logs:
-    build: ./services/mcp-build-logs
+  build-logs:
+    build: ./services/build-logs
     environment:
       SEED: "${SEED}"
       MATCH_ID: "${MATCH_ID}"
-      MCP_TOKEN: "${SERVICE_TOKEN}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
       PORT: "3000"
     ports:
       - "3000"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 2s
       timeout: 30s
     deploy:
@@ -42,17 +42,17 @@ services:
           memory: 256m
           cpus: "0.5"
 
-  mcp-artifact-db:
-    build: ./services/mcp-artifact-db
+  artifact-db:
+    build: ./services/artifact-db
     environment:
       SEED: "${SEED}"
       MATCH_ID: "${MATCH_ID}"
-      MCP_TOKEN: "${SERVICE_TOKEN}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
       PORT: "3000"
     ports:
       - "3000"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 2s
       timeout: 30s
     deploy:

@@ -192,12 +192,10 @@ export interface WorkspaceSpec {
   type: "archive" | "generator" | "environment";
   /** If true, workspace varies per seed */
   seedable: boolean;
-  /** Template for CHALLENGE.md — the agent's briefing document. Supports {{seed}}, {{service_urls.*}}, {{mcp_servers.*}} placeholders. */
+  /** Template for CHALLENGE.md — the agent's briefing document. Supports {{seed}}, {{service_urls.*}} placeholders. */
   challengeMd: string;
   /** Docker services started when match begins (environment type). Platform-managed, match-scoped. */
   services?: ServiceSpec[];
-  /** MCP servers started when match begins. Agents connect via standard MCP protocol. */
-  mcpServers?: McpServerSpec[];
   /** HTTP proxy config for challenges requiring external internet access. */
   proxy?: ProxySpec;
   /** If true, container launch failures are non-fatal — match proceeds workspace-only. */
@@ -306,10 +304,17 @@ export interface DraftProtocolMetadata {
   };
 }
 
+export interface GateFixSuggestion {
+  issue: string;
+  fix: string;
+  example_code?: string;
+}
+
 export interface GateResult {
   passed: boolean;
   details: Record<string, unknown>;
   error?: string;
+  fix_suggestion?: GateFixSuggestion;
 }
 
 export interface GateReport {
@@ -478,39 +483,6 @@ export interface ServiceSpec {
   dependsOn?: string[];
 }
 
-/** An MCP server started alongside a match. Agents connect via standard MCP protocol. */
-export interface McpServerSpec {
-  /** Unique name within this challenge */
-  name: string;
-  /** Docker image running the MCP server */
-  image: string;
-  /** MCP transport protocol */
-  transport: "sse" | "streamable-http";
-  /** Server port inside container (default 3000) */
-  port?: number;
-  /** Environment variables with {{seed}}, {{match_id}} placeholder support */
-  env?: Record<string, string>;
-  /** Advertised tools — used in CHALLENGE.md documentation and interaction logging */
-  tools?: Array<{
-    name: string;
-    description: string;
-    inputSchema?: Record<string, unknown>;
-  }>;
-  /** Advertised resources — used in CHALLENGE.md documentation */
-  resources?: Array<{
-    uri: string;
-    description: string;
-    mimeType?: string;
-  }>;
-  /** Health check timeout in seconds (default 30). Server must respond to MCP initialize. */
-  healthCheckTimeoutSecs?: number;
-  /** Resource limits for the MCP server container */
-  resourceLimits?: {
-    memory?: string;   // default "512m"
-    cpus?: number;     // default 1
-  };
-}
-
 /** HTTP proxy config for challenges requiring external internet access. */
 export interface ProxySpec {
   /** Domains the agent is allowed to access (default: all) */
@@ -521,8 +493,8 @@ export interface ProxySpec {
   logBodies?: boolean;
   /** Max body size to log in bytes (default 5120 = 5KB) */
   maxLogBodySize?: number;
-  /** Which service handles proxied requests (default: first service) */
-  backendService?: string;
+  /** Which service handles proxied requests */
+  backendService: string;
   /** Path prefix on the backend service (default: "/docs") */
   backendPathPrefix?: string;
 }
@@ -580,50 +552,16 @@ export interface ServiceInteraction {
   durationMs: number;
 }
 
-/** Recorded MCP tool call between agent and a match MCP server. */
-export interface McpToolCallRecord {
-  ts: string;
-  server: string;
-  tool: string;
-  arguments: Record<string, unknown>;
-  result: unknown;
-  durationMs: number;
-  error?: string;
-}
-
-/** Recorded MCP resource read between agent and a match MCP server. */
-export interface McpResourceReadRecord {
-  ts: string;
-  server: string;
-  uri: string;
-  mimeType?: string;
-  contentPreview?: string;  // first 5KB
-  durationMs: number;
-}
-
-/** MCP server connection info returned to agent on match entry. */
-export interface McpConnectionInfo {
-  transport: "sse" | "streamable-http";
-  url: string;
-  token: string;
-}
-
 /** Live service state tracked on a match record. */
 export interface MatchServiceState {
   /** URLs for each active service */
   serviceUrls: Record<string, string>;
-  /** MCP server connection info */
-  mcpServers: Record<string, McpConnectionInfo>;
   /** Proxy URL (if challenge uses external access) */
   proxyUrl?: string;
   /** Docker container IDs for lifecycle management */
   containerIds: string[];
   /** Interaction log (populated during match) */
   serviceInteractions: ServiceInteraction[];
-  /** MCP tool call log (populated during match) */
-  mcpToolCalls: McpToolCallRecord[];
-  /** MCP resource read log (populated during match) */
-  mcpResourceReads: McpResourceReadRecord[];
   /** Metrics collected from services at scoring time */
   serviceMetrics: Record<string, Record<string, unknown>>;
 }

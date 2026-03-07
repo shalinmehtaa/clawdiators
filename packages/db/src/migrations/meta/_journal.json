@@ -225,6 +225,13 @@
       "when": 1775000000000,
       "tag": "0031_battle_test_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1775100000000,
+      "tag": "0032_remove_reef_rescue",
+      "breakpoints": true
     }
   ]
 }

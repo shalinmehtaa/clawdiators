@@ -24,11 +24,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
-import type { ServiceSpec, McpServerSpec, WorkspaceSpec } from "@clawdiators/shared";
+import type { ServiceSpec, WorkspaceSpec } from "@clawdiators/shared";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,19 +41,9 @@ export interface RunningService {
   hostPort?: number;
 }
 
-export interface RunningMcpServer {
-  name: string;
-  containerId: string;
-  containerName: string;
-  internalUrl: string;
-  hostPort?: number;
-  token: string;
-}
-
 /** Stored in matches.serviceData. Used by proxy routes and cleanup. */
 export interface MatchContainerData {
   services: RunningService[];
-  mcpServers: RunningMcpServer[];
   serviceToken: string;
   launchedAt: string;
   /** Which backend launched these — needed to clean up correctly */
@@ -64,8 +52,6 @@ export interface MatchContainerData {
   networkName?: string;
   /** Compose project name (only set for compose backend) */
   composeProject?: string;
-  /** Temp dir containing the compose file copy (only set for compose backend) */
-  composeTmpDir?: string;
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────
@@ -320,36 +306,35 @@ async function composeUp(
   const project = `clw-${shortMatchId(matchId)}`;
   const serviceToken = generateMatchToken();
 
-  // Copy compose file to temp dir for isolation
-  const tmpDir = await mkdtemp(join(tmpdir(), `clw-compose-`));
-  const tmpComposePath = join(tmpDir, "docker-compose.yml");
-  await copyFile(composeFilePath, tmpComposePath);
+  // Run compose from the challenge directory so relative build paths resolve correctly.
+  // Use project name (-p) for isolation between concurrent matches.
+  const challengeDir = dirname(composeFilePath);
 
-  // Build env file
-  const envContent = [
-    `SEED=${seed}`,
-    `MATCH_ID=${matchId}`,
-    `SERVICE_TOKEN=${serviceToken}`,
-    ...(ttlSecs ? [`MATCH_TTL_SECS=${ttlSecs}`] : []),
-  ].join("\n");
-  await writeFile(join(tmpDir, ".env"), envContent);
+  // Start services — inject env vars directly (no .env file needed)
+  const composeEnv = {
+    ...process.env,
+    SEED: String(seed),
+    MATCH_ID: matchId,
+    SERVICE_TOKEN: serviceToken,
+    ...(ttlSecs ? { MATCH_TTL_SECS: String(ttlSecs) } : {}),
+  };
 
-  // Start services
   await execFileAsync("docker", [
-    "compose", "-p", project, "-f", tmpComposePath,
+    "compose", "-p", project, "-f", composeFilePath,
     "up", "-d", "--build", "--wait",
   ], {
     timeout: 120_000,
-    env: { ...process.env, SEED: String(seed), MATCH_ID: matchId, SERVICE_TOKEN: serviceToken },
+    cwd: challengeDir,
+    env: composeEnv,
   });
 
   // List running services
   const { stdout: psOutput } = await execFileAsync("docker", [
-    "compose", "-p", project, "-f", tmpComposePath,
+    "compose", "-p", project, "-f", composeFilePath,
     "ps", "--format", "json",
   ], { timeout: 10_000 });
 
-  // Parse service info — each line is a JSON object
+  // Parse service info
   const services: RunningService[] = [];
   for (const line of psOutput.trim().split("\n").filter(Boolean)) {
     try {
@@ -360,7 +345,7 @@ async function composeUp(
 
       try {
         const { stdout: portOutput } = await execFileAsync("docker", [
-          "compose", "-p", project, "-f", tmpComposePath,
+          "compose", "-p", project, "-f", composeFilePath,
           "port", svc.Service, "3000",
         ], { timeout: 5_000 });
         const pm = portOutput.trim().match(/:(\d+)$/);
@@ -386,24 +371,17 @@ async function composeUp(
 
   return {
     services,
-    mcpServers: [], // MCP servers from Compose are treated as regular services
     serviceToken,
     launchedAt: new Date().toISOString(),
     backend: "compose",
     composeProject: project,
-    composeTmpDir: tmpDir,
   };
 }
 
-function composeDown(project: string, tmpDir?: string): void {
+function composeDown(project: string): void {
   execFileAsync("docker", [
     "compose", "-p", project, "down", "-v", "--remove-orphans",
   ], { timeout: 30_000 }).catch(() => {});
-
-  // Clean up temp dir
-  if (tmpDir) {
-    rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-  }
 }
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -420,7 +398,7 @@ type StartFn = (
 ) => Promise<{ containerId: string; containerName: string; internalUrl: string; hostPort?: number }>;
 
 /**
- * Launch all services and MCP servers declared in a workspaceSpec.
+ * Launch all services declared in a workspaceSpec.
  * Called from the match entry route before returning to the agent.
  *
  * @param ttlSecs — if provided, containers will self-terminate after this many
@@ -429,7 +407,7 @@ type StartFn = (
 export async function launchMatchContainers(
   matchId: string,
   seed: number,
-  workspaceSpec: Pick<WorkspaceSpec, "services" | "mcpServers">,
+  workspaceSpec: Pick<WorkspaceSpec, "services">,
   ttlSecs?: number,
   challengeSlug?: string,
 ): Promise<MatchContainerData> {
@@ -447,7 +425,6 @@ export async function launchMatchContainers(
 
   const serviceToken = generateMatchToken();
   const services: RunningService[] = [];
-  const mcpServers: RunningMcpServer[] = [];
 
   // Create per-match isolated network for Docker backend
   let networkName: string | undefined;
@@ -488,36 +465,7 @@ export async function launchMatchContainers(
     services.push({ name: spec.name, ...result });
   }
 
-  // MCP servers start in parallel (no inter-dependencies)
-  const mcpResults = await Promise.all(
-    (workspaceSpec.mcpServers ?? []).map(async (spec) => {
-      const mcpToken = generateMatchToken();
-      const port = spec.port ?? 3000;
-      const env: Record<string, string> = {
-        SEED: String(seed),
-        MATCH_ID: matchId,
-        MCP_TOKEN: mcpToken,
-        PORT: String(port),
-        ...(ttlSecs ? { MATCH_TTL_SECS: String(ttlSecs) } : {}),
-        ...resolveEnv(spec.env, seed, matchId),
-      };
-
-      const result = await start(matchId, spec.name, spec.image, port, env, {
-        memory: spec.resourceLimits?.memory,
-        cpus: spec.resourceLimits?.cpus,
-      }, networkName);
-
-      await waitForHttpHealth(
-        result.internalUrl, "/health", 2, spec.healthCheckTimeoutSecs ?? 30, 2,
-      );
-
-      return { name: spec.name, ...result, token: mcpToken };
-    }),
-  );
-
-  mcpServers.push(...mcpResults);
-
-  return { services, mcpServers, serviceToken, launchedAt: new Date().toISOString(), backend, networkName };
+  return { services, serviceToken, launchedAt: new Date().toISOString(), backend, networkName };
 }
 
 /**
@@ -526,21 +474,15 @@ export async function launchMatchContainers(
  */
 export function stopMatchContainers(data: MatchContainerData): void {
   if (data.backend === "compose" && data.composeProject) {
-    composeDown(data.composeProject, data.composeTmpDir);
+    composeDown(data.composeProject);
     return;
   }
 
   if (data.backend === "fly") {
-    const ids = [
-      ...data.services.map((s) => s.containerId),
-      ...data.mcpServers.map((m) => m.containerId),
-    ];
+    const ids = data.services.map((s) => s.containerId);
     flyStop(ids);
   } else {
-    const names = [
-      ...data.services.map((s) => s.containerName),
-      ...data.mcpServers.map((m) => m.containerName),
-    ];
+    const names = data.services.map((s) => s.containerName);
     dockerStop(names);
 
     // Remove per-match network (best-effort)

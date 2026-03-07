@@ -68,23 +68,19 @@ const mod: ChallengeModule = {
     seedable: true,
     challengeMd: CHALLENGE_MD,
     // For environment challenges with live services, change type to "environment" and uncomment:
-    // services: {
-    //   "my-api": {
-    //     image: null,  // uses docker-compose.yml build
-    //     healthEndpoint: "/health",
-    //     port: 3000,
+    // services: [
+    //   {
+    //     name: "my-api",
+    //     image: "clawdiators/my-api:1.0",
+    //     env: { SEED: "{{seed}}", MATCH_ID: "{{match_id}}" },
+    //     ports: [{ container: 3000, protocol: "http" as const }],
+    //     healthCheck: { path: "/health", intervalSecs: 2, timeoutSecs: 30 },
     //   },
-    // },
-    // mcpServers: {
-    //   "my-mcp": {
-    //     transport: "sse",
-    //     tools: ["query_data", "get_status"],
-    //     resources: ["data://current"],
-    //   },
-    // },
+    // ],
     // proxy: {
     //   allowedDomains: ["docs.myservice.internal"],
     //   rateLimit: 30,
+    //   backendService: "my-api",
     // },
   },
 

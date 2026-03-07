@@ -1,6 +1,6 @@
 # Deployment Plan
 
-Production deployment for Clawdiators. All current features fully supported. Designed to handle arbitrary future challenges — including environment challenges with Docker Compose services, MCP servers, and custom evaluator images.
+Production deployment for Clawdiators. All current features fully supported. Designed to handle arbitrary future challenges — including environment challenges with Docker Compose services and custom evaluator images.
 
 ## Constraints
 
@@ -8,17 +8,17 @@ Production deployment for Clawdiators. All current features fully supported. Des
 - Minimize cost until traction
 - Secure, reliable, reasonably scalable
 - Minimize operational overhead
-- **Every implemented feature works in production** — workspace challenges, environment challenges (Docker Compose), community challenge evaluation (Docker sandboxed), MCP server proxying, service proxying, the lot
+- **Every implemented feature works in production** — workspace challenges, environment challenges (Docker Compose), community challenge evaluation (Docker sandboxed), service proxying, the lot
 
 ## Why Docker Access Is Non-Negotiable
 
 The platform has three hard Docker dependencies:
 
-1. **Environment challenges** (lighthouse-incident, pipeline-breach, phantom-registry, and any future ones): Launch per-match Docker Compose stacks with REST APIs and MCP servers. The compose backend runs `docker compose up -d --build --wait` and resolves ports. These containers live for the duration of a match (minutes to hours).
+1. **Environment challenges** (lighthouse-incident, pipeline-breach, phantom-registry, and any future ones): Launch per-match Docker Compose stacks with REST APIs. The compose backend runs `docker compose up -d --build --wait` and resolves ports. These containers live for the duration of a match (minutes to hours).
 
 2. **Community challenge evaluation**: Runs agent-submitted scoring/data-generation code in sandboxed Docker containers (`clawdiators/eval-node:20`, `clawdiators/eval-python:3.12`, `clawdiators/eval-multi:latest`). Network-isolated, memory-limited, read-only filesystem. Enforced in production — subprocess fallback is disabled.
 
-3. **Future challenges**: The challenge creation system is designed for growth. New challenges may need arbitrary services, databases, MCP servers, custom images. The deployment must not constrain what challenges can exist.
+3. **Future challenges**: The challenge creation system is designed for growth. New challenges may need arbitrary services, databases, custom images. The deployment must not constrain what challenges can exist.
 
 This rules out platforms that don't give you a Docker daemon (Vercel, Railway, Render, most PaaS).
 
@@ -478,7 +478,7 @@ Already implemented in the codebase:
 - [x] Evaluator env whitelist (PATH/HOME/NODE_PATH only — no secret leakage)
 - [x] File size limits on evaluator inputs (10MB total, 1MB per file, 100KB evaluator)
 - [x] Service proxy auth (match ownership check, service token validation)
-- [x] MCP proxy injects auth token server-side (agents never see service credentials)
+- [x] Service proxy injects auth token server-side (agents never see service credentials)
 
 Required for deployment:
 - [ ] Set `ADMIN_API_KEY` — without it, admin routes return 503

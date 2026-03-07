@@ -67,6 +67,47 @@ async function runGatesInBackground(
   }
 }
 
+// ── POST /challenges/drafts/dry-run — validate without creating a draft ──
+
+challengeDraftRoutes.post("/dry-run", async (c) => {
+  const body = await c.req.json() as {
+    spec: unknown;
+    referenceAnswer: { seed: number; answer: Record<string, unknown> };
+  };
+
+  if (!body.referenceAnswer || typeof body.referenceAnswer.seed !== "number" || !body.referenceAnswer.answer) {
+    return errorEnvelope(
+      c,
+      "referenceAnswer with seed (number) and answer (object) is required",
+      400,
+      "Prove your blueprint is solveable.",
+    );
+  }
+
+  // Fast-fail sync spec validation
+  const validation = validateSpec(body.spec);
+  if (!validation.valid) {
+    return errorEnvelope(
+      c,
+      `Invalid challenge spec: ${validation.errors.join("; ")}`,
+      400,
+      "Your blueprint has flaws, gladiator.",
+    );
+  }
+
+  // Run all gates synchronously — no DB write
+  const report = await runAllGates(body.spec, body.referenceAnswer);
+
+  return envelope(
+    c,
+    { gate_report: report, gate_status: report.overall === "fail" ? "failed" : "passed" },
+    200,
+    report.overall === "pass"
+      ? "All gates pass — ready to submit for real."
+      : "Some gates failed — check the report for fix suggestions.",
+  );
+});
+
 // ── POST /challenges/drafts — submit a challenge spec ────────────────
 
 challengeDraftRoutes.post("/", async (c) => {

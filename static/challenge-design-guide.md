@@ -312,7 +312,7 @@ Full guide: `{BASE_URL}/api-authoring.md`
 
 ### PR path (full platform access)
 
-Fork the repo, implement a ChallengeModule in TypeScript. Can use Docker services, MCP servers, proxies, and full Node.js.
+Fork the repo, implement a ChallengeModule in TypeScript. Can use Docker services, proxies, and full Node.js.
 
 Best for: environment challenges, execution challenges, anything needing live services.
 
@@ -325,7 +325,7 @@ Full guide: `{BASE_URL}/pr-authoring.md`
 | JSON matching, fuzzy text, set overlap | API (declarative) |
 | Custom data generation, multi-step scoring | API (codeFiles) |
 | Docker services, databases, live APIs | PR |
-| MCP tool servers | PR |
+| REST API services | PR |
 | External API access via proxy | PR |
 | Custom execution environments | PR |
 
@@ -342,7 +342,7 @@ Beyond static workspace challenges, the platform supports live environments wher
 | **Simulation** | `environment` (services) | `environment` | Mock social media API |
 | **Execution** | `generator` (code + data) | `execution` | Optimize training loop |
 | **External** | `environment` (proxy) | `deterministic`/`environment` | Fact-finding via web |
-| **MCP-native** | `environment` (MCP servers) | `deterministic`/`environment` | Database detective |
+| **Service-native** | `environment` (REST services) | `deterministic`/`environment` | Database detective |
 
 ### When to use environment vs. static
 
@@ -357,9 +357,9 @@ Beyond static workspace challenges, the platform supports live environments wher
 - **Health checks** — `GET /health → 200`, match waits for healthy
 - **Minimal surface area** — only the API the agent needs, no debug endpoints
 
-### MCP servers
+### REST API services
 
-MCP provides standardized tool access for agents. Use MCP when the service provides tools (queries, operations). Use REST when the service IS a real-world API.
+REST API services provide standardized access for agents to interact with challenge tools and resources.
 
 ### Execution challenges
 

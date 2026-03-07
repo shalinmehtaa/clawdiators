@@ -1,11 +1,11 @@
 /**
- * The Phantom Registry — MCP Audit Database Server
+ * The Phantom Registry — Audit Database REST Server
  *
- * SSE-based MCP server providing audit log query tools.
+ * REST server providing audit log query endpoints.
  * Generates the same deterministic audit data from SEED.
  */
 
-const http = require("http");
+const express = require("express");
 
 const SEED = parseInt(process.env.SEED || "42", 10);
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -115,7 +115,7 @@ function generateAuditData(seed) {
       versions.push({ version: `${major}.${minor}.${patch}`, publishedAt: daysAgo(vDaysAgo), publishedBy: pick(pkgMaintainers, r) });
     }
     // consume PRNG values for description, weeklyDownloads, dependents, keywords
-    r(); r(); r(); r(); r(); // description picks
+    r(); r(); r(); // description: 3 pick() calls
     const weeklyDownloads = randInt(100, 500000, r);
     randInt(0, 2000, r); // dependents
     randInt(90, 800, r); // createdAt (already consumed above, but data.ts calls it separately for package.createdAt)
@@ -267,11 +267,9 @@ function generateAuditData(seed) {
 
 const auditData = generateAuditData(SEED);
 
-// ── MCP SSE Server ───────────────────────────────────────────────────
+// ── Tool handlers ────────────────────────────────────────────────────
 
-let mcpRequestId = 0;
-
-function handleMCPToolCall(toolName, args) {
+function handleToolCall(toolName, args) {
   const logs = auditData.logs;
 
   switch (toolName) {
@@ -387,7 +385,7 @@ function handleMCPToolCall(toolName, args) {
   }
 }
 
-// ── SSE MCP transport ────────────────────────────────────────────────
+// ── Tool definitions ─────────────────────────────────────────────────
 
 const TOOLS = [
   { name: "query_audit_log", description: "Query audit events with filters", inputSchema: { type: "object", properties: { actor: { type: "string" }, action: { type: "string" }, target: { type: "string" }, ip: { type: "string" }, success: { type: "boolean" }, time_range: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } }, limit: { type: "number" } } } },
@@ -397,69 +395,39 @@ const TOOLS = [
   { name: "compare_ips", description: "Find actors who share IP addresses", inputSchema: { type: "object", properties: {} } },
 ];
 
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
+// ── Express REST server ──────────────────────────────────────────────
 
-  // Health check
-  if (url.pathname === "/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ status: "ok" }));
-  }
+const app = express();
+app.use(express.json());
 
-  // SSE endpoint
-  if (url.pathname === "/sse" && req.method === "GET") {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    });
-
-    const sessionId = `session-${++mcpRequestId}`;
-    res.write(`event: endpoint\ndata: /messages?sessionId=${sessionId}\n\n`);
-
-    const keepalive = setInterval(() => res.write(": keepalive\n\n"), 15000);
-    req.on("close", () => clearInterval(keepalive));
-    return;
-  }
-
-  // Message endpoint (JSON-RPC over POST, responses as SSE would be complex,
-  // so we use simple JSON-RPC request/response for tool calls)
-  if (url.pathname === "/messages" && req.method === "POST") {
-    let body = "";
-    req.on("data", chunk => body += chunk);
-    req.on("end", () => {
-      try {
-        const msg = JSON.parse(body);
-        let result;
-
-        if (msg.method === "initialize") {
-          result = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "phantom-audit-db", version: "1.0" } };
-        } else if (msg.method === "tools/list") {
-          result = { tools: TOOLS };
-        } else if (msg.method === "tools/call") {
-          const toolResult = handleMCPToolCall(msg.params.name, msg.params.arguments || {});
-          result = { content: [{ type: "text", text: JSON.stringify(toolResult, null, 2) }] };
-        } else if (msg.method === "notifications/initialized") {
-          res.writeHead(204);
-          return res.end();
-        } else {
-          result = { error: { code: -32601, message: "Method not found" } };
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }));
-      } catch (e) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }));
-      }
-    });
-    return;
-  }
-
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "Not found" }));
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
-server.listen(PORT, () => {
-  console.log(`[phantom-audit-db] MCP server listening on port ${PORT} (seed=${SEED})`);
+app.get("/tools", (req, res) => {
+  res.json(TOOLS);
+});
+
+app.post("/tools/query_audit_log", (req, res) => {
+  res.json(handleToolCall("query_audit_log", req.body));
+});
+
+app.post("/tools/get_ip_activity", (req, res) => {
+  res.json(handleToolCall("get_ip_activity", req.body));
+});
+
+app.post("/tools/get_actor_timeline", (req, res) => {
+  res.json(handleToolCall("get_actor_timeline", req.body));
+});
+
+app.post("/tools/get_suspicious_patterns", (req, res) => {
+  res.json(handleToolCall("get_suspicious_patterns", req.body));
+});
+
+app.post("/tools/compare_ips", (req, res) => {
+  res.json(handleToolCall("compare_ips", req.body));
+});
+
+app.listen(PORT, () => {
+  console.log(`[phantom-audit-db] Audit DB server listening on port ${PORT} (seed=${SEED})`);
 });

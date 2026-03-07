@@ -1,14 +1,15 @@
 /**
- * PIPELINE BREACH — MCP Build Logs Server
+ * PIPELINE BREACH — Build Logs Server
  *
- * MCP server providing structured build log query tools.
+ * REST server providing structured build log query endpoints.
  * Generates seeded build logs matching the data.ts generator.
  *
- * Tools:
- *   query_build_logs      — Filter logs by service, severity, step, pattern
- *   get_anomaly_timeline  — Chronological security anomaly events
- *   correlate_events      — Cross-service event correlation
- *   get_security_summary  — Per-service security finding counts
+ * Endpoints:
+ *   POST /tools/query_build_logs      — Filter logs by service, severity, step, pattern
+ *   POST /tools/get_anomaly_timeline  — Chronological security anomaly events
+ *   POST /tools/correlate_events      — Cross-service event correlation
+ *   POST /tools/get_security_summary  — Per-service security finding counts
+ *   GET  /tools                       — List available tools
  */
 
 import express from "express";
@@ -85,7 +86,7 @@ for (let i = 0; i < 50; i++) {
 
 logs.sort((a, b) => a.ts.localeCompare(b.ts));
 
-// ── MCP tool handlers ─────────────────────────────────────────────────
+// ── Tool handlers ────────────────────────────────────────────────────
 function queryBuildLogs(params) {
   let filtered = [...logs];
   if (params.service) filtered = filtered.filter((l) => l.service === params.service);
@@ -137,41 +138,41 @@ function getSecuritySummary() {
   return Object.values(summary).sort((a, b) => b.total - a.total);
 }
 
-// ── SSE-based MCP protocol (simplified) ────────────────────────────────
+// ── Tool metadata ────────────────────────────────────────────────────
 const TOOLS = [
-  { name: "query_build_logs", description: "Query build logs with filters", inputSchema: { type: "object", properties: { service: { type: "string" }, severity: { type: "string" }, pipeline: { type: "string" }, step: { type: "string" }, pattern: { type: "string" } } } },
-  { name: "get_anomaly_timeline", description: "Chronological timeline of security anomalies", inputSchema: { type: "object", properties: { service: { type: "string" } } } },
-  { name: "correlate_events", description: "Cross-service event correlation", inputSchema: { type: "object", properties: { time_window_minutes: { type: "number" }, min_severity: { type: "string" } } } },
-  { name: "get_security_summary", description: "Per-service security finding counts", inputSchema: { type: "object", properties: {} } },
+  { name: "query_build_logs", description: "Query build logs with filters", parameters: { service: "string (optional)", severity: "string (optional)", pipeline: "string (optional)", step: "string (optional)", pattern: "string (optional)" } },
+  { name: "get_anomaly_timeline", description: "Chronological timeline of security anomalies", parameters: { service: "string (optional)" } },
+  { name: "correlate_events", description: "Cross-service event correlation", parameters: { time_window_minutes: "number (optional)", min_severity: "string (optional)" } },
+  { name: "get_security_summary", description: "Per-service security finding counts", parameters: {} },
 ];
 
 // Health endpoint
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// MCP tools/list
-app.get("/mcp/tools", (_req, res) => res.json({ tools: TOOLS }));
+// List available tools
+app.get("/tools", (_req, res) => res.json({ tools: TOOLS }));
 
-// MCP tools/call
-app.post("/mcp/tools/call", (req, res) => {
-  const { name, arguments: args } = req.body || {};
-  let result;
-  switch (name) {
-    case "query_build_logs": result = queryBuildLogs(args || {}); break;
-    case "get_anomaly_timeline": result = getAnomalyTimeline(args || {}); break;
-    case "correlate_events": result = correlateEvents(args || {}); break;
-    case "get_security_summary": result = getSecuritySummary(); break;
-    default: return res.status(404).json({ error: `Unknown tool: ${name}` });
-  }
-  res.json({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+// Individual tool endpoints
+app.post("/tools/query_build_logs", (req, res) => {
+  const result = queryBuildLogs(req.body || {});
+  res.json({ ok: true, data: result });
 });
 
-// SSE endpoint for MCP protocol
-app.get("/sse", (req, res) => {
-  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-  res.write(`data: ${JSON.stringify({ type: "endpoint", url: "/mcp" })}\n\n`);
-  req.on("close", () => res.end());
+app.post("/tools/get_anomaly_timeline", (req, res) => {
+  const result = getAnomalyTimeline(req.body || {});
+  res.json({ ok: true, data: result });
+});
+
+app.post("/tools/correlate_events", (req, res) => {
+  const result = correlateEvents(req.body || {});
+  res.json({ ok: true, data: result });
+});
+
+app.post("/tools/get_security_summary", (_req, res) => {
+  const result = getSecuritySummary();
+  res.json({ ok: true, data: result });
 });
 
 app.listen(PORT, () => {
-  console.log(`MCP Build Logs server running on port ${PORT} with SEED=${SEED}`);
+  console.log(`Build Logs server running on port ${PORT} with SEED=${SEED}`);
 });

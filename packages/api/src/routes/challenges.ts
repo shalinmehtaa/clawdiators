@@ -8,6 +8,8 @@ import { getChallenge } from "../challenges/registry.js";
 import { buildWorkspaceArchive, type ChallengeMdContext } from "../challenges/workspace.js";
 import { getChallengeAnalytics } from "../services/analytics.js";
 import { getAllowedImages } from "../challenges/primitives/validator.js";
+import { SCORING_PRIMITIVES_METADATA } from "../challenges/primitives/scoring.js";
+import { DATA_GENERATORS_METADATA } from "../challenges/primitives/data-generator.js";
 
 
 export const challengeRoutes = new Hono();
@@ -15,6 +17,147 @@ export const challengeRoutes = new Hono();
 // GET /challenges/images — public endpoint returning allowed Docker images for challenge specs
 challengeRoutes.get("/images", (c) => {
   return envelope(c, { images: getAllowedImages() });
+});
+
+// GET /challenges/primitives — machine-readable reference of scoring primitives and data generators
+challengeRoutes.get("/primitives", (c) => {
+  return envelope(c, {
+    scoring_primitives: SCORING_PRIMITIVES_METADATA,
+    data_generators: DATA_GENERATORS_METADATA,
+    valid_categories: ["calibration", "toolchain", "efficiency", "relay", "coding", "reasoning", "context", "memory", "endurance", "alignment", "multimodal", "cybersecurity", "optimization", "research"],
+    valid_difficulties: ["newcomer", "contender", "veteran", "legendary"],
+    valid_match_types: ["single", "multi-checkpoint", "long-running"],
+    valid_colors: ["emerald", "sky", "gold", "purple", "coral"],
+    gate_thresholds: {
+      newcomer: { baseline_minimum: 0.6, anti_gaming_ceiling: 0.25 },
+      contender: { baseline_minimum: 0.5, anti_gaming_ceiling: 0.25 },
+      veteran: { baseline_minimum: 0.35, anti_gaming_ceiling: 0.2 },
+      legendary: { baseline_minimum: 0.2, anti_gaming_ceiling: 0.15 },
+    },
+  });
+});
+
+// GET /challenges/scaffold — generate a valid starting spec
+challengeRoutes.get("/scaffold", (c) => {
+  const type = c.req.query("type") ?? "code";
+  const category = c.req.query("category") ?? "reasoning";
+  const difficulty = c.req.query("difficulty") ?? "contender";
+  const dimensionParam = c.req.query("dimensions");
+
+  const validTypes = ["declarative", "code"];
+  if (!validTypes.includes(type)) {
+    return errorEnvelope(c, `type must be one of: ${validTypes.join(", ")}`, 400);
+  }
+
+  // Build dimensions from param or defaults
+  const dimKeys = dimensionParam
+    ? dimensionParam.split(",").map((d) => d.trim())
+    : ["correctness", "speed", "methodology"];
+
+  const dimColors: Record<string, string> = {
+    correctness: "emerald", completeness: "gold", precision: "coral",
+    methodology: "purple", speed: "sky", code_quality: "coral", analysis: "gold",
+  };
+
+  const dimLabels: Record<string, string> = {
+    correctness: "Correctness", completeness: "Completeness", precision: "Precision",
+    methodology: "Methodology", speed: "Speed", code_quality: "Code Quality", analysis: "Analysis",
+  };
+
+  const weight = Math.round((1 / dimKeys.length) * 1000) / 1000;
+  // Adjust last weight so they sum to exactly 1.0
+  const dimensions = dimKeys.map((key, i) => ({
+    key,
+    label: dimLabels[key] ?? key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
+    weight: i === dimKeys.length - 1 ? Math.round((1 - weight * (dimKeys.length - 1)) * 1000) / 1000 : weight,
+    description: `TODO: Describe how ${key} is scored`,
+    color: dimColors[key] ?? "sky",
+  }));
+
+  const spec: Record<string, unknown> = {
+    slug: "my-challenge-slug",
+    name: "My Challenge Name",
+    description: "TODO: A 10-500 char description of what agents face",
+    lore: "TODO: A 10-1000 char narrative context for the challenge. Make it thematic and engaging.",
+    category,
+    difficulty,
+    matchType: "single",
+    timeLimitSecs: 300,
+    workspace: {
+      type: "generator",
+      seedable: true,
+      challengeMd: "# My Challenge\\n\\nSeed: {{seed}}\\n\\n## Objective\\n\\nTODO: Describe the challenge objective.\\n\\n## Submission Format\\n\\n```json\\n{ \\\"answer\\\": \\\"your answer here\\\" }\\n```\\n\\n## Scoring\\n\\n" +
+        dimensions.map((d) => `- **${d.label}** (${Math.round(d.weight * 100)}%): ${d.description}`).join("\\n") +
+        "\\n",
+    },
+    submission: { type: "json" },
+    scoring: {
+      method: "deterministic",
+      maxScore: 1000,
+      dimensions,
+    },
+  };
+
+  if (type === "code") {
+    spec.codeFiles = {
+      "data.js": [
+        "function generateData(seed) {",
+        "  var r = rng(seed);",
+        "  // TODO: Generate challenge data using the seeded PRNG",
+        "  var value = Math.floor(r() * 100) + 1;",
+        "  return {",
+        '    objective: "TODO: Describe what the agent should do with value " + value,',
+        "    groundTruth: { answer: value },",
+        "    value: value",
+        "  };",
+        "}",
+        "module.exports = { generateData };",
+      ].join("\n"),
+      "scorer.js": [
+        "function score(input) {",
+        "  var sub = input.submission || {};",
+        "  var gt = input.groundTruth;",
+        "",
+        "  // TODO: Score each dimension. Gate bonus dimensions on correctness > 0.",
+        "  var correctness = sub.answer === gt.answer ? " + Math.round(dimensions[0].weight * 1000) + " : 0;",
+        "",
+        "  var speed = 0;",
+        "  if (correctness > 0) {",
+        "    var elapsed = (new Date(input.submittedAt) - new Date(input.startedAt)) / 1000;",
+        "    speed = Math.max(0, Math.round(" + Math.round(dimensions.length > 1 ? dimensions[1].weight * 1000 : 200) + " * (1 - elapsed / 300)));",
+        "  }",
+        "",
+        "  var total = correctness + speed;",
+        "  return { breakdown: { " + dimKeys.map((k, i) => i === 0 ? `${k}: correctness` : i === 1 ? `${k}: speed` : `${k}: 0`).join(", ") + ", total: total } };",
+        "}",
+        "module.exports = { score };",
+      ].join("\n"),
+    };
+  }
+
+  const referenceAnswer = {
+    seed: 42,
+    answer: { answer: "TODO: Replace with the correct answer for seed 42" },
+  };
+
+  return envelope(c, {
+    spec,
+    referenceAnswer,
+    instructions: {
+      next_steps: [
+        "1. Replace all TODO markers with your challenge content",
+        "2. Run generateData(42) mentally or locally to compute the correct referenceAnswer",
+        "3. Validate with POST /api/v1/challenges/drafts/dry-run before submitting",
+        "4. Submit with POST /api/v1/challenges/drafts",
+      ],
+      docs: {
+        api_authoring: "/api-authoring.md",
+        pr_authoring: "/pr-authoring.md",
+        design_guide: "/challenge-design-guide.md",
+        primitives: "/api/v1/challenges/primitives",
+      },
+    },
+  });
 });
 
 /** Derive display name from slug: "blueprint-audit" → "Blueprint Audit" */
@@ -200,6 +343,26 @@ challengeRoutes.get("/:slug/workspace", async (c) => {
         columns: { harness: true },
       });
       workspaceCtx.agentHarness = (matchAgent?.harness as HarnessInfo | null) ?? null;
+
+      // Reconstruct service URLs from stored container data so CHALLENGE.md has working URLs
+      const containerData = (match as any).serviceData as { services?: { name: string }[]; serviceToken?: string } | null;
+      if (containerData && !("degraded" in containerData)) {
+        const platformBase = process.env.PLATFORM_URL ?? "";
+        if (containerData.services?.length) {
+          workspaceCtx.serviceUrls = {};
+          for (const svc of containerData.services) {
+            workspaceCtx.serviceUrls[svc.name] = `${platformBase}/api/v1/matches/${matchIdParam}/services/${svc.name}`;
+          }
+        }
+        if (containerData.serviceToken) {
+          workspaceCtx.serviceToken = containerData.serviceToken;
+        }
+        // Check if challenge has a proxy config
+        const wsSpec = mod.workspaceSpec;
+        if (wsSpec?.type === "environment" && wsSpec.proxy) {
+          workspaceCtx.proxyUrl = `${platformBase}/api/v1/matches/${matchIdParam}/proxy`;
+        }
+      }
     }
 
     // Inject memory context (Layer 4) — only for non-memoryless matches with a known agent

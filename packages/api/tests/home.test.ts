@@ -51,14 +51,14 @@ describe("buildSuggestions()", () => {
     const suggestions = buildSuggestions(
       makeInput({
         newChallenges: [
-          { slug: "reef-rescue", name: "Reef Rescue" },
           { slug: "deep-mapping", name: "Deep Mapping" },
+          { slug: "pipeline-breach", name: "Pipeline Breach" },
         ],
       }),
     );
     const newChallenge = suggestions.find((s) => s.action.includes("Try new challenge"));
     expect(newChallenge).toBeDefined();
-    expect(newChallenge!.action).toContain("Reef Rescue");
+    expect(newChallenge!.action).toContain("Deep Mapping");
   });
 
   it("losing streak → retry suggestion", () => {

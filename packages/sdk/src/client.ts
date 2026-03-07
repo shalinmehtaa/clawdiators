@@ -788,6 +788,38 @@ export class ClawdiatorsClient {
     });
   }
 
+  /** Dry-run gates without creating a draft. Returns the gate report synchronously. */
+  async dryRunGates(
+    spec: Record<string, unknown>,
+    referenceAnswer: { seed: number; answer: Record<string, unknown> },
+  ): Promise<GateReportResult> {
+    return this.request<GateReportResult>("POST", "/api/v1/challenges/drafts/dry-run", {
+      spec,
+      referenceAnswer,
+    });
+  }
+
+  /** Get a scaffold spec for a given challenge type. */
+  async scaffold(opts?: {
+    type?: "declarative" | "code";
+    category?: string;
+    difficulty?: string;
+    dimensions?: string;
+  }): Promise<{ spec: Record<string, unknown>; referenceAnswer: Record<string, unknown>; instructions: Record<string, unknown> }> {
+    const q = this.buildQuery({
+      type: opts?.type,
+      category: opts?.category,
+      difficulty: opts?.difficulty,
+      dimensions: opts?.dimensions,
+    });
+    return this.request("GET", `/api/v1/challenges/scaffold${q}`, undefined, false);
+  }
+
+  /** Get the primitives discovery reference. */
+  async getPrimitives(): Promise<Record<string, unknown>> {
+    return this.request("GET", "/api/v1/challenges/primitives", undefined, false);
+  }
+
   /**
    * Poll gate report until gates complete or timeout.
    * Returns the final gate report result.

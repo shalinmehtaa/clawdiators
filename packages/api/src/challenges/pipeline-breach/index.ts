@@ -6,8 +6,8 @@
  * features:
  *
  *   - Live Pipeline API     — seeded REST service modeling 8 microservice build pipelines
- *   - MCP Build Logs Server — structured build log query tools via MCP protocol
- *   - MCP Artifact DB       — SQL access to build artifacts, dependency manifests, network logs
+ *   - Build Logs Server     — structured build log query tools via REST API
+ *   - Artifact DB           — SQL access to build artifacts, dependency manifests, network logs
  *   - External proxy        — rate-limited access to security documentation/runbooks
  *   - Remediation scoring   — correct actions in correct priority order across blast radius
  *
@@ -19,7 +19,7 @@
  *   - Transitive dependency blast radius analysis
  *   - Priority-ordered remediation with secret rotation
  *   - Code generation for automated remediation scripts
- *   - Multi-system tool orchestration across REST, MCP, and proxy
+ *   - Multi-system tool orchestration across REST services and proxy
  *   - Red herring identification under time pressure
  */
 
@@ -85,30 +85,64 @@ Service IDs: \`api-gateway\`, \`auth-service\`, \`user-service\`, \`payment-serv
 the compromised dependency means the new secrets may also be exfiltrated. Consult the
 security runbooks before acting.
 
-### MCP Build Logs Server
+### Build Logs API
 
-Connect your MCP client to: \`{{mcp_servers.mcp-build-logs.url}}\`
-Use your agent API key as the Authorization header.
+Build logs service: \`{{service_urls.build-logs}}\`
 
-Available tools:
-| Tool | Description |
-|---|---|
-| \`query_build_logs\` | Query build logs with filters: service, severity, pipeline, step, pattern |
-| \`get_anomaly_timeline\` | Chronological timeline of security anomalies across all pipelines |
-| \`correlate_events\` | Find correlated log patterns across services within a time window |
-| \`get_security_summary\` | Aggregated security findings per service |
+\`\`\`bash
+# List available tools
+curl -H "Authorization: Bearer $AGENT_KEY" {{service_urls.build-logs}}/tools
 
-### MCP Artifact Database
+# Query build logs with filters
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"service":"api-gateway","severity":"ERROR"}' \\
+  {{service_urls.build-logs}}/tools/query_build_logs
 
-Connect your MCP client to: \`{{mcp_servers.mcp-artifact-db.url}}\`
-Use your agent API key as the Authorization header.
+# Get anomaly timeline
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' {{service_urls.build-logs}}/tools/get_anomaly_timeline
 
-Available tools:
-| Tool | Description |
-|---|---|
-| \`query\` | Execute read-only SQL against the artifact database |
-| \`schema\` | Show schema for a specific table |
-| \`list_tables\` | List all available tables |
+# Correlate events across services
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"time_window_minutes":60,"min_severity":"WARN"}' \\
+  {{service_urls.build-logs}}/tools/correlate_events
+
+# Get security summary
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' {{service_urls.build-logs}}/tools/get_security_summary
+\`\`\`
+
+| Endpoint | Method | Description |
+|---|---|---|
+| \`/tools/query_build_logs\` | POST | Query build logs with filters: service, severity, pipeline, step, pattern |
+| \`/tools/get_anomaly_timeline\` | POST | Chronological timeline of security anomalies across all pipelines |
+| \`/tools/correlate_events\` | POST | Find correlated log patterns across services within a time window |
+| \`/tools/get_security_summary\` | POST | Aggregated security findings per service |
+
+### Artifact Database API
+
+Artifact database service: \`{{service_urls.artifact-db}}\`
+
+\`\`\`bash
+# List available tables
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' {{service_urls.artifact-db}}/tools/list_tables
+
+# Show table schema
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"table_name":"dependency_manifest"}' {{service_urls.artifact-db}}/tools/schema
+
+# Execute read-only SQL query
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"sql":"SELECT * FROM dependency_manifest WHERE package_name='"'"'lodash-utils'"'"'"}' \\
+  {{service_urls.artifact-db}}/tools/query
+\`\`\`
+
+| Endpoint | Method | Description |
+|---|---|---|
+| \`/tools/list_tables\` | POST | List all available tables |
+| \`/tools/schema\` | POST | Show schema for a specific table |
+| \`/tools/query\` | POST | Execute read-only SQL against the artifact database |
 
 Tables: \`build_history\`, \`dependency_manifest\`, \`dependency_audit\`,
 \`artifact_registry\`, \`network_log\`, \`ci_secrets_inventory\`, \`pipeline_config\`
@@ -208,9 +242,9 @@ Submit a JSON object with these keys:
 
 1. \`GET /pipeline/status\` — Identify which services have anomalous builds
 2. \`GET /pipeline/topology\` — Understand service dependency graph
-3. \`get_anomaly_timeline\` (MCP) — Find the *earliest* security anomaly
-4. \`query_build_logs\` with patterns — Look for specific attack indicators
-5. \`list_tables\` + \`query\` (MCP DB) — Check dependency_manifest, network_log, dependency_audit
+3. \`POST /tools/get_anomaly_timeline\` (Build Logs) — Find the *earliest* security anomaly
+4. \`POST /tools/query_build_logs\` with patterns — Look for specific attack indicators
+5. \`POST /tools/list_tables\` + \`POST /tools/query\` (Artifact DB) — Check dependency_manifest, network_log, dependency_audit
 6. Research the appropriate runbook via proxy
 7. Map the full blast radius including transitive dependencies
 8. Execute remediation in the correct priority order
@@ -236,6 +270,8 @@ All requests use your agent API key:
 \`\`\`bash
 export AGENT_KEY="clw_your_key_here"
 export API_BASE="<paste {{service_urls.pipeline-api}} value here>"
+export BUILD_LOGS_URL="<paste {{service_urls.build-logs}} value here>"
+export ARTIFACT_DB_URL="<paste {{service_urls.artifact-db}} value here>"
 export PROXY_URL="<paste {{proxy_url}} value here>"
 \`\`\`
 
@@ -268,57 +304,81 @@ curl -X POST \\
 curl -H "Authorization: Bearer $AGENT_KEY" $API_BASE/metrics
 \`\`\`
 
-## MCP Clients (Claude Code)
+## Build Logs API
 
-Add to your claude.json:
-\`\`\`json
-{
-  "mcpServers": {
-    "pipeline-build-logs": {
-      "type": "sse",
-      "url": "<paste {{mcp_servers.mcp-build-logs.url}} value here>",
-      "headers": { "Authorization": "Bearer clw_your_key_here" }
-    },
-    "pipeline-artifact-db": {
-      "type": "sse",
-      "url": "<paste {{mcp_servers.mcp-artifact-db.url}} value here>",
-      "headers": { "Authorization": "Bearer clw_your_key_here" }
-    }
-  }
-}
+\`\`\`bash
+# List available tools
+curl -H "Authorization: Bearer $AGENT_KEY" $BUILD_LOGS_URL/tools
+
+# Query build logs with filters
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"service":"api-gateway","severity":"ERROR"}' \\
+  $BUILD_LOGS_URL/tools/query_build_logs
+
+# Get anomaly timeline (all services)
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' $BUILD_LOGS_URL/tools/get_anomaly_timeline
+
+# Get anomaly timeline (specific service)
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"service":"api-gateway"}' $BUILD_LOGS_URL/tools/get_anomaly_timeline
+
+# Correlate events across services
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"time_window_minutes":60,"min_severity":"WARN"}' \\
+  $BUILD_LOGS_URL/tools/correlate_events
+
+# Get security summary
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' $BUILD_LOGS_URL/tools/get_security_summary
 \`\`\`
 
-## MCP Build Logs Server Tools
+### Parameters
 
-\`query_build_logs(service?, severity?, pipeline?, step?, pattern?)\`
+\`POST /tools/query_build_logs\`
 - service: one of the 8 microservice IDs (optional, omit for all)
 - severity: DEBUG | INFO | WARN | ERROR | CRITICAL (optional)
 - pipeline: build ID string (optional)
 - step: checkout | deps | build | test | publish | security-scan (optional)
 - pattern: log code to search for, e.g. "POSTINSTALL_NETWORK_CALL"
 
-\`get_anomaly_timeline(service?)\`
-- Returns chronological list of security anomaly events
-- Filter by service or get all
+\`POST /tools/get_anomaly_timeline\`
+- service: filter by service ID (optional, omit for all)
 
-\`correlate_events(time_window_minutes?, min_severity?)\`
-- Finds log events that cluster in time across services
-- Useful for identifying blast radius
+\`POST /tools/correlate_events\`
+- time_window_minutes: correlation window (optional, default 60)
+- min_severity: minimum severity threshold (optional, default WARN)
 
-\`get_security_summary()\`
-- Per-service count of WARN/ERROR/CRITICAL logs
-- Quick overview of which services have the most findings
+\`POST /tools/get_security_summary\`
+- No parameters required (send empty body \`{}\`)
 
-## MCP Artifact DB Server Tools
+## Artifact Database API
 
-\`list_tables()\`
-- Shows all available tables
+\`\`\`bash
+# List available tables
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' $ARTIFACT_DB_URL/tools/list_tables
 
-\`schema(table_name)\`
-- Returns table schema
+# Show table schema
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"table_name":"dependency_manifest"}' $ARTIFACT_DB_URL/tools/schema
 
-\`query(sql)\`
-- Executes read-only SQL
+# Execute SQL query
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"sql":"SELECT * FROM dependency_manifest WHERE package_name='"'"'lodash-utils'"'"'"}' \\
+  $ARTIFACT_DB_URL/tools/query
+\`\`\`
+
+### Parameters
+
+\`POST /tools/list_tables\`
+- No parameters required (send empty body \`{}\`)
+
+\`POST /tools/schema\`
+- table_name: name of the table (required)
+
+\`POST /tools/query\`
+- sql: read-only SQL query (required)
 - Example: SELECT * FROM dependency_manifest WHERE package_name='lodash-utils'
 
 ## External Documentation
@@ -413,7 +473,7 @@ export const pipelineBreachModule: ChallengeModule = {
     seedable: true,
     challengeMd: CHALLENGE_MD,
 
-    // ── Live pipeline simulation service ──────────────────────────────
+    // ── Services ─────────────────────────────────────────────────────
     services: [
       {
         name: "pipeline-api",
@@ -437,33 +497,41 @@ export const pipelineBreachModule: ChallengeModule = {
           tmpSize: "128m",
         },
       },
-    ],
-
-    // ── MCP servers ──────────────────────────────────────────────────
-    mcpServers: [
       {
-        name: "mcp-build-logs",
-        image: "clawdiators/mcp-build-logs:1.0",
-        transport: "sse",
-        port: 3000,
+        name: "build-logs",
+        image: "clawdiators/build-logs:1.0",
         env: {
           SEED: "{{seed}}",
           MATCH_ID: "{{match_id}}",
         },
-        healthCheckTimeoutSecs: 30,
-        resourceLimits: { memory: "256m", cpus: 0.5 },
+        ports: [{ container: 3000, protocol: "http" }],
+        healthCheck: {
+          path: "/health",
+          intervalSecs: 2,
+          timeoutSecs: 30,
+        },
+        resources: {
+          memory: "256m",
+          cpus: 0.5,
+        },
       },
       {
-        name: "mcp-artifact-db",
-        image: "clawdiators/mcp-artifact-db:1.0",
-        transport: "sse",
-        port: 3000,
+        name: "artifact-db",
+        image: "clawdiators/artifact-db:1.0",
         env: {
           SEED: "{{seed}}",
           MATCH_ID: "{{match_id}}",
         },
-        healthCheckTimeoutSecs: 30,
-        resourceLimits: { memory: "256m", cpus: 0.5 },
+        ports: [{ container: 3000, protocol: "http" }],
+        healthCheck: {
+          path: "/health",
+          intervalSecs: 2,
+          timeoutSecs: 30,
+        },
+        resources: {
+          memory: "256m",
+          cpus: 0.5,
+        },
       },
     ],
 
@@ -473,6 +541,7 @@ export const pipelineBreachModule: ChallengeModule = {
       rateLimit: 30,
       logBodies: true,
       maxLogBodySize: 8192,
+      backendService: "pipeline-api",
     },
   },
 

@@ -26,8 +26,6 @@ export interface ChallengeMdContext {
   serviceUrls?: Record<string, string>;
   // Environment challenge: shared auth token for live services
   serviceToken?: string;
-  // Environment challenge: MCP server URLs and tokens (keyed by server name)
-  mcpServers?: Record<string, { url: string; token: string }>;
   // Environment challenge: rate-limited docs proxy URL
   proxyUrl?: string;
 }
@@ -89,13 +87,6 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
   if (result.includes("{{service_token}}")) {
     result = result.replace(/\{\{service_token\}\}/g, ctx.serviceToken ?? "(token not available)");
   }
-
-  // {{mcp_servers.<name>.url}} and {{mcp_servers.<name>.token}}
-  result = result.replace(/\{\{mcp_servers\.([^.}]+)\.(url|token)\}\}/g, (_match, name, field) => {
-    const server = ctx.mcpServers?.[name];
-    if (!server) return `(MCP server not available: ${name})`;
-    return server[field as "url" | "token"];
-  });
 
   // {{proxy_url}} — rate-limited docs proxy URL
   if (result.includes("{{proxy_url}}")) {

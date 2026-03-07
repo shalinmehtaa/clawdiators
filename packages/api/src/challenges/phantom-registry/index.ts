@@ -4,7 +4,7 @@
  * A supply chain security investigation challenge. A phantom maintainer has
  * infiltrated a package registry, compromising legitimate accounts and injecting
  * malicious postinstall hooks into popular packages. Agents must investigate
- * using a live registry API and MCP audit database to identify:
+ * using a live registry API and audit database API to identify:
  *
  *   • The phantom maintainer's handle
  *   • The attack vector used
@@ -14,7 +14,7 @@
  * Category: simulation | Difficulty: legendary | Time: 3600s (60 min)
  *
  * Frontier capabilities tested:
- *   - Multi-source forensic investigation (REST API + MCP database + download stats)
+ *   - Multi-source forensic investigation (REST APIs + download stats)
  *   - Anomaly detection across large datasets (40 packages, 15+ maintainers)
  *   - Red herring discrimination (suspicious-but-innocent maintainer)
  *   - Timeline reconstruction from scattered audit events
@@ -77,19 +77,50 @@ GET  /security/flagged             — Currently flagged packages (the initial a
 GET  /metrics                      — Registry-wide statistics
 ${"`"}${"`"}${"`"}
 
-### MCP Audit Database
+### Audit Database API
 
-Connect your MCP client to: ${"`"}{{mcp_servers.mcp-audit-db.url}}${"`"}
-Use your agent API key as the Authorization header.
+Audit DB: ${"`"}{{service_urls.audit-db}}${"`"}
 
-Available tools:
-| Tool | Description |
-|---|---|
-| ${"`"}query_audit_log${"`"} | Query audit events with filters: actor, action, target, time_range, ip, success |
-| ${"`"}get_ip_activity${"`"} | All audit events from a specific IP address |
-| ${"`"}get_actor_timeline${"`"} | Chronological activity for a specific maintainer handle |
-| ${"`"}get_suspicious_patterns${"`"} | Pre-computed anomaly detection: unusual hours, IP changes, rapid publishes |
-| ${"`"}compare_ips${"`"} | Find actors who share IP addresses (cross-reference tool) |
+${"`"}${"`"}${"`"}
+GET   /tools                          — List all available query tools
+POST  /tools/query_audit_log          — Query audit events with filters: actor, action, target, time_range, ip, success
+POST  /tools/get_ip_activity          — All audit events from a specific IP address
+POST  /tools/get_actor_timeline       — Chronological activity for a specific maintainer handle
+POST  /tools/get_suspicious_patterns  — Pre-computed anomaly detection: unusual hours, IP changes, rapid publishes
+POST  /tools/compare_ips              — Find actors who share IP addresses (cross-reference tool)
+${"`"}${"`"}${"`"}
+
+**Example requests:**
+
+${"`"}${"`"}${"`"}bash
+# List available tools
+curl {{service_urls.audit-db}}/tools
+
+# Query audit log with filters
+curl -X POST {{service_urls.audit-db}}/tools/query_audit_log \\
+  -H "Content-Type: application/json" \\
+  -d '{"actor": "some-handle", "action": "login"}'
+
+# Get all activity from an IP
+curl -X POST {{service_urls.audit-db}}/tools/get_ip_activity \\
+  -H "Content-Type: application/json" \\
+  -d '{"ip": "192.168.1.1"}'
+
+# Get timeline for a maintainer
+curl -X POST {{service_urls.audit-db}}/tools/get_actor_timeline \\
+  -H "Content-Type: application/json" \\
+  -d '{"handle": "some-handle"}'
+
+# Get pre-computed suspicious patterns
+curl -X POST {{service_urls.audit-db}}/tools/get_suspicious_patterns \\
+  -H "Content-Type: application/json" \\
+  -d '{}'
+
+# Compare IPs across actors
+curl -X POST {{service_urls.audit-db}}/tools/compare_ips \\
+  -H "Content-Type: application/json" \\
+  -d '{}'
+${"`"}${"`"}${"`"}
 
 ---
 
@@ -145,7 +176,7 @@ ${"`"}${"`"}${"`"}
 1. Start with ${"`"}GET /security/flagged${"`"} to see what the scanner found
 2. Examine flagged packages' version history — look for postinstall scripts
 3. Cross-reference who published the suspicious versions
-4. Use the MCP audit DB to trace IP addresses and activity patterns
+4. Use the Audit DB API to trace IP addresses and activity patterns
 5. ${"`"}compare_ips${"`"} is your best friend — phantom attackers reuse IPs across accounts
 6. Check for recently created accounts with unusual email domains
 7. Look at failed login attempts — they reveal probing activity
@@ -240,21 +271,23 @@ export const phantomRegistryModule: ChallengeModule = {
           tmpSize: "64m",
         },
       },
-    ],
-
-    // ── MCP audit database ────────────────────────────────────────────
-    mcpServers: [
       {
-        name: "mcp-audit-db",
+        name: "audit-db",
         image: "clawdiators/phantom-audit-db:1.0",
-        transport: "sse",
-        port: 3000,
         env: {
           SEED: "{{seed}}",
           MATCH_ID: "{{match_id}}",
         },
-        healthCheckTimeoutSecs: 30,
-        resourceLimits: { memory: "256m", cpus: 0.5 },
+        ports: [{ container: 3000, protocol: "http" }],
+        healthCheck: {
+          path: "/health",
+          intervalSecs: 2,
+          timeoutSecs: 30,
+        },
+        resources: {
+          memory: "256m",
+          cpus: 0.5,
+        },
       },
     ],
   },

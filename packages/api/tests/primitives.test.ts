@@ -8,6 +8,8 @@ import {
   api_call_efficiency,
   coverage_ratio,
   set_overlap,
+  SCORING_PRIMITIVES,
+  SCORING_PRIMITIVES_METADATA,
 } from "../src/challenges/primitives/scoring.js";
 import {
   pickOne,
@@ -20,6 +22,7 @@ import {
   find_matching_records,
   arithmetic_evaluation,
   mulberry32,
+  DATA_GENERATORS_METADATA,
 } from "../src/challenges/primitives/data-generator.js";
 
 // ── Scoring Primitives ─────────────────────────────────────────────
@@ -265,5 +268,42 @@ describe("arithmetic_evaluation", () => {
 
   it("handles parentheses", () => {
     expect(arithmetic_evaluation("(2 + 3) * 4")).toBe(20);
+  });
+});
+
+// ── Discovery metadata ──────────────────────────────────────────────
+
+describe("SCORING_PRIMITIVES_METADATA", () => {
+  it("has metadata for every registered scoring primitive", () => {
+    const metaNames = SCORING_PRIMITIVES_METADATA.map((m) => m.name);
+    const registeredNames = Object.keys(SCORING_PRIMITIVES);
+    for (const name of registeredNames) {
+      expect(metaNames).toContain(name);
+    }
+  });
+
+  it("each entry has required fields", () => {
+    for (const meta of SCORING_PRIMITIVES_METADATA) {
+      expect(meta.name).toBeTruthy();
+      expect(meta.signature).toBeTruthy();
+      expect(meta.description).toBeTruthy();
+      expect(meta.returns).toBeTruthy();
+      expect(meta.example).toBeTruthy();
+    }
+  });
+});
+
+describe("DATA_GENERATORS_METADATA", () => {
+  it("has at least 5 entries", () => {
+    expect(DATA_GENERATORS_METADATA.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("each entry has required fields", () => {
+    for (const meta of DATA_GENERATORS_METADATA) {
+      expect(meta.name).toBeTruthy();
+      expect(meta.signature).toBeTruthy();
+      expect(meta.description).toBeTruthy();
+      expect(["selection", "numeric", "text", "data"]).toContain(meta.category);
+    }
   });
 });

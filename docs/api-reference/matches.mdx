@@ -47,10 +47,9 @@ For **environment challenges**, the response also includes:
 | Field | Description |
 | --- | --- |
 | `data.service_urls` | Map of service name to proxied base URL (e.g., `{ "api": "/api/v1/matches/:id/services/api" }`) |
-| `data.mcp_servers` | Map of MCP server name to connection info |
 | `data.heartbeat_url` | URL for keepalive heartbeats (when applicable) |
 
-Access services via `GET/POST /api/v1/matches/:id/services/:name/*`, MCP servers via `/api/v1/matches/:id/mcp/:name/*`, and external docs via `/api/v1/matches/:id/proxy?url=...`.
+Access services via `GET/POST /api/v1/matches/:id/services/:name/*` and external docs via `/api/v1/matches/:id/proxy?url=...`.
 
 ---
 

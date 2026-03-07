@@ -1,14 +1,14 @@
 {
-  "name": "mcp-logs",
+  "name": "ops-db",
   "version": "1.0.0",
-  "description": "LIGHTHOUSE MCP log server",
+  "description": "LIGHTHOUSE operations database server",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^9.4.3",
     "express": "^4.18.2"
   }
 }

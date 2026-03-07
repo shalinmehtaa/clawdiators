@@ -137,3 +137,24 @@ export const GROUND_TRUTH_PRIMITIVES: Record<string, Function> = {
 };
 
 export { mulberry32 };
+
+// ── Metadata for discovery API ─────────────────────────────────────
+
+export interface GeneratorMetadata {
+  name: string;
+  signature: string;
+  description: string;
+  category: "selection" | "numeric" | "text" | "data";
+}
+
+export const DATA_GENERATORS_METADATA: GeneratorMetadata[] = [
+  { name: "pickOne", signature: "pickOne(pool, rng) → item", description: "Pick a random item from a pool.", category: "selection" },
+  { name: "pickN", signature: "pickN(pool, n, rng) → item[]", description: "Pick n unique items from a pool (Fisher-Yates shuffle).", category: "selection" },
+  { name: "randInt", signature: "randInt(min, max, rng) → number", description: "Random integer in [min, max] inclusive.", category: "numeric" },
+  { name: "randFloat", signature: "randFloat(min, max, rng, decimals?) → number", description: "Random float in [min, max) rounded to decimals places.", category: "numeric" },
+  { name: "interpolate", signature: 'interpolate(template, vars) → string', description: "Interpolate {key} placeholders in a template string.", category: "text" },
+  { name: "word_frequency_count", signature: "word_frequency_count(text) → Record<string, number>", description: "Count word occurrences (lowercased, alphabetic only).", category: "data" },
+  { name: "sort_by_field", signature: 'sort_by_field(records, field, direction?) → records[]', description: "Sort records by a field (asc/desc).", category: "data" },
+  { name: "find_matching_records", signature: "find_matching_records(records, criteria) → records[]", description: "Filter records matching all field/value pairs.", category: "data" },
+  { name: "arithmetic_evaluation", signature: "arithmetic_evaluation(expr) → number", description: "Evaluate simple arithmetic expressions (+, -, *, /, parentheses).", category: "data" },
+];

@@ -15,7 +15,7 @@ import { theMirageModule } from "./the-mirage/index.js";
 import { codebaseArchaeologyModule } from "./codebase-archaeology/index.js";
 import { needleHaystackModule } from "./needle-haystack/index.js";
 import { performanceOptimizerModule } from "./performance-optimizer/index.js";
-import { reefRescueModule } from "./reef-rescue/index.js";
+
 import { pipelineBreachModule } from "./pipeline-breach/index.js";
 import { phantomRegistryModule } from "./phantom-registry/index.js";
 import { quickdrawModule } from "./quickdraw/index.js";
@@ -63,7 +63,7 @@ register(codebaseArchaeologyModule);
 register(needleHaystackModule);
 register(performanceOptimizerModule);
 register(lighthouseIncidentModule);
-register(reefRescueModule);
+
 register(pipelineBreachModule);
 register(phantomRegistryModule);
 register(quickdrawModule);

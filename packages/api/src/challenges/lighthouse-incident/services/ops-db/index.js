@@ -1,23 +1,18 @@
 /**
- * LIGHTHOUSE MCP Operations Database Server
+ * LIGHTHOUSE Operations Database Server
  *
- * MCP server providing read-only SQL access to the LIGHTHOUSE operations
+ * REST API providing read-only SQL access to the LIGHTHOUSE operations
  * database. The database is populated deterministically from SEED, containing
  * system configuration, performance history, incident history, and more.
  *
- * Tools:
- *   query       — Execute read-only SQL
- *   schema      — Get CREATE TABLE statement for a table
- *   list_tables — List all tables with descriptions
- *
- * Resources:
- *   lighthouse://db/schema — Full database schema
+ * Endpoints:
+ *   GET  /tools             — List available tools
+ *   POST /tools/query       — Execute read-only SQL
+ *   POST /tools/schema      — Get CREATE TABLE statement for a table
+ *   POST /tools/list_tables — List all tables with descriptions
  */
 
 import Database from "better-sqlite3";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { ListToolsRequestSchema, CallToolRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
 
 // ── PRNG ─────────────────────────────────────────────────────────────
@@ -36,11 +31,31 @@ const SEED = parseInt(process.env.SEED ?? "42", 10);
 const r = rng(SEED);
 
 const SCENARIOS = [
-  { id: "archive_disk_quota", failureChain: ["archive", "results-store", "query-gateway"] },
-  { id: "analysis_memory_leak", failureChain: ["analysis", "preprocessing", "ingestion"] },
-  { id: "preprocessing_config_drift", failureChain: ["preprocessing", "analysis", "results-store"] },
-  { id: "results_store_index_corruption", failureChain: ["results-store", "archive", "query-gateway"] },
-  { id: "ingestion_cert_expiry", failureChain: ["ingestion", "preprocessing", "analysis", "results-store"] },
+  {
+    id: "archive_disk_quota",
+    failureChain: ["archive", "results-store", "query-gateway"],
+    redHerrings: ["preprocessing", "analysis"],
+  },
+  {
+    id: "analysis_memory_leak",
+    failureChain: ["analysis", "preprocessing", "ingestion"],
+    redHerrings: ["results-store", "archive"],
+  },
+  {
+    id: "preprocessing_config_drift",
+    failureChain: ["preprocessing", "analysis", "results-store"],
+    redHerrings: ["archive", "ingestion"],
+  },
+  {
+    id: "results_store_index_corruption",
+    failureChain: ["results-store", "archive", "query-gateway"],
+    redHerrings: ["ingestion", "preprocessing"],
+  },
+  {
+    id: "ingestion_cert_expiry",
+    failureChain: ["ingestion", "preprocessing", "analysis", "results-store"],
+    redHerrings: ["query-gateway", "archive"],
+  },
 ];
 
 const scenarioIdx = Math.floor(r() * SCENARIOS.length);
@@ -50,7 +65,6 @@ const BASE_TIME = new Date("2026-03-04T00:00:00Z").getTime();
 const ALL_SUBSYSTEMS = ["ingestion", "preprocessing", "analysis", "results-store", "archive", "query-gateway"];
 
 function randInt(min, max, rf) { return min + Math.floor(rf() * (max - min + 1)); }
-function pick(arr, rf) { return arr[Math.floor(rf() * arr.length)]; }
 
 // ── Database Setup ────────────────────────────────────────────────────
 
@@ -59,7 +73,7 @@ const db = new Database(":memory:");
 function buildDatabase() {
   const r2 = rng(SEED + 100);
 
-  // subsystem_config
+  // subsystem_config — graduated status: root=degraded, pos1=strained, pos2+=operational, redHerring=strained
   db.exec(`CREATE TABLE subsystem_config (
     subsystem_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -96,8 +110,18 @@ function buildDatabase() {
   };
 
   for (const id of ALL_SUBSYSTEMS) {
-    const inChain = SCENARIO.failureChain.includes(id);
+    const chainPos = SCENARIO.failureChain.indexOf(id);
+    const isRedHerring = SCENARIO.redHerrings.includes(id);
     const configHash = Math.floor(r2() * 0xffffffff).toString(16).padStart(8, "0");
+
+    // Graduated status
+    let status;
+    if (chainPos === 0) status = "degraded";
+    else if (chainPos === 1) status = "strained";
+    else if (chainPos >= 2) status = "operational";
+    else if (isRedHerring) status = "strained";
+    else status = "healthy";
+
     const row = {
       subsystem_id: id,
       name: subsystemNames[id],
@@ -108,7 +132,7 @@ function buildDatabase() {
       expected_config_hash: configHash,
       worker_count: id === "analysis" ? 4 : id === "preprocessing" ? 2 : 1,
       memory_limit_mb: id === "analysis" ? 8192 : 2048,
-      status: inChain ? "degraded" : "healthy",
+      status,
       oom_events_24h: 0,
       last_oom_at: null,
       config_drift_detected: 0,
@@ -157,7 +181,7 @@ function buildDatabase() {
     );
   }
 
-  // sla_targets
+  // sla_targets — graduated: root=BREACHED, pos1=WARNING, pos2+=OK, redHerring=WARNING
   db.exec(`CREATE TABLE sla_targets (
     subsystem_id TEXT PRIMARY KEY, max_latency_ms INTEGER, max_error_rate REAL,
     max_disk_usage_pct REAL, max_write_queue_depth INTEGER, min_throughput_pct REAL,
@@ -172,10 +196,19 @@ function buildDatabase() {
     "query-gateway": [1000, 0.005, null, null, 0.999],
   };
   for (const [id, [latency, errRate, diskPct, queueDepth, throughput]] of Object.entries(slas)) {
-    const breached = SCENARIO.failureChain.includes(id);
+    const chainPos = SCENARIO.failureChain.indexOf(id);
+    const isRedHerring = SCENARIO.redHerrings.includes(id);
+
+    let slaStatus;
+    if (chainPos === 0) slaStatus = "BREACHED";
+    else if (chainPos === 1) slaStatus = "WARNING";
+    else if (chainPos >= 2) slaStatus = "OK";
+    else if (isRedHerring) slaStatus = "WARNING";
+    else slaStatus = "OK";
+
     db.prepare("INSERT INTO sla_targets VALUES (?,?,?,?,?,?,?,?)").run(
       id, latency, errRate, diskPct, queueDepth, throughput,
-      breached ? "BREACHED" : "OK",
+      slaStatus,
       new Date(BASE_TIME - 5 * 60 * 1000).toISOString()
     );
   }
@@ -193,14 +226,21 @@ function buildDatabase() {
     const ts = new Date(BASE_TIME - hoursAgo * 3600 * 1000).toISOString();
     const isAffected = hoursAgo <= 6;
     for (const id of ALL_SUBSYSTEMS) {
-      const degraded = isAffected && SCENARIO.failureChain.includes(id);
-      const isRoot = id === SCENARIO.failureChain[0];
+      const chainPos = SCENARIO.failureChain.indexOf(id);
+      const inChain = chainPos >= 0;
+      const degraded = isAffected && inChain;
+      const isRoot = chainPos === 0;
+      const isRedHerring = SCENARIO.redHerrings.includes(id);
+
+      // Red herrings get moderately elevated metrics when affected
+      const redHerringElevated = isAffected && isRedHerring;
+
       const row = {
         ts, subsystem_id: id,
-        latency_p50_ms: degraded ? randInt(1000, 5000, r2) : randInt(50, 300, r2),
-        latency_p99_ms: degraded ? randInt(8000, 30000, r2) : randInt(200, 1000, r2),
-        error_rate: degraded ? (isRoot ? 0.4 + r2() * 0.5 : 0.1 + r2() * 0.3) : r2() * 0.002,
-        throughput_pct: degraded ? (isRoot ? r2() * 0.2 : 0.2 + r2() * 0.4) : 0.85 + r2() * 0.15,
+        latency_p50_ms: degraded ? randInt(1000, 5000, r2) : (redHerringElevated ? randInt(400, 1200, r2) : randInt(50, 300, r2)),
+        latency_p99_ms: degraded ? randInt(8000, 30000, r2) : (redHerringElevated ? randInt(1500, 4000, r2) : randInt(200, 1000, r2)),
+        error_rate: degraded ? (isRoot ? 0.4 + r2() * 0.5 : 0.1 + r2() * 0.3) : (redHerringElevated ? 0.03 + r2() * 0.08 : r2() * 0.002),
+        throughput_pct: degraded ? (isRoot ? r2() * 0.2 : 0.2 + r2() * 0.4) : (redHerringElevated ? 0.55 + r2() * 0.25 : 0.85 + r2() * 0.15),
         memory_usage_pct: null, active_workers: null, queue_depth: null,
         disk_usage_pct: null, write_success_rate: null, validation_pass_rate: null,
         data_quality_score: null, range_query_result_ratio: null, index_checksum_valid: null,
@@ -239,7 +279,7 @@ function buildDatabase() {
     }
   }
 
-  // incident_history
+  // incident_history — includes red herring past incidents
   db.exec(`CREATE TABLE incident_history (
     incident_id TEXT PRIMARY KEY, started_at TEXT, resolved_at TEXT,
     root_cause TEXT, affected_subsystems TEXT, severity TEXT,
@@ -278,6 +318,19 @@ function buildDatabase() {
       severity: "P2",
       resolution: "Quota extended by 200GB. Cascade was contained before hitting results-store.",
       notes: "Quota was extended but not automated. Monthly growth rate not re-evaluated. RISK: will recur.",
+    });
+  }
+  // Red herring past incidents — add plausible history for red herring subsystems
+  for (const rhId of SCENARIO.redHerrings) {
+    pastIncidents.push({
+      incident_id: `INC-${randInt(1000, 9999, r2)}`,
+      started_at: new Date(BASE_TIME - randInt(20, 60, r2) * 24 * 3600 * 1000).toISOString(),
+      resolved_at: new Date(BASE_TIME - randInt(20, 60, r2) * 24 * 3600 * 1000 + randInt(1, 3, r2) * 3600 * 1000).toISOString(),
+      root_cause: `${rhId.replace("-", "_")}_performance_degradation`,
+      affected_subsystems: JSON.stringify([rhId]),
+      severity: "P3",
+      resolution: `Performance issue in ${rhId} resolved after investigation.`,
+      notes: null,
     });
   }
   for (const row of pastIncidents) {
@@ -345,7 +398,7 @@ const TABLE_DESCRIPTIONS = {
   disk_usage_history: "Hourly disk usage snapshots for archive subsystem (last 24 hours)",
 };
 
-// ── MCP Tools ─────────────────────────────────────────────────────────
+// ── Tools ─────────────────────────────────────────────────────────────
 
 const TOOLS = [
   {
@@ -405,7 +458,6 @@ function handleTool(name, args) {
 
   if (name === "query") {
     const { sql } = args;
-    // Block destructive operations
     const sqlUp = sql.toUpperCase().trim();
     if (sqlUp.match(/^\s*(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|REPLACE)/)) {
       return { error: "Only SELECT queries are allowed. This is a read-only database." };
@@ -425,60 +477,33 @@ function handleTool(name, args) {
   return { error: `Unknown tool: ${name}` };
 }
 
-// ── MCP Server Setup ──────────────────────────────────────────────────
+// ── REST Server Setup ─────────────────────────────────────────────────
 
 const app = express();
-const transports = new Map();
+app.use(express.json());
 
-app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  const server = new Server({ name: "lighthouse-mcp-ops-db", version: "1.0.0" }, { capabilities: { tools: {}, resources: {} } });
+// REST endpoints
+app.get("/tools", (req, res) => res.json({ tools: TOOLS }));
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const result = handleTool(request.params.name, request.params.arguments ?? {});
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: [
-      { uri: "lighthouse://db/schema", name: "Database Schema", description: "Full schema for all tables", mimeType: "application/json" },
-    ],
-  }));
-
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const { uri } = request.params;
-    if (uri === "lighthouse://db/schema") {
-      const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name").all();
-      const schema = tables.map((t) => ({
-        table: t.name,
-        description: TABLE_DESCRIPTIONS[t.name],
-        create_sql: t.sql,
-        columns: db.prepare(`PRAGMA table_info(${t.name})`).all(),
-      }));
-      return { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(schema, null, 2) }] };
-    }
-    throw new Error(`Unknown resource: ${uri}`);
-  });
-
-  const sessionId = Math.random().toString(36).slice(2);
-  transports.set(sessionId, transport);
-  res.on("close", () => transports.delete(sessionId));
-  await server.connect(transport);
+app.post("/tools/query", (req, res) => {
+  const result = handleTool("query", req.body);
+  res.json(result);
 });
 
-app.post("/messages", async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const transport = transports.get(sessionId);
-  if (!transport) return res.status(404).json({ error: "Session not found" });
-  await transport.handlePostMessage(req, res);
+app.post("/tools/schema", (req, res) => {
+  const result = handleTool("schema", req.body);
+  res.json(result);
 });
 
-app.get("/health", (req, res) => res.json({ status: "ok", tool: "mcp-ops-db", seed: SEED, scenario: SCENARIO.id }));
+app.post("/tools/list_tables", (req, res) => {
+  const result = handleTool("list_tables", req.body);
+  res.json(result);
+});
+
+app.get("/health", (req, res) => res.json({ status: "ok", tool: "ops-db" }));
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
-app.listen(PORT, () => console.log(`MCP Ops DB server on :${PORT} (seed=${SEED}, scenario=${SCENARIO.id})`));
+app.listen(PORT, () => console.log(`Ops DB server on :${PORT} (seed=${SEED})`));
 
 // Self-terminate when the match TTL expires to avoid orphaned containers
 const MATCH_TTL_SECS = parseInt(process.env.MATCH_TTL_SECS ?? "0", 10);

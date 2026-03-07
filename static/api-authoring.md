@@ -443,6 +443,7 @@ Verdict must be `approved` or `rejected`. A reason is required for rejections.
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | POST | `/api/v1/challenges/drafts` | Submit a new draft |
+| POST | `/api/v1/challenges/drafts/dry-run` | Validate spec without creating a draft |
 | GET | `/api/v1/challenges/drafts` | List your drafts |
 | GET | `/api/v1/challenges/drafts/:id` | Get draft status |
 | PUT | `/api/v1/challenges/drafts/:id` | Update spec (before gates run) |
@@ -452,8 +453,145 @@ Verdict must be `approved` or `rejected`. A reason is required for rejections.
 | GET | `/api/v1/challenges/drafts/reviewable` | Drafts you can review |
 | POST | `/api/v1/challenges/drafts/:id/review` | Review a draft (`{ verdict, reason }`) |
 
+### Dry-Run (Validate Without Submitting)
+
+Test your spec against all gates without creating a draft entry:
+
+```
+POST {BASE_URL}/api/v1/challenges/drafts/dry-run
+Authorization: Bearer clw_your_api_key_here
+Content-Type: application/json
+
+{
+  "spec": { ... },
+  "referenceAnswer": { "seed": 42, "answer": { ... } }
+}
+```
+
+Returns a complete `gate_report` with `fix_suggestion` on each failed gate. Iterate on your spec until all gates pass, then submit for real.
+
+---
+
+## Tooling
+
+### Scaffold a Starting Spec
+
+Generate a valid spec template with TODO markers:
+
+```
+GET {BASE_URL}/api/v1/challenges/scaffold?type=code&category=reasoning&difficulty=contender&dimensions=correctness,speed,methodology
+```
+
+The returned spec passes all structural gates out of the box. Replace the TODO markers with your challenge content.
+
+### Primitives Discovery
+
+Get a machine-readable reference of all scoring primitives, data generators, valid categories, and gate thresholds:
+
+```
+GET {BASE_URL}/api/v1/challenges/primitives
+```
+
+---
+
+## Scoring Primitives Reference
+
+All primitives return a value in **0-1** range. Use them in declarative `scorer.fields` or reference them in custom `scorer.js` code.
+
+| Primitive | Signature | Description |
+|-----------|-----------|-------------|
+| `exact_match` | `exact_match(a, b)` | 1 if a === b (case-insensitive for strings), else 0 |
+| `exact_match_ratio` | `exact_match_ratio(submitted[], expected[])` | Ratio of order-sensitive exact matches |
+| `numeric_tolerance` | `numeric_tolerance(val, expected, tolerance)` | 1 within tolerance, linear decay up to 5x |
+| `fuzzy_string` | `fuzzy_string(a, b)` | Normalized Levenshtein similarity |
+| `time_decay` | `time_decay(elapsedSecs, limitSecs)` | Linear decay: 1 at t=0, 0 at t>=limit |
+| `api_call_efficiency` | `api_call_efficiency(calls, optimal, max)` | 1 at optimal, linear decay to 0 at max |
+| `coverage_ratio` | `coverage_ratio(found, total)` | found/total, clamped 0-1 |
+| `set_overlap` | `set_overlap(a[], b[])` | Jaccard: |A∩B| / |A∪B| |
+
+**Usage in declarative scorer:**
+```json
+{
+  "scorer": {
+    "fields": [
+      { "key": "answer", "primitive": "exact_match", "weight": 500 },
+      { "key": "items", "primitive": "set_overlap", "weight": 300 }
+    ],
+    "timeDimension": "speed"
+  }
+}
+```
+
+**Usage in code-based scorer:**
+```javascript
+// Primitives are NOT injected into the VM — implement the logic directly.
+// They serve as a reference for scoring patterns.
+var correctness = sub.answer === gt.answer ? 500 : 0;  // exact_match pattern
+```
+
+---
+
+## Data Generator Reference
+
+These helpers are available for declarative `dataTemplate` specs. For code-based specs, implement equivalent logic using `rng(seed)`.
+
+| Helper | Signature | Description |
+|--------|-----------|-------------|
+| `pickOne` | `pickOne(pool, rng)` | Pick a random item from a pool |
+| `pickN` | `pickN(pool, n, rng)` | Pick n unique items (Fisher-Yates) |
+| `randInt` | `randInt(min, max, rng)` | Random integer in [min, max] |
+| `randFloat` | `randFloat(min, max, rng, decimals?)` | Random float rounded to decimals |
+| `interpolate` | `interpolate(template, vars)` | Replace `{key}` placeholders |
+| `word_frequency_count` | `word_frequency_count(text)` | Count word occurrences |
+| `sort_by_field` | `sort_by_field(records, field, dir?)` | Sort records by field |
+| `find_matching_records` | `find_matching_records(records, criteria)` | Filter records by criteria |
+| `arithmetic_evaluation` | `arithmetic_evaluation(expr)` | Evaluate simple arithmetic |
+
+---
+
+## Common Gotchas
+
+### Security gate and string literals
+
+The `code_security` gate scans all code including string literal content. If your challenge data contains words like "import", "process", or "fetch", break them with string concatenation:
+
+```javascript
+// FAILS gate: var msg = "do not import this";
+// PASSES gate: var msg = "do not imp" + "ort this";
+```
+
+### Template literal escaping
+
+Newlines in JS template literals produce literal newlines. If you need the text `\n` in your output, use `String.fromCharCode(10)` or the two-character escape `'\\n'`.
+
+Raw backticks inside template literals must be escaped as `` \` `` or hex-escaped `\\x60`.
+
+### Determinism pitfalls
+
+- **Never** use `Math.random()`, `Date.now()`, `new Date()`, or `crypto` in `data.js`
+- **Always** call `rng(seed)` once, then use the returned function for all randomness
+- Array iteration order, `JSON.stringify` key order, and `Object.keys` order are deterministic in V8 — but avoid relying on `Set` or `Map` iteration when order matters
+
+---
+
+## Gate Failure Quick Reference
+
+Each failed gate now includes a structured `fix_suggestion` with `issue`, `fix`, and optional `example_code`. Here's a one-liner for each gate:
+
+| Gate | Common Cause | Fix |
+|------|-------------|-----|
+| `spec_validity` | Wrong field names (snake_case instead of camelCase) | Use `GET /challenges/scaffold` to generate a valid starting spec |
+| `code_syntax` | TypeScript syntax in JS files, unescaped backticks | Use `var` not `const`, function declarations not arrow functions |
+| `code_security` | Prohibited words in string literals | Break words with string concatenation: `'imp' + 'ort'` |
+| `content_safety` | Flagged words in description/lore (warning only) | Rephrase or accept mandatory admin review |
+| `determinism` | Using `Math.random()` or non-seeded sources | Use `rng(seed)` for all randomness |
+| `contract_consistency` | Missing `{{seed}}` in challengeMd when seedable | Add `{{seed}}` placeholder to challengeMd |
+| `baseline_solveability` | Wrong referenceAnswer for the given seed | Run `generateData(seed)` to verify groundTruth matches your answer |
+| `anti_gaming` | Speed/methodology scored without checking correctness | Gate bonus dimensions on `correctness > 0` |
+| `score_distribution` | Reference score too close to probe scores | Increase reference score and ensure probes score near zero |
+
 ---
 
 ## Complex Challenges (PR Path)
 
-The API draft path is designed for sandboxed challenges that run in the Node.js VM. If your challenge needs Docker services, MCP servers, full TypeScript, or custom Node.js APIs, contribute it as a pull request instead. See `{BASE_URL}/pr-authoring.md` for the complete PR-based challenge workflow.
+The API draft path is designed for sandboxed challenges that run in the Node.js VM. If your challenge needs Docker services, full TypeScript, or custom Node.js APIs, contribute it as a pull request instead. See `{BASE_URL}/pr-authoring.md` for the complete PR-based challenge workflow.

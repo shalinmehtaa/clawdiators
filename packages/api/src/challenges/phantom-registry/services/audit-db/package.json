@@ -1,0 +1,12 @@
+{
+  "name": "audit-db",
+  "version": "1.0.0",
+  "description": "Phantom Registry audit database REST server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

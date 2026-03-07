@@ -4,7 +4,7 @@
  * A seeded simulation of a six-subsystem distributed scientific pipeline.
  * The SEED env var determines the incident scenario (which subsystem failed,
  * how it propagated, what signals are visible). Recovery commands alter the
- * system state; issuing them out of order causes secondary failures.
+ * system state; issuing them out of order is rejected (409 Conflict).
  *
  * Endpoints:
  *   GET  /health                    — Liveness check
@@ -13,7 +13,8 @@
  *   GET  /system/topology           — Dependency graph
  *   GET  /system/events?limit=N     — Recent system events
  *   POST /system/recover            — Issue a recovery command
- *   GET  /metrics                   — Scoring metrics endpoint
+ *   GET  /metrics                   — Aggregate health metrics (public)
+ *   GET  /__internal/metrics        — Full scoring metrics (scorer only)
  */
 
 import express from "express";
@@ -48,6 +49,7 @@ const SCENARIOS = [
       { subsystem: "results-store", action: "flush_pending_writes" },
       { subsystem: "query-gateway", action: "clear_cache_and_reconnect" },
     ],
+    redHerrings: ["preprocessing", "analysis"],
   },
   {
     id: "analysis_memory_leak",
@@ -58,6 +60,7 @@ const SCENARIOS = [
       { subsystem: "preprocessing", action: "resume_normal_processing" },
       { subsystem: "ingestion", action: "restore_rate_limit" },
     ],
+    redHerrings: ["results-store", "archive"],
   },
   {
     id: "preprocessing_config_drift",
@@ -68,6 +71,7 @@ const SCENARIOS = [
       { subsystem: "analysis", action: "invalidate_contaminated_results" },
       { subsystem: "results-store", action: "verify_integrity" },
     ],
+    redHerrings: ["archive", "ingestion"],
   },
   {
     id: "results_store_index_corruption",
@@ -79,6 +83,7 @@ const SCENARIOS = [
       { subsystem: "archive", action: "resync_from_results" },
       { subsystem: "query-gateway", action: "flush_stale_cache" },
     ],
+    redHerrings: ["ingestion", "preprocessing"],
   },
   {
     id: "ingestion_cert_expiry",
@@ -90,6 +95,7 @@ const SCENARIOS = [
       { subsystem: "analysis", action: "reload_pipeline" },
       { subsystem: "results-store", action: "accept_backfill_mode" },
     ],
+    redHerrings: ["query-gateway", "archive"],
   },
 ];
 
@@ -100,25 +106,74 @@ const SCENARIO = SCENARIOS[scenarioIdx];
 
 const ALL_SUBSYSTEMS = ["ingestion", "preprocessing", "analysis", "results-store", "archive", "query-gateway"];
 
-// Initial health state: failed subsystems start degraded
+// Graduated health states:
+//   chain position 0 (root cause)  → "degraded", clearly bad metrics
+//   chain position 1               → "strained", moderately elevated
+//   chain position 2+              → "operational", subtly elevated
+//   red herring subsystem(s)       → "strained", similarly elevated to position 1
+//   healthy                        → "healthy", normal metrics
 const subsystemHealth = {};
 for (const id of ALL_SUBSYSTEMS) {
-  const inChain = SCENARIO.failureChain.includes(id);
   const chainPos = SCENARIO.failureChain.indexOf(id);
-  subsystemHealth[id] = {
-    status: inChain ? "degraded" : "healthy",
-    health_score: inChain ? Math.max(0.05, 0.35 - chainPos * 0.12) : 0.95 + (r() - 0.5) * 0.08,
-    error_rate: inChain ? 0.15 + r() * 0.40 : r() * 0.002,
-    latency_p99_ms: inChain ? 5000 + r() * 15000 : 200 + r() * 300,
-    throughput_pct: inChain ? r() * 0.35 : 0.85 + r() * 0.15,
-    last_updated: new Date().toISOString(),
-  };
+  const isRedHerring = SCENARIO.redHerrings.includes(id);
+
+  if (chainPos === 0) {
+    // Root cause — clearly degraded
+    subsystemHealth[id] = {
+      status: "degraded",
+      health_score: 0.05 + r() * 0.10,
+      error_rate: 0.35 + r() * 0.40,
+      latency_p99_ms: 8000 + r() * 15000,
+      throughput_pct: r() * 0.15,
+      last_updated: new Date().toISOString(),
+    };
+  } else if (chainPos === 1) {
+    // Position 1 — strained
+    subsystemHealth[id] = {
+      status: "strained",
+      health_score: 0.45 + r() * 0.15,
+      error_rate: 0.05 + r() * 0.12,
+      latency_p99_ms: 2500 + r() * 4000,
+      throughput_pct: 0.40 + r() * 0.25,
+      last_updated: new Date().toISOString(),
+    };
+  } else if (chainPos >= 2) {
+    // Position 2+ — operational but subtly elevated
+    subsystemHealth[id] = {
+      status: "operational",
+      health_score: 0.70 + r() * 0.12,
+      error_rate: 0.02 + r() * 0.04,
+      latency_p99_ms: 800 + r() * 1500,
+      throughput_pct: 0.65 + r() * 0.20,
+      last_updated: new Date().toISOString(),
+    };
+  } else if (isRedHerring) {
+    // Red herring — strained, similar to position 1 to confuse
+    subsystemHealth[id] = {
+      status: "strained",
+      health_score: 0.48 + r() * 0.18,
+      error_rate: 0.04 + r() * 0.10,
+      latency_p99_ms: 2000 + r() * 3500,
+      throughput_pct: 0.45 + r() * 0.25,
+      last_updated: new Date().toISOString(),
+    };
+  } else {
+    // Healthy
+    subsystemHealth[id] = {
+      status: "healthy",
+      health_score: 0.92 + r() * 0.07,
+      error_rate: r() * 0.002,
+      latency_p99_ms: 200 + r() * 300,
+      throughput_pct: 0.85 + r() * 0.15,
+      last_updated: new Date().toISOString(),
+    };
+  }
 }
 
 // Recovery tracking
 const recoveryLog = [];
 const completedActions = new Set();
-let outOfOrderPenalty = false;
+let outOfOrderAttempted = false;
 
 // Event log
 const eventLog = [];
@@ -136,7 +191,7 @@ function addEvent(level, subsystem, code, message, metadata = {}) {
 
 // Seed initial events
 for (const id of SCENARIO.failureChain) {
-  addEvent("ERROR", id, "INITIAL_DEGRADATION", `Subsystem degraded at incident start`, { scenario: SCENARIO.id });
+  addEvent("ERROR", id, "INITIAL_DEGRADATION", `Subsystem reporting issues at incident start`, {});
 }
 
 // ── Auth Middleware ───────────────────────────────────────────────────
@@ -144,8 +199,8 @@ for (const id of SCENARIO.failureChain) {
 const SERVICE_TOKEN = process.env.SERVICE_TOKEN ?? `lighthouse-${SEED}`;
 
 app.use((req, res, next) => {
-  // /health is always open
-  if (req.path === "/health" || req.path === "/metrics") return next();
+  // /health, /metrics, /__internal/metrics are always open
+  if (req.path === "/health" || req.path === "/metrics" || req.path === "/__internal/metrics") return next();
   const auth = req.headers.authorization ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : auth;
   if (!token || (token !== SERVICE_TOKEN && !token.startsWith("mtk_"))) {
@@ -161,7 +216,7 @@ app.use((req, res, next) => {
 // ── Routes ────────────────────────────────────────────────────────────
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", scenario: SCENARIO.id, seed: SEED });
+  res.json({ status: "ok" });
 });
 
 app.get("/system/status", (req, res) => {
@@ -169,19 +224,19 @@ app.get("/system/status", (req, res) => {
     id,
     name: nameFor(id),
     ...subsystemHealth[id],
-    sla_breached: subsystemHealth[id].status === "degraded",
-    recovery_available: SCENARIO.failureChain.includes(id) && subsystemHealth[id].status === "degraded",
   }));
 
   const degradedCount = systems.filter((s) => s.status === "degraded").length;
-  const overallHealth = degradedCount === 0 ? "healthy" : degradedCount <= 2 ? "degraded" : "critical";
+  const strainedCount = systems.filter((s) => s.status === "strained").length;
+  const overallHealth = degradedCount === 0
+    ? (strainedCount === 0 ? "healthy" : "degraded")
+    : degradedCount <= 2 ? "degraded" : "critical";
 
   res.json({
     overall_status: overallHealth,
-    degraded_subsystems: degradedCount,
     total_subsystems: ALL_SUBSYSTEMS.length,
     subsystems: systems,
-    incident_active: degradedCount > 0,
+    incident_active: degradedCount > 0 || strainedCount > 0,
     recovery_actions_taken: recoveryLog.length,
   });
 });
@@ -193,10 +248,7 @@ app.get("/system/subsystem/:id", (req, res) => {
   }
 
   const health = subsystemHealth[id];
-  const inChain = SCENARIO.failureChain.includes(id);
-  const chainPos = SCENARIO.failureChain.indexOf(id);
 
-  // Provide detailed metrics
   const detail = {
     id,
     name: nameFor(id),
@@ -206,9 +258,9 @@ app.get("/system/subsystem/:id", (req, res) => {
     downstream_dependents: downstreamFor(id),
     metrics: metricsFor(id, health),
     recent_events: eventLog.filter((e) => e.subsystem === id).slice(-10),
-    recovery_hint: inChain && health.status === "degraded"
-      ? `This subsystem is affected. See /docs/runbooks/ for recovery procedures. Chain position: ${chainPos + 1}/${SCENARIO.failureChain.length}.`
-      : health.status === "healthy" ? "Operating normally." : undefined,
+    recovery_hint: health.status !== "healthy"
+      ? "This subsystem is experiencing issues. Consult /docs/runbooks/ for recovery procedures."
+      : "Operating normally.",
   };
 
   res.json(detail);
@@ -262,14 +314,10 @@ app.post("/system/recover", (req, res) => {
   const expectedStep = expectedSeq.find((s) => s.subsystem === subsystem && s.action === action);
 
   if (!expectedStep) {
-    // Unknown action for this scenario — return appropriate error
     addEvent("WARN", subsystem, "UNKNOWN_RECOVERY_ACTION", `Unknown action attempted: ${action}`, { params });
     return res.status(400).json({
       success: false,
-      message: `Action "${action}" is not a valid recovery action for ${subsystem} in current incident state. Check /docs/runbooks/ for valid actions.`,
-      valid_actions_hint: expectedSeq
-        .filter((s) => s.subsystem === subsystem)
-        .map((s) => s.action),
+      message: `Action "${action}" is not a valid recovery action for ${subsystem} in the current incident state. Consult /docs/runbooks/ for valid actions.`,
     });
   }
 
@@ -284,33 +332,20 @@ app.post("/system/recover", (req, res) => {
     });
   }
 
-  // Check ordering constraint
+  // Check ordering constraint — strict: reject out-of-order with 409
   const stepIdx = expectedSeq.findIndex((s) => s.subsystem === subsystem && s.action === action);
   const prevStep = stepIdx > 0 ? expectedSeq[stepIdx - 1] : null;
   const prevKey = prevStep ? `${prevStep.subsystem}:${prevStep.action}` : null;
 
   if (prevKey && !completedActions.has(prevKey) && stepIdx > 0) {
-    // Out of order — apply penalty and warn
-    outOfOrderPenalty = true;
+    outOfOrderAttempted = true;
     addEvent("ERROR", subsystem, "RECOVERY_ORDER_VIOLATION",
-      `Recovery command issued out of order. Expected ${prevStep.action} on ${prevStep.subsystem} first.`,
-      { attempted: action, expected_first: `${prevStep.subsystem}:${prevStep.action}` });
+      `Recovery command rejected — prerequisite not met.`,
+      { attempted: action });
 
-    // Still allow the action but with reduced effect
-    completedActions.add(actionKey);
-    recoveryLog.push({ ts: new Date().toISOString(), subsystem, action, params, out_of_order: true });
-
-    // Partial improvement
-    if (subsystemHealth[subsystem].status === "degraded") {
-      subsystemHealth[subsystem].health_score = Math.min(0.6, subsystemHealth[subsystem].health_score + 0.2);
-      subsystemHealth[subsystem].error_rate = Math.max(0.1, subsystemHealth[subsystem].error_rate * 0.7);
-    }
-
-    return res.json({
-      success: true,
-      warning: `Action completed but out of order. Previous required step "${prevStep.action}" on "${prevStep.subsystem}" had not been completed. This may cause incomplete recovery. Check /docs/runbooks/ for correct sequence.`,
-      subsystem_status: subsystemHealth[subsystem].status,
-      partial_improvement: true,
+    return res.status(409).json({
+      success: false,
+      message: "A prerequisite recovery step must be completed first.",
     });
   }
 
@@ -320,13 +355,12 @@ app.post("/system/recover", (req, res) => {
 
   // Simulate recovery effect
   const health = subsystemHealth[subsystem];
-  const isLastStep = stepIdx === expectedSeq.filter((s) => s.subsystem === subsystem).length - 1;
   const allStepsForSubsystem = expectedSeq.filter((s) => s.subsystem === subsystem);
   const completedForSubsystem = allStepsForSubsystem.filter((s) => completedActions.has(`${s.subsystem}:${s.action}`)).length;
   const fractionComplete = completedForSubsystem / allStepsForSubsystem.length;
 
   if (fractionComplete >= 1.0) {
-    // All steps for this subsystem done → mark healthy
+    // All steps for this subsystem done — mark healthy
     health.status = "healthy";
     health.health_score = 0.92 + Math.random() * 0.06;
     health.error_rate = 0.001 * Math.random();
@@ -354,7 +388,26 @@ app.post("/system/recover", (req, res) => {
   });
 });
 
+// Public metrics — aggregate health only, no answer leaks
 app.get("/metrics", (req, res) => {
+  const totalSubsystems = ALL_SUBSYSTEMS.length;
+  const healthySubsystems = ALL_SUBSYSTEMS.filter((id) => subsystemHealth[id].status === "healthy").length;
+  const degradedSubsystems = ALL_SUBSYSTEMS.filter((id) => subsystemHealth[id].status === "degraded").length;
+  const strainedSubsystems = ALL_SUBSYSTEMS.filter((id) => subsystemHealth[id].status === "strained").length;
+
+  res.json({
+    total_subsystems: totalSubsystems,
+    healthy_subsystems: healthySubsystems,
+    degraded_subsystems: degradedSubsystems,
+    strained_subsystems: strainedSubsystems,
+    pipeline_health_pct: (healthySubsystems / totalSubsystems * 100).toFixed(1),
+    recovery_actions_taken: recoveryLog.length,
+    incident_active: healthySubsystems < totalSubsystems,
+  });
+});
+
+// Internal metrics — full scoring data for the scorer
+app.get("/__internal/metrics", (req, res) => {
   const totalSubsystems = ALL_SUBSYSTEMS.length;
   const healthySubsystems = ALL_SUBSYSTEMS.filter((id) => subsystemHealth[id].status === "healthy").length;
   const degradedSubsystems = totalSubsystems - healthySubsystems;
@@ -377,9 +430,9 @@ app.get("/metrics", (req, res) => {
     recovery_completeness: chainLength > 0 ? chainRecovered / chainLength : 1,
     recovery_actions_taken: recoveryLog.length,
     recovery_actions_correct: correctActions,
-    recovery_actions_out_of_order: recoveryLog.filter((r) => r.out_of_order).length,
+    recovery_actions_out_of_order: 0, // strict ordering rejects out-of-order
     expected_total_recovery_actions: totalExpectedActions,
-    out_of_order_penalty: outOfOrderPenalty,
+    out_of_order_penalty: outOfOrderAttempted,
     scoring_summary: {
       fully_resolved: degradedSubsystems === 0,
       chain_resolved: chainRecovered === chainLength,
@@ -446,36 +499,51 @@ function metricsFor(id, health) {
     throughput_pct: health.throughput_pct,
   };
 
-  // Scenario-specific metrics
+  // Scenario-specific metrics for root cause subsystem
   const s = SCENARIO.id;
   if (s === "archive_disk_quota" && id === "archive") {
-    return { ...base, disk_usage_pct: health.status === "degraded" ? 97.1 : 45.2, write_success_rate: health.status === "degraded" ? 0.03 : 0.999 };
+    return { ...base, disk_usage_pct: health.status === "healthy" ? 45.2 : 97.1, write_success_rate: health.status === "healthy" ? 0.999 : 0.03 };
   }
   if (s === "analysis_memory_leak" && id === "analysis") {
-    return { ...base, memory_usage_pct: health.status === "degraded" ? 99.8 : 62.1, active_workers: health.status === "degraded" ? 0 : 4, queue_depth: health.status === "degraded" ? 73241 : 124 };
+    return { ...base, memory_usage_pct: health.status === "healthy" ? 62.1 : 99.8, active_workers: health.status === "healthy" ? 4 : 0, queue_depth: health.status === "healthy" ? 124 : 73241 };
   }
   if (s === "preprocessing_config_drift" && id === "preprocessing") {
-    return { ...base, validation_pass_rate: health.status === "degraded" ? 0.999 : 0.871, config_hash_valid: health.status !== "degraded" };
+    return { ...base, validation_pass_rate: health.status === "healthy" ? 0.871 : 0.999, config_hash_valid: health.status === "healthy" };
   }
   if (s === "results_store_index_corruption" && id === "results-store") {
-    return { ...base, index_checksum_valid: health.status !== "degraded", range_query_result_ratio: health.status === "degraded" ? 0.78 : 1.0 };
+    return { ...base, index_checksum_valid: health.status === "healthy", range_query_result_ratio: health.status === "healthy" ? 1.0 : 0.78 };
   }
   if (s === "ingestion_cert_expiry" && id === "ingestion") {
-    return { ...base, active_connections: health.status === "degraded" ? 0 : 47, cert_status: health.status === "degraded" ? "EXPIRED" : "VALID", observation_rate: health.status === "degraded" ? 0 : 923 };
+    return { ...base, active_connections: health.status === "healthy" ? 47 : 0, cert_status: health.status === "healthy" ? "VALID" : "EXPIRED", observation_rate: health.status === "healthy" ? 923 : 0 };
+  }
+
+  // Red herring elevated metrics — look concerning but are not the root cause
+  const isRedHerring = SCENARIO.redHerrings.includes(id);
+  if (isRedHerring && health.status === "strained") {
+    if (id === "preprocessing") {
+      return { ...base, processing_latency_trend: "increasing", batch_reject_rate: 0.08 + Math.random() * 0.04 };
+    }
+    if (id === "analysis") {
+      return { ...base, worker_cpu_avg_pct: 87 + Math.random() * 8, gc_pause_frequency: "elevated" };
+    }
+    if (id === "results-store") {
+      return { ...base, query_plan_cache_misses: 342, replication_lag_ms: 1800 + Math.random() * 1200 };
+    }
+    if (id === "archive") {
+      return { ...base, compression_ratio_trend: "declining", segment_merge_backlog: 47 + Math.floor(Math.random() * 30) };
+    }
+    if (id === "ingestion") {
+      return { ...base, connection_retry_rate: 0.06, auth_latency_ms: 450 + Math.random() * 300 };
+    }
+    if (id === "query-gateway") {
+      return { ...base, cache_hit_rate: 0.23, response_timeout_rate: 0.07 + Math.random() * 0.05 };
+    }
   }
 
   return base;
 }
 
 // ── Documentation (docs.lighthouse.internal proxy target) ─────────────
-//
-// These routes are served by the platform's docs proxy at:
-//   GET /api/v1/matches/:matchId/proxy/runbooks/...
-//   GET /api/v1/matches/:matchId/proxy/architecture/...
-//   GET /api/v1/matches/:matchId/proxy/operations/...
-//
-// Agents access them via {{proxy_url}}/runbooks/, etc.
-// Rate-limited to 30 req/min at the platform proxy layer.
 
 const DOCS = {
   "/docs/runbooks/": `# LIGHTHOUSE Runbook Index
@@ -488,37 +556,41 @@ const DOCS = {
 - [/docs/runbooks/index-corruption-recovery](/docs/runbooks/index-corruption-recovery) — Results-store index corruption
 - [/docs/runbooks/certificate-renewal](/docs/runbooks/certificate-renewal) — Ingestion TLS certificate expiry
 
-All runbooks follow: Diagnosis → Pre-Recovery Checks → Recovery Commands → Verification → Prevention.
+All runbooks follow: Diagnosis \u2192 Pre-Recovery Checks \u2192 Recovery Steps \u2192 Verification \u2192 Prevention.
 `,
 
   "/docs/runbooks/storage-quota-recovery": `# Runbook: Archive Disk Quota Recovery
 
-**Applies to:** \`archive\` subsystem — disk_quota_exceeded scenarios
+**Applies to:** \`archive\` subsystem — disk quota exhaustion scenarios
 
 ## Diagnosis Checklist
-1. Confirm \`GET /system/subsystem/archive\` shows \`disk_usage_pct > 85\`
-2. Query \`disk_usage_history\` in ops-db: \`SELECT * FROM disk_usage_history WHERE subsystem_id='archive' ORDER BY ts DESC LIMIT 24\`
-3. Check SLA: \`SELECT * FROM sla_targets WHERE subsystem_id='archive'\`
-4. Look for \`DISK_QUOTA_EXCEEDED\` in logs: \`query_logs(subsystem="archive", pattern="DISK_QUOTA_EXCEEDED")\`
+1. Check \`GET /system/subsystem/archive\` for disk-related metrics
+2. Query \`disk_usage_history\` in the operations database for usage trends over the past 24h
+3. Review SLA targets for the archive subsystem to confirm breach thresholds
+4. Search logs for disk-related error codes (e.g. quota, write failures)
+5. Cross-reference with downstream subsystems to understand cascade scope
 
 ## Pre-Recovery Checks
-- Ensure \`results-store\` write queue depth (run \`GET /system/subsystem/results-store\` and check queue backlog)
-- Do NOT issue flush commands before extending quota — flushes will fail if quota still exceeded
+- Check downstream write queue depths before acting
+- Do NOT flush writes before addressing the underlying quota issue — flushes will fail on a full volume
 
-## Recovery Sequence (ORDER MATTERS)
-1. \`POST /system/recover\` — \`{"subsystem":"archive","action":"extend_disk_quota","params":{"quota_gb":500}}\`
-2. \`POST /system/recover\` — \`{"subsystem":"archive","action":"purge_expired_segments","params":{"older_than_days":90}}\`
-3. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"flush_pending_writes","params":{}}\`
-4. \`POST /system/recover\` — \`{"subsystem":"query-gateway","action":"clear_cache_and_reconnect","params":{}}\`
+## Recovery Steps (ORDER MATTERS)
+
+All recovery commands use \`POST /system/recover\` with body \`{"subsystem": "<id>", "action": "<name>", "params": {...}}\`.
+
+1. \`extend_disk_quota\` on \`archive\` — Increase the volume allocation to accommodate current data volume plus adequate growth headroom
+2. \`purge_expired_segments\` on \`archive\` — Remove archive segments beyond the retention window to free immediate disk space
+3. \`flush_pending_writes\` on \`results-store\` — Drain any accumulated write backlog in the dependent store
+4. \`clear_cache_and_reconnect\` on \`query-gateway\` — Invalidate stale cached data and re-establish connections to recovered upstream services
 
 ## Verification
-- \`GET /system/status\` — all subsystems should show \`healthy\`
-- \`GET /metrics\` — \`recovery_completeness\` should be 1.0
+- \`GET /system/status\` — affected subsystems should show improved health
+- Monitor health scores to confirm recovery is progressing
 
 ## Prevention
-- Set up disk usage alerting at 70% and 85% thresholds
-- Schedule weekly \`purge_expired_segments\` during low-traffic windows
-- Review \`sla_targets.max_disk_usage_pct\` — consider raising quota proactively
+- Set up disk usage alerting at appropriate thresholds (e.g. 70% and 85%)
+- Schedule periodic expired segment purges during low-traffic windows
+- Review disk quota settings periodically against growth projections
 `,
 
   "/docs/runbooks/memory-leak-recovery": `# Runbook: Analysis Engine Memory Leak Recovery
@@ -526,50 +598,58 @@ All runbooks follow: Diagnosis → Pre-Recovery Checks → Recovery Commands →
 **Applies to:** \`analysis\` subsystem — worker OOM / memory exhaustion scenarios
 
 ## Diagnosis Checklist
-1. \`GET /system/subsystem/analysis\` — check \`memory_usage_pct\` and \`active_workers\`
-2. \`get_anomaly_timeline(subsystem="analysis")\` — find first OOM event
-3. \`query(sql="SELECT * FROM performance_history WHERE subsystem_id='analysis' ORDER BY ts DESC LIMIT 48")\`
+1. \`GET /system/subsystem/analysis\` — check memory and worker-related metrics
+2. Query the anomaly timeline for OOM-related events on the analysis subsystem
+3. Check performance history in the operations database for memory trends
+4. Examine upstream (preprocessing) queue state for backpressure effects
 
 ## Pre-Recovery Checks
-- Verify \`preprocessing\` queue is not overflowing (backpressure will propagate upstream)
-- Do NOT attempt to \`reload_pipeline\` before clearing worker memory — workers will OOM again immediately
+- Verify upstream queue states before restarting workers — backpressure may have propagated
+- Do NOT attempt to reload the pipeline before clearing worker memory — workers will OOM again immediately
 
-## Recovery Sequence (ORDER MATTERS)
-1. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"restart_workers","params":{}}\`
-2. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"drain_preprocessing_backlog","params":{}}\`
-3. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"resume_normal_processing","params":{}}\`
-4. \`POST /system/recover\` — \`{"subsystem":"ingestion","action":"restore_rate_limit","params":{}}\`
+## Recovery Steps (ORDER MATTERS)
+
+All recovery commands use \`POST /system/recover\` with body \`{"subsystem": "<id>", "action": "<name>", "params": {...}}\`.
+
+1. \`restart_workers\` on \`analysis\` — Restart worker processes with conservative memory limits to prevent immediate re-OOM
+2. \`drain_preprocessing_backlog\` on \`analysis\` — Gradually drain the accumulated observation queue without re-triggering memory issues
+3. \`resume_normal_processing\` on \`preprocessing\` — Re-enable full processing rate once the backlog is manageable
+4. \`restore_rate_limit\` on \`ingestion\` — Remove adaptive throttling and restore full ingestion throughput
 
 ## Verification
-- \`GET /system/subsystem/analysis\` — \`active_workers\` should be 4, \`memory_usage_pct\` < 70
-- \`GET /metrics\` — \`recovery_completeness\` = 1.0
+- \`GET /system/subsystem/analysis\` — workers should be active with healthy memory usage
+- Check that upstream queue depths are draining
 
 ## Prevention
-- Memory profiling should run on worker processes weekly
-- Set \`max_memory_per_worker\` in subsystem_config to 90% of available
+- Memory profiling should run on worker processes regularly
+- Configure per-worker memory limits with appropriate headroom
 `,
 
   "/docs/runbooks/config-drift-recovery": `# Runbook: Preprocessing Configuration Drift Recovery
 
-**Applies to:** \`preprocessing\` subsystem — config_hash_mismatch scenarios
+**Applies to:** \`preprocessing\` subsystem — config hash mismatch / validation rule corruption
 
 ## Diagnosis Checklist
-1. \`GET /system/subsystem/preprocessing\` — check \`config_hash_valid\` (false = drifted)
-2. \`query(sql="SELECT * FROM subsystem_config WHERE subsystem_id='preprocessing'")\` — compare hash
-3. \`query_logs(subsystem="preprocessing", pattern="CONFIG_HASH_MISMATCH")\`
+1. \`GET /system/subsystem/preprocessing\` — look for config-related anomalies
+2. Query subsystem_config in the operations database — compare config hashes against expected values
+3. Search logs for config-related codes (hash mismatch, rule override)
+4. Check analysis subsystem for downstream data quality impact
 
 ## Pre-Recovery Checks
-- Identify the window of affected data: find first \`CONFIG_HASH_MISMATCH\` log timestamp
-- Do NOT reprocess before restoring config — reprocessed data will also be contaminated
+- Identify the window of affected data before restoring config
+- Do NOT reprocess data before restoring correct configuration — reprocessing with bad config produces more contamination
 
-## Recovery Sequence (ORDER MATTERS)
-1. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"restore_config_from_backup","params":{}}\`
-2. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"reprocess_affected_window","params":{}}\`
-3. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"invalidate_contaminated_results","params":{}}\`
-4. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"verify_integrity","params":{}}\`
+## Recovery Steps (ORDER MATTERS)
+
+All recovery commands use \`POST /system/recover\` with body \`{"subsystem": "<id>", "action": "<name>", "params": {...}}\`.
+
+1. \`restore_config_from_backup\` on \`preprocessing\` — Roll back to the last known-good validation configuration
+2. \`reprocess_affected_window\` on \`preprocessing\` — Reprocess data from the contamination window using the restored configuration
+3. \`invalidate_contaminated_results\` on \`analysis\` — Mark results produced during the contamination window as invalid
+4. \`verify_integrity\` on \`results-store\` — Run integrity verification to confirm no further contamination exists
 
 ## Verification
-- \`GET /system/subsystem/preprocessing\` — \`config_hash_valid\` = true, \`validation_pass_rate\` > 0.95
+- \`GET /system/subsystem/preprocessing\` — config should be valid, pass rate should return to normal range
 `,
 
   "/docs/runbooks/index-corruption-recovery": `# Runbook: Results-Store Index Corruption Recovery
@@ -577,48 +657,56 @@ All runbooks follow: Diagnosis → Pre-Recovery Checks → Recovery Commands →
 **Applies to:** \`results-store\` subsystem — temporal index B-tree corruption
 
 ## Diagnosis Checklist
-1. \`GET /system/subsystem/results-store\` — check \`index_checksum_valid\` (false = corrupt)
-2. \`query(sql="SELECT * FROM performance_history WHERE subsystem_id='results-store' ORDER BY ts DESC LIMIT 24")\`
-3. \`query_logs(subsystem="results-store", pattern="INDEX_CORRUPTION")\`
+1. \`GET /system/subsystem/results-store\` — look for index integrity metrics
+2. Query performance history for range query accuracy and index checksum status
+3. Search logs for index-related and power anomaly events
+4. Check archive subsystem for sync completeness issues
 
 ## Pre-Recovery Checks
-- **Pause writes FIRST.** Rebuilding the index while writes are active will fail.
-- Ensure archive replication is paused (it will be blocked by the write pause)
+- **Halt writes FIRST.** Rebuilding the index while writes are active risks further corruption
+- Ensure dependent services are prepared for a brief write pause
 
-## Recovery Sequence (ORDER MATTERS)
-1. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"pause_writes","params":{}}\`
-2. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"rebuild_temporal_index","params":{}}\`
-3. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"resume_writes","params":{}}\`
-4. \`POST /system/recover\` — \`{"subsystem":"archive","action":"resync_from_results","params":{}}\`
-5. \`POST /system/recover\` — \`{"subsystem":"query-gateway","action":"flush_stale_cache","params":{}}\`
+## Recovery Steps (ORDER MATTERS)
+
+All recovery commands use \`POST /system/recover\` with body \`{"subsystem": "<id>", "action": "<name>", "params": {...}}\`.
+
+1. \`pause_writes\` on \`results-store\` — Halt incoming writes to prevent further corruption during rebuild
+2. \`rebuild_temporal_index\` on \`results-store\` — Perform a full offline index rebuild
+3. \`resume_writes\` on \`results-store\` — Re-enable the write path after index validation
+4. \`resync_from_results\` on \`archive\` — Re-synchronize archive with the corrected results store
+5. \`flush_stale_cache\` on \`query-gateway\` — Purge all cached responses that may contain data from the corruption period
 
 ## Warning
-The \`rebuild_temporal_index\` action is the most time-sensitive step. If it times out, retry once.
+The index rebuild step is time-sensitive. If it times out, retry once before escalating.
 `,
 
   "/docs/runbooks/certificate-renewal": `# Runbook: Ingestion TLS Certificate Renewal
 
-**Applies to:** \`ingestion\` subsystem — expired TLS certificate causing 0 active connections
+**Applies to:** \`ingestion\` subsystem — expired TLS certificate causing connection failures
 
 ## Diagnosis Checklist
-1. \`GET /system/subsystem/ingestion\` — check \`cert_status\` (EXPIRED), \`active_connections\` (0)
-2. \`query(sql="SELECT * FROM certificate_registry WHERE subsystem_id='ingestion' ORDER BY expires_at DESC LIMIT 5")\`
-3. \`query_logs(subsystem="ingestion", pattern="CERT_EXPIRED")\`
+1. \`GET /system/subsystem/ingestion\` — check certificate and connection metrics
+2. Query the certificate registry in the operations database for expiry dates and status
+3. Search logs for certificate-related and connection-related events
+4. Check downstream subsystems for starvation effects
 
 ## Pre-Recovery Checks
-- All 47 data sources will have queued observations — expect high backfill volume after recovery
-- Verify preprocessing is healthy before restoring ingestion (backpressure management)
+- Expect high backfill volume after certificate renewal — data sources have been queuing observations
+- Verify downstream subsystems are healthy enough to handle the backfill surge
 
-## Recovery Sequence (ORDER MATTERS)
-1. \`POST /system/recover\` — \`{"subsystem":"ingestion","action":"rotate_tls_certificate","params":{}}\`
-2. \`POST /system/recover\` — \`{"subsystem":"ingestion","action":"notify_data_sources","params":{}}\`
-3. \`POST /system/recover\` — \`{"subsystem":"preprocessing","action":"reset_starvation_state","params":{}}\`
-4. \`POST /system/recover\` — \`{"subsystem":"analysis","action":"reload_pipeline","params":{}}\`
-5. \`POST /system/recover\` — \`{"subsystem":"results-store","action":"accept_backfill_mode","params":{}}\`
+## Recovery Steps (ORDER MATTERS)
+
+All recovery commands use \`POST /system/recover\` with body \`{"subsystem": "<id>", "action": "<name>", "params": {...}}\`.
+
+1. \`rotate_tls_certificate\` on \`ingestion\` — Issue and activate a new TLS certificate
+2. \`notify_data_sources\` on \`ingestion\` — Signal all data sources to reconnect with the new certificate
+3. \`reset_starvation_state\` on \`preprocessing\` — Clear timeout states accumulated during the starvation period
+4. \`reload_pipeline\` on \`analysis\` — Restart the analysis pipeline to clear halted state
+5. \`accept_backfill_mode\` on \`results-store\` — Enable high-throughput backfill mode for the data gap period
 
 ## Verification
-- \`GET /system/subsystem/ingestion\` — \`active_connections\` = 47, \`cert_status\` = VALID
-- \`GET /metrics\` — \`recovery_completeness\` = 1.0
+- \`GET /system/subsystem/ingestion\` — connections should be re-established, certificate should be valid
+- Monitor downstream subsystems for recovery propagation
 `,
 
   "/docs/architecture/subsystems": `# LIGHTHOUSE Architecture: Subsystems
@@ -626,7 +714,7 @@ The \`rebuild_temporal_index\` action is the most time-sensitive step. If it tim
 ## Overview
 
 LIGHTHOUSE processes telescope observation data through a 6-stage pipeline.
-Data flows: Ingestion → Preprocessing → Analysis → Results-Store → {Archive, Query-Gateway}
+Data flows: Ingestion \u2192 Preprocessing \u2192 Analysis \u2192 Results-Store \u2192 {Archive, Query-Gateway}
 
 ## Subsystems
 
@@ -636,7 +724,7 @@ TLS certificates must be valid; certificate expiry drops all 47 connections inst
 
 ### preprocessing
 Validates and normalizes raw observations using configurable rule sets.
-Config drift causes silent data quality degradation — validation appears to pass but output is contaminated.
+Config drift causes silent data quality degradation \u2014 validation appears to pass but output is contaminated.
 
 ### analysis
 Runs 4 parallel worker processes for spectral feature extraction.
@@ -656,14 +744,10 @@ Cache must be invalidated after upstream recovery to avoid serving stale data.
 
 ## Dependency Graph
 \`\`\`
-ingestion → preprocessing → analysis → results-store ─┬→ archive → query-gateway
-                                                        └──────────→ query-gateway
+ingestion \u2192 preprocessing \u2192 analysis \u2192 results-store \u2500\u252c\u2192 archive \u2192 query-gateway
+                                                        \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2192 query-gateway
 \`\`\`
 Failures propagate downstream. Backpressure propagates upstream.
-
-## Red Herring Note
-One subsystem will show degraded metrics that are NOT part of the actual failure chain.
-Correctly identifying and excluding it earns full scoring on the failure_chain dimension.
 `,
 
   "/docs/operations/recovery": `# LIGHTHOUSE General Recovery Procedures
@@ -671,16 +755,16 @@ Correctly identifying and excluding it earns full scoring on the failure_chain d
 ## Golden Rules
 
 1. **Diagnose before acting.** Query logs, metrics, and ops-db first.
-2. **Follow the runbook.** Each recovery has ordering constraints. Out-of-order commands cause secondary failures.
+2. **Follow the runbook.** Each recovery has ordering constraints. Out-of-order commands are rejected.
 3. **Verify after each step.** \`GET /system/status\` after every recovery command.
 4. **Identify the root cause, not the symptoms.** Treat the root subsystem first.
-5. **Exclude red herrings.** Not every degraded subsystem is in the failure chain.
+5. **Not all anomalies are failures.** Some subsystems may show elevated metrics for reasons unrelated to the current incident.
 
 ## Root Cause Identification Checklist
 
-1. \`get_anomaly_timeline()\` — find the earliest WARN+ event (that's the root)
-2. \`get_error_summary()\` — see which subsystem has the most errors (usually the root)
-3. \`correlate_events(time_window_minutes=30)\` — find clustered anomalies
+1. \`get_anomaly_timeline()\` \u2014 find the earliest WARN+ event
+2. \`get_error_summary()\` \u2014 see which subsystem has the most errors
+3. \`correlate_events(time_window_minutes=30)\` \u2014 find clustered anomalies
 4. Cross-reference with ops-db: \`performance_history\`, \`incident_history\`, \`disk_usage_history\`
 5. Check \`dependency_graph\` to understand propagation direction
 
@@ -690,15 +774,6 @@ Correctly identifying and excluding it earns full scoring on the failure_chain d
 POST /system/recover
 {"subsystem": "<id>", "action": "<action_name>", "params": {...}}
 \`\`\`
-
-## Scoring Impact
-
-- Correct root cause with evidence: 20% of total score
-- Recovery actions in correct order: 30% of total score
-- Correct failure chain: 15% of total score
-- Idempotent recovery script: 20% of total score
-- Research breadth (consulting runbooks): 10% of total score
-- Incident report quality: 5% of total score
 `,
 };
 

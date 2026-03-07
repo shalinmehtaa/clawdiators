@@ -21,13 +21,14 @@ services:
       start_period: 3s
       retries: 10
 
-  mcp-audit-db:
+  audit-db:
     build:
-      context: ./services/mcp-audit-db
+      context: ./services/audit-db
     environment:
       - SEED=${SEED:-42}
       - MATCH_ID=${MATCH_ID:-local}
       - PORT=3000
+      - SERVICE_TOKEN=${SERVICE_TOKEN}
     ports:
       - "3000"
     mem_limit: 256m

@@ -88,6 +88,75 @@ export const SCORING_PRIMITIVES: Record<string, Function> = {
   set_overlap,
 };
 
+// ── Metadata for discovery API ─────────────────────────────────────
+
+export interface PrimitiveMetadata {
+  name: string;
+  signature: string;
+  description: string;
+  returns: string;
+  example: string;
+}
+
+export const SCORING_PRIMITIVES_METADATA: PrimitiveMetadata[] = [
+  {
+    name: "exact_match",
+    signature: "exact_match(a, b) → number",
+    description: "Returns 1 if a === b (case-insensitive for strings), else 0.",
+    returns: "0 or 1",
+    example: 'exact_match("Hello", "hello") → 1',
+  },
+  {
+    name: "exact_match_ratio",
+    signature: "exact_match_ratio(submitted[], expected[]) → number",
+    description: "Ratio of exact matches between two arrays (order-sensitive).",
+    returns: "0-1",
+    example: "exact_match_ratio([1,2,3], [1,2,4]) → 0.667",
+  },
+  {
+    name: "numeric_tolerance",
+    signature: "numeric_tolerance(val, expected, tolerance) → number",
+    description: "Returns 1 if val is within tolerance of expected, linear decay outside up to 5x tolerance.",
+    returns: "0-1",
+    example: "numeric_tolerance(10.5, 10, 1) → 1",
+  },
+  {
+    name: "fuzzy_string",
+    signature: "fuzzy_string(a, b) → number",
+    description: "Normalized Levenshtein similarity: 1 = identical, 0 = completely different.",
+    returns: "0-1",
+    example: 'fuzzy_string("kitten", "sitting") → 0.571',
+  },
+  {
+    name: "time_decay",
+    signature: "time_decay(elapsedSecs, limitSecs) → number",
+    description: "Linear time-based decay: 1 at t=0, 0 at t>=limit.",
+    returns: "0-1",
+    example: "time_decay(150, 300) → 0.5",
+  },
+  {
+    name: "api_call_efficiency",
+    signature: "api_call_efficiency(calls, optimal, max) → number",
+    description: "1 at optimal call count, linear decay to 0 at max.",
+    returns: "0-1",
+    example: "api_call_efficiency(5, 3, 10) → 0.714",
+  },
+  {
+    name: "coverage_ratio",
+    signature: "coverage_ratio(found, total) → number",
+    description: "Simple ratio of found/total, clamped to 0-1.",
+    returns: "0-1",
+    example: "coverage_ratio(7, 10) → 0.7",
+  },
+  {
+    name: "set_overlap",
+    signature: "set_overlap(a[], b[]) → number",
+    description: "Jaccard set overlap: |A ∩ B| / |A ∪ B|.",
+    returns: "0-1",
+    example: 'set_overlap(["a","b","c"], ["b","c","d"]) → 0.5',
+  },
+];
+
 // ── Internal: Levenshtein distance ─────────────────────────────────
 
 function levenshtein(a: string, b: string): number {

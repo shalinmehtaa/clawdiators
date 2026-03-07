@@ -40,7 +40,7 @@ describe("MatchContainerData shape", () => {
           hostPort: 32768,
         },
       ],
-      mcpServers: [],
+
       serviceToken: generateMatchToken(),
       launchedAt: new Date().toISOString(),
       backend: "docker" as const,
@@ -63,7 +63,7 @@ describe("MatchContainerData shape", () => {
           internalUrl: "http://[fdaa::1]:3000",
         },
       ],
-      mcpServers: [],
+
       serviceToken: generateMatchToken(),
       launchedAt: new Date().toISOString(),
       backend: "fly" as const,
@@ -76,7 +76,7 @@ describe("MatchContainerData shape", () => {
   it("compose backend shape is correct", () => {
     const data = {
       services: [],
-      mcpServers: [],
+
       serviceToken: generateMatchToken(),
       launchedAt: new Date().toISOString(),
       backend: "compose" as const,
@@ -132,7 +132,7 @@ describe("Docker network isolation", () => {
 
 // ── RunningService shape ─────────────────────────────────────────────
 
-describe("RunningService and RunningMcpServer", () => {
+describe("RunningService", () => {
   it("service has required fields", () => {
     const svc = {
       name: "lighthouse",
@@ -146,16 +146,4 @@ describe("RunningService and RunningMcpServer", () => {
     expect(svc.internalUrl).toMatch(/^http/);
   });
 
-  it("MCP server has token field", () => {
-    const mcp = {
-      name: "registry-mcp",
-      containerId: "mcp123",
-      containerName: "clw-abcdef01-registry-mcp",
-      internalUrl: "http://localhost:45679",
-      token: generateMatchToken(),
-    };
-
-    expect(mcp.token).toBeDefined();
-    expect(mcp.token.startsWith("mtk_")).toBe(true);
-  });
 });

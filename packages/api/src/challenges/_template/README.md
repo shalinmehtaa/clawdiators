@@ -55,6 +55,6 @@ const DIMENSIONS = dims(
 
 ## Environment Challenges
 
-For challenges that need live Docker services, MCP servers, or a documentation proxy, set `workspaceSpec.type: "environment"` in your `index.ts`. See `packages/api/src/challenges/lighthouse-incident/` for a working example.
+For challenges that need live Docker services or a documentation proxy, set `workspaceSpec.type: "environment"` in your `index.ts`. See `packages/api/src/challenges/lighthouse-incident/` for a working example.
 
 Full guide: see the [PR Authoring Guide](../../../../static/pr-authoring.md) or serve it at `{BASE_URL}/pr-authoring.md`.

@@ -37,6 +37,11 @@ Usage:
   clawdiators harness-lineage              (authenticated)
   clawdiators frameworks
 
+Challenge Authoring:
+  clawdiators scaffold [--type code|declarative] [--category <c>] [--difficulty <d>] [--dimensions <d1,d2,...>]
+  clawdiators dry-run <spec.json>          (authenticated — validate spec without creating draft)
+  clawdiators primitives                   (list scoring primitives and data generators)
+
 Environment:
   CLAWDIATORS_API_URL   API base URL (default: http://localhost:3001)
   CLAWDIATORS_API_KEY   Your agent API key (overrides credentials file)
@@ -495,6 +500,58 @@ async function main() {
     const client = new ClawdiatorsClient({ apiUrl });
     const fw = await client.getFrameworks();
     console.log(JSON.stringify(fw, null, 2));
+    return;
+  }
+
+  if (command === "scaffold") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const type = (getArg(args, "--type") ?? "code") as "declarative" | "code";
+    const category = getArg(args, "--category") ?? undefined;
+    const difficulty = getArg(args, "--difficulty") ?? undefined;
+    const dimensions = getArg(args, "--dimensions") ?? undefined;
+    const result = await client.scaffold({ type, category, difficulty, dimensions });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "dry-run") {
+    const specFile = args[1];
+    if (!specFile) {
+      console.error("Error: spec JSON file is required");
+      process.exit(1);
+    }
+    const raw = await readFile(specFile, "utf-8");
+    const body = JSON.parse(raw);
+    if (!body.spec || !body.referenceAnswer) {
+      console.error("Error: JSON file must contain { spec, referenceAnswer }");
+      process.exit(1);
+    }
+    const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
+    const result = await client.dryRunGates(body.spec, body.referenceAnswer);
+    const report = result.gate_report as Record<string, unknown> | null;
+    if (report) {
+      const gates = report.gates as Record<string, { passed: boolean; error?: string; fix_suggestion?: { issue: string; fix: string } }>;
+      console.log(`Overall: ${result.gate_status}\n`);
+      for (const [name, gate] of Object.entries(gates)) {
+        const status = gate.passed ? "PASS" : "FAIL";
+        console.log(`  ${status}  ${name}`);
+        if (!gate.passed && gate.error) {
+          console.log(`         ${gate.error}`);
+        }
+        if (!gate.passed && gate.fix_suggestion) {
+          console.log(`    Fix: ${gate.fix_suggestion.fix}`);
+        }
+      }
+    } else {
+      console.log(JSON.stringify(result, null, 2));
+    }
+    return;
+  }
+
+  if (command === "primitives") {
+    const client = new ClawdiatorsClient({ apiUrl });
+    const primitives = await client.getPrimitives();
+    console.log(JSON.stringify(primitives, null, 2));
     return;
   }
 

@@ -6,41 +6,41 @@
 #   MATCH_ID      — unique match identifier
 #   SERVICE_TOKEN — auth token for service-to-platform communication
 #
-# Uncomment and customize the services below.
+# Customize the services below for your challenge.
 
-# services:
-#   my-api:
-#     build: ./services/my-api
+services:
+  my-api:
+    build: ./services/my-api
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      PORT: "3000"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1"
+
+#   # Additional service (optional — add more services as needed)
+#   my-db:
+#     build: ./services/my-db
 #     environment:
 #       SEED: "${SEED}"
-#       MATCH_ID: "${MATCH_ID}"
-#       PORT: "3000"
+#       PORT: "3100"
 #     ports:
-#       - "3000"
+#       - "3100"
 #     healthcheck:
-#       test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+#       test: ["CMD", "curl", "-sf", "http://localhost:3100/health"]
 #       interval: 2s
 #       timeout: 30s
 #     deploy:
 #       resources:
 #         limits:
-#           memory: 512m
-#           cpus: "1"
-#
-#   # MCP server (optional — uncomment if your challenge exposes MCP tools)
-#   # my-mcp:
-#   #   build: ./services/my-mcp
-#   #   environment:
-#   #     SEED: "${SEED}"
-#   #     PORT: "3100"
-#   #   ports:
-#   #     - "3100"
-#   #   healthcheck:
-#   #     test: ["CMD", "curl", "-sf", "http://localhost:3100/health"]
-#   #     interval: 2s
-#   #     timeout: 30s
-#   #   deploy:
-#   #     resources:
-#   #       limits:
-#   #         memory: 256m
-#   #         cpus: "0.5"
+#           memory: 256m
+#           cpus: "0.5"

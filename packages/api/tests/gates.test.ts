@@ -360,3 +360,51 @@ describe("runAllGates", () => {
     expect(gateKeys).toContain("score_distribution");
   });
 });
+
+// ── Fix Suggestions ─────────────────────────────────────────────────
+
+describe("fix_suggestion on gate failures", () => {
+  it("spec_validity includes fix_suggestion when spec is invalid", () => {
+    const result = checkSpecValidity({ invalid: true });
+    expect(result.passed).toBe(false);
+    expect(result.fix_suggestion).toBeDefined();
+    expect(result.fix_suggestion!.issue).toContain("Zod schema");
+    expect(result.fix_suggestion!.fix).toContain("camelCase");
+  });
+
+  it("contract_consistency includes fix_suggestion on failure", () => {
+    const broken: CommunitySpec = {
+      ...baseSpec,
+      workspace: { ...baseSpec.workspace, seedable: true, challengeMd: "No seed here" },
+    };
+    const result = checkContractConsistency(broken);
+    expect(result.passed).toBe(false);
+    expect(result.fix_suggestion).toBeDefined();
+    expect(result.fix_suggestion!.fix).toContain("{{seed}}");
+  });
+
+  it("anti_gaming includes fix_suggestion with example_code", async () => {
+    const easySpec: CommunitySpec = {
+      ...baseSpec,
+      scorer: undefined,
+    };
+    const mod = createDeclarativeModule(easySpec);
+    const result = await checkAntiGaming(easySpec, mod, { seed: 42, answer: { methodology: "approach" } });
+    expect(result.passed).toBe(false);
+    expect(result.fix_suggestion).toBeDefined();
+    expect(result.fix_suggestion!.example_code).toBeDefined();
+    expect(result.fix_suggestion!.fix).toContain("correctness > 0");
+  });
+
+  it("score_distribution includes fix_suggestion on failure", () => {
+    const result = checkScoreDistribution(500, [300, 100], 1000, "newcomer");
+    expect(result.passed).toBe(false);
+    expect(result.fix_suggestion).toBeDefined();
+  });
+
+  it("no fix_suggestion on passing gates", () => {
+    const result = checkSpecValidity(baseSpec);
+    expect(result.passed).toBe(true);
+    expect(result.fix_suggestion).toBeUndefined();
+  });
+});

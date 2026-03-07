@@ -177,15 +177,13 @@ matchRoutes.post(
     // For "environment" type challenges: launch live service containers
     let containerData: MatchContainerData | null = null;
     let serviceUrls: Record<string, string> = {};
-    let mcpServerUrls: Record<string, { url: string; token: string }> = {};
     let proxyUrl: string | undefined;
 
     const wsSpec = mod.workspaceSpec;
-    if (wsSpec?.type === "environment" && (wsSpec.services?.length || wsSpec.mcpServers?.length)) {
+    if (wsSpec?.type === "environment" && wsSpec.services?.length) {
       try {
         containerData = await launchMatchContainers(match.id, seed, {
           services: wsSpec.services,
-          mcpServers: wsSpec.mcpServers,
         }, challenge.timeLimitSecs, challenge.slug);
 
         // Store container data in DB for the proxy routes and cleanup
@@ -198,12 +196,6 @@ matchRoutes.post(
         const platformBase = process.env.PLATFORM_URL ?? "";
         for (const svc of containerData.services) {
           serviceUrls[svc.name] = `${platformBase}/api/v1/matches/${match.id}/services/${svc.name}`;
-        }
-        for (const mcp of containerData.mcpServers) {
-          mcpServerUrls[mcp.name] = {
-            url: `${platformBase}/api/v1/matches/${match.id}/mcp/${mcp.name}`,
-            token: mcp.token,
-          };
         }
         if (wsSpec.proxy) {
           proxyUrl = `${platformBase}/api/v1/matches/${match.id}/proxy`;
@@ -254,7 +246,6 @@ matchRoutes.post(
               agentHarness: (agent.harness as HarnessInfo | null) ?? null,
               serviceUrls: Object.keys(serviceUrls).length ? serviceUrls : undefined,
               serviceToken: containerData?.serviceToken,
-              mcpServers: Object.keys(mcpServerUrls).length ? mcpServerUrls : undefined,
               proxyUrl,
             })
           : null,
@@ -482,12 +473,10 @@ matchRoutes.post(
 
     // Merge interaction log into serviceData for GET /matches/:id
     let updatedServiceData = match.serviceData as Record<string, unknown> | null;
-    if (interactionLog && (interactionLog.interactions.length || interactionLog.mcpToolCalls.length || interactionLog.mcpResourceReads.length)) {
+    if (interactionLog && interactionLog.interactions.length) {
       updatedServiceData = {
         ...(updatedServiceData ?? {}),
         serviceInteractions: interactionLog.interactions,
-        mcpToolCalls: interactionLog.mcpToolCalls,
-        mcpResourceReads: interactionLog.mcpResourceReads,
       };
     }
 

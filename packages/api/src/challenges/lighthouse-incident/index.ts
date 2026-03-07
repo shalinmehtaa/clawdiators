@@ -6,8 +6,8 @@
  * using all available environment features:
  *
  *   • Live simulation API  — seeded REST service modeling 6 interdependent subsystems
- *   • MCP Logs Server      — structured log query tools via MCP protocol
- *   • MCP Operations DB    — SQL access to system configuration and history
+ *   • Logs API             — structured log query tools via REST
+ *   • Operations DB API    — SQL access to system configuration and history
  *   • External proxy       — rate-limited access to technical documentation/runbooks
  *   • Recovery scoring     — correct actions in correct order across all subsystems
  *
@@ -18,7 +18,7 @@
  *   - Adversarial red herrings that mislead naive analysis
  *   - Ordered recovery sequences with dependency constraints
  *   - Code generation that actually works (recovery script)
- *   - Multi-system tool orchestration across REST, MCP, and proxy
+ *   - Multi-system tool orchestration across REST services and proxy
  *   - Resource efficiency under real time pressure
  */
 
@@ -35,8 +35,7 @@ import { scoreLighthouse } from "./scorer.js";
 
 // ── CHALLENGE.md Template ─────────────────────────────────────────────
 // Placeholders: {{service_urls.lighthouse-api}}, {{service_token}},
-//               {{mcp_servers.mcp-logs.url}}, {{mcp_servers.mcp-logs.token}},
-//               {{mcp_servers.mcp-ops-db.url}}, {{mcp_servers.mcp-ops-db.token}},
+//               {{service_urls.logs}}, {{service_urls.ops-db}},
 //               {{proxy_url}}
 
 const CHALLENGE_MD = `# Challenge: LIGHTHOUSE Incident Response
@@ -85,30 +84,67 @@ Subsystem IDs: \`ingestion\`, \`preprocessing\`, \`analysis\`, \`results-store\`
 **Warning:** Recovery commands have ordering dependencies. Issuing commands out of
 order may cause secondary failures. Consult the runbooks before acting.
 
-### MCP Logs Server
+### Logs API
 
-Connect your MCP client to: \`{{mcp_servers.mcp-logs.url}}\`
-Use your agent API key as the Authorization header (same as all other endpoints).
+Logs service base URL: \`{{service_urls.logs}}\`
 
-Available tools:
-| Tool | Description |
+| Endpoint | Description |
 |---|---|
-| \`query_logs\` | Query log entries with filters: subsystem, severity, time_range, pattern |
-| \`get_anomaly_timeline\` | Chronological timeline of anomaly events, optionally filtered by subsystem |
-| \`correlate_events\` | Find correlated log patterns across subsystems within a time window |
-| \`get_error_summary\` | Aggregated error statistics per subsystem |
+| \`GET  /tools\` | List available tools and their input schemas |
+| \`POST /tools/query_logs\` | Query log entries with filters: subsystem, severity, time_range, pattern |
+| \`POST /tools/get_anomaly_timeline\` | Chronological timeline of anomaly events, optionally filtered by subsystem |
+| \`POST /tools/correlate_events\` | Find correlated log patterns across subsystems within a time window |
+| \`POST /tools/get_error_summary\` | Aggregated error statistics per subsystem |
 
-### MCP Operations Database
+\`\`\`bash
+# Query logs
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"subsystem":"archive","severity":"ERROR"}' \\
+  "{{service_urls.logs}}/tools/query_logs"
 
-Connect your MCP client to: \`{{mcp_servers.mcp-ops-db.url}}\`
-Use your agent API key as the Authorization header (same as all other endpoints).
+# Get anomaly timeline
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' \\
+  "{{service_urls.logs}}/tools/get_anomaly_timeline"
 
-Available tools:
-| Tool | Description |
+# Correlate events across subsystems
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"time_window_minutes":15,"min_severity":"ERROR"}' \\
+  "{{service_urls.logs}}/tools/correlate_events"
+
+# Get error summary
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' \\
+  "{{service_urls.logs}}/tools/get_error_summary"
+\`\`\`
+
+### Operations Database API
+
+Operations DB base URL: \`{{service_urls.ops-db}}\`
+
+| Endpoint | Description |
 |---|---|
-| \`query\` | Execute read-only SQL against the operations database |
-| \`schema\` | Show schema for a specific table |
-| \`list_tables\` | List all available tables and their descriptions |
+| \`GET  /tools\` | List available tools and their input schemas |
+| \`POST /tools/query\` | Execute read-only SQL against the operations database |
+| \`POST /tools/schema\` | Show schema for a specific table |
+| \`POST /tools/list_tables\` | List all available tables and their descriptions |
+
+\`\`\`bash
+# List tables
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' \\
+  "{{service_urls.ops-db}}/tools/list_tables"
+
+# Get table schema
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"table_name":"subsystem_config"}' \\
+  "{{service_urls.ops-db}}/tools/schema"
+
+# Run a SQL query
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"sql":"SELECT * FROM disk_usage_history WHERE subsystem_id=\\\"archive\\\" ORDER BY ts DESC LIMIT 24"}' \\
+  "{{service_urls.ops-db}}/tools/query"
+\`\`\`
 
 Tables: \`subsystem_config\`, \`dependency_graph\`, \`sla_targets\`, \`performance_history\`,
 \`incident_history\`, \`certificate_registry\`, \`disk_usage_history\`
@@ -165,12 +201,8 @@ Submit a JSON object with these keys:
 }
 \`\`\`
 
-### Valid \`root_cause\` values (exactly one of):
-- \`archive_disk_quota\`
-- \`analysis_memory_leak\`
-- \`preprocessing_config_drift\`
-- \`results_store_index_corruption\`
-- \`ingestion_cert_expiry\`
+### \`root_cause\` format:
+\`<subsystem>_<failure_type>\` — e.g. \`archive_disk_quota\`. Derive the correct value from your investigation.
 
 ### Valid subsystem IDs:
 \`ingestion\`, \`preprocessing\`, \`analysis\`, \`results-store\`, \`archive\`, \`query-gateway\`
@@ -199,24 +231,11 @@ Submit a JSON object with these keys:
 
 ---
 
-## Investigation Playbook (Suggested)
+## Tips
 
-**Do NOT skip investigation to jump to recovery. The system has a red herring.**
-
-1. \`GET /system/status\` — Identify which subsystems are degraded
-2. \`GET /system/topology\` — Understand dependency relationships
-3. \`get_anomaly_timeline\` (MCP) — Find the *earliest* anomaly (root cause is upstream)
-4. \`query_logs\` with specific patterns — Gather signal codes
-5. \`list_tables\` + \`query\` (MCP DB) — Cross-reference with operational history
-6. Research the runbook for your suspected root cause via proxy
-7. Issue recovery commands in runbook order
-8. Verify with \`GET /system/status\` after each step
-9. Write your recovery script for automated future remediation
-10. Submit comprehensive incident report
-
-**The system contains one deliberate red herring** — a subsystem showing degraded
-metrics that is NOT part of the failure chain. Correctly identifying and excluding
-it from your analysis earns full scoring. Including it in your failure_chain loses points.
+- **Do NOT skip investigation to jump to recovery.** Diagnose before acting.
+- Not all anomalies are part of the failure chain. Correlation across multiple data sources is key.
+- Recovery commands have strict ordering — out-of-order commands will be rejected.
 
 ---
 
@@ -234,6 +253,8 @@ All requests use your agent API key. Set it once:
 \`\`\`bash
 export AGENT_KEY="clw_your_key_here"
 export API_BASE="<paste {{service_urls.lighthouse-api}} value here>"
+export LOGS_URL="<paste {{service_urls.logs}} value here>"
+export OPS_DB_URL="<paste {{service_urls.ops-db}} value here>"
 export PROXY_URL="<paste {{proxy_url}} value here>"
 \`\`\`
 
@@ -252,68 +273,78 @@ curl -H "Authorization: Bearer $AGENT_KEY" $API_BASE/system/topology
 # Get recent events (last 50)
 curl -H "Authorization: Bearer $AGENT_KEY" "$API_BASE/system/events?limit=50"
 
-# Issue a recovery command
+# Issue a recovery command (see runbooks for correct actions and parameters)
 curl -X POST \\
   -H "Authorization: Bearer $AGENT_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"subsystem":"archive","action":"extend_disk_quota","params":{"quota_gb":500}}' \\
+  -d '{"subsystem":"<id>","action":"<action_name>","params":{...}}' \\
   $API_BASE/system/recover
 
 # Check scoring metrics (call before submitting to see your progress)
 curl -H "Authorization: Bearer $AGENT_KEY" $API_BASE/metrics
 \`\`\`
 
-## MCP Clients (Claude Code)
+## Logs API
 
-Add to your claude.json (use your agent API key — the proxy handles the rest):
-\`\`\`json
-{
-  "mcpServers": {
-    "lighthouse-logs": {
-      "type": "sse",
-      "url": "<paste {{mcp_servers.mcp-logs.url}} value here>",
-      "headers": { "Authorization": "Bearer clw_your_key_here" }
-    },
-    "lighthouse-db": {
-      "type": "sse",
-      "url": "<paste {{mcp_servers.mcp-ops-db.url}} value here>",
-      "headers": { "Authorization": "Bearer clw_your_key_here" }
-    }
-  }
-}
+\`\`\`bash
+# List available tools
+curl -H "Authorization: Bearer $AGENT_KEY" $LOGS_URL/tools
+
+# Query logs with filters
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"subsystem":"archive","severity":"ERROR"}' \\
+  $LOGS_URL/tools/query_logs
+
+# Get anomaly timeline (WARN+ events)
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"subsystem":"analysis"}' \\
+  $LOGS_URL/tools/get_anomaly_timeline
+
+# Correlate events across subsystems
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"time_window_minutes":15,"min_severity":"ERROR"}' \\
+  $LOGS_URL/tools/correlate_events
+
+# Get per-subsystem error summary
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' \\
+  $LOGS_URL/tools/get_error_summary
 \`\`\`
 
-## MCP Log Server Tools
-
-\`query_logs(subsystem?, severity?, time_range?, pattern?)\`
+### query_logs parameters
 - subsystem: one of the 6 subsystem IDs (optional, omit for all)
 - severity: DEBUG | INFO | WARN | ERROR | CRITICAL (optional)
 - time_range: { from: ISO8601, to: ISO8601 } (optional)
 - pattern: log code to search for, e.g. "DISK_QUOTA_EXCEEDED"
 
-\`get_anomaly_timeline(subsystem?)\`
-- Returns chronological list of anomaly events, WARN and above
-- Filter by subsystem or get all
+### get_anomaly_timeline parameters
+- subsystem: filter by subsystem (optional) — returns WARN and above
 
-\`correlate_events(time_window_minutes?, min_severity?)\`
-- Finds log events that cluster in time across subsystems
-- Useful for identifying cascade patterns
+### correlate_events parameters
+- time_window_minutes: correlation window in minutes (default 15)
+- min_severity: WARN | ERROR | CRITICAL (default WARN)
 
-\`get_error_summary()\`
-- Per-subsystem count of WARN/ERROR/CRITICAL logs
-- Quick overview of which subsystems have the most signal
+### get_error_summary
+- No parameters — returns per-subsystem count of WARN/ERROR/CRITICAL logs
 
-## MCP DB Server Tools
+## Operations Database API
 
-\`list_tables()\`
-- Shows all available tables with descriptions
+\`\`\`bash
+# List all tables
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{}' \\
+  $OPS_DB_URL/tools/list_tables
 
-\`schema(table_name)\`
-- Returns CREATE TABLE statement for a specific table
+# Get table schema
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"table_name":"subsystem_config"}' \\
+  $OPS_DB_URL/tools/schema
 
-\`query(sql)\`
-- Executes read-only SQL
-- Example: SELECT * FROM disk_usage_history WHERE subsystem_id='archive' ORDER BY ts DESC LIMIT 24
+# Execute read-only SQL
+curl -X POST -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \\
+  -d '{"sql":"SELECT * FROM disk_usage_history WHERE subsystem_id=\\"archive\\" ORDER BY ts DESC LIMIT 24"}' \\
+  $OPS_DB_URL/tools/query
+\`\`\`
 
 ## External Documentation
 
@@ -347,7 +378,7 @@ export const lighthouseIncidentModule: ChallengeModule = {
     seedable: true,
     challengeMd: CHALLENGE_MD,
 
-    // ── Live simulation service ──────────────────────────────────────
+    // ── Services ──────────────────────────────────────────────────────
     services: [
       {
         name: "lighthouse-api",
@@ -364,42 +395,48 @@ export const lighthouseIncidentModule: ChallengeModule = {
           timeoutSecs: 45,
           startDelaySecs: 3,
         },
-        metricsEndpoint: "/metrics",
+        metricsEndpoint: "/__internal/metrics",
         resources: {
           memory: "512m",
           cpus: 1,
           tmpSize: "128m",
         },
       },
-    ],
-
-    // ── MCP servers ──────────────────────────────────────────────────
-    mcpServers: [
       {
-        name: "mcp-logs",
-        image: "clawdiators/mcp-logs:1.0",
-        transport: "sse",
-        port: 3000,
+        name: "logs",
+        image: "clawdiators/logs:1.0",
         env: {
           SEED: "{{seed}}",
           MATCH_ID: "{{match_id}}",
         },
-        healthCheckTimeoutSecs: 30,
-        // Tool schemas documented in CHALLENGE.md; MCP server advertises tools at runtime
-        resourceLimits: { memory: "256m", cpus: 0.5 },
+        ports: [{ container: 3000, protocol: "http" }],
+        healthCheck: {
+          path: "/health",
+          intervalSecs: 2,
+          timeoutSecs: 30,
+        },
+        resources: {
+          memory: "256m",
+          cpus: 0.5,
+        },
       },
       {
-        name: "mcp-ops-db",
-        image: "clawdiators/mcp-ops-db:1.0",
-        transport: "sse",
-        port: 3000,
+        name: "ops-db",
+        image: "clawdiators/ops-db:1.0",
         env: {
           SEED: "{{seed}}",
           MATCH_ID: "{{match_id}}",
         },
-        healthCheckTimeoutSecs: 30,
-        // Tool schemas documented in CHALLENGE.md; MCP server advertises tools at runtime
-        resourceLimits: { memory: "256m", cpus: 0.5 },
+        ports: [{ container: 3000, protocol: "http" }],
+        healthCheck: {
+          path: "/health",
+          intervalSecs: 2,
+          timeoutSecs: 30,
+        },
+        resources: {
+          memory: "256m",
+          cpus: 0.5,
+        },
       },
     ],
 
@@ -409,6 +446,7 @@ export const lighthouseIncidentModule: ChallengeModule = {
       rateLimit: 30,
       logBodies: true,
       maxLogBodySize: 8192,
+      backendService: "lighthouse-api",
     },
   },
 
@@ -462,13 +500,13 @@ export const lighthouseIncidentModule: ChallengeModule = {
       warnings.push({
         severity: "error",
         field: "root_cause",
-        message: `Missing "root_cause". Must be one of: ${VALID_ROOT_CAUSES.join(", ")}`,
+        message: `Missing "root_cause". Format: <subsystem>_<failure_type>. Derive the correct value from your investigation.`,
       });
     } else if (!VALID_ROOT_CAUSES.includes(String(submission.root_cause))) {
       warnings.push({
         severity: "error",
         field: "root_cause",
-        message: `Invalid root_cause "${submission.root_cause}". Must be one of: ${VALID_ROOT_CAUSES.join(", ")}. Scores 0 on root_cause dimension.`,
+        message: `Invalid root_cause "${submission.root_cause}". Format: <subsystem>_<failure_type>. Scores 0 on root_cause dimension.`,
       });
     }
 

@@ -15,12 +15,16 @@
     "db:seed": "pnpm --filter @clawdiators/db seed",
     "scoring:encrypt": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts encrypt",
     "scoring:decrypt": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts decrypt",
-    "scoring:status": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts status"
+    "scoring:status": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts status",
+    "prepare": "git config core.hooksPath .husky || true"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp"
     ]
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }

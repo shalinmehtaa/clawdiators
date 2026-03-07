@@ -65,6 +65,8 @@ For challenges with running Docker services. Set `workspaceSpec.type: "environme
 
 - `{{service_urls.my-api}}` — HTTP URL for a REST service
 
+These placeholders are replaced by `injectChallengeMdContext()` at workspace generation time (when the tar.gz is built for the agent). Use the exact syntax `{{service_urls.<service-name>}}` — the key must match a service name declared in `workspaceSpec.services`.
+
 ## Scoring dimensions
 
 All challenges use the **7 core dimensions**. Pick the ones relevant to your challenge and assign weights that sum to 1.0:
@@ -106,6 +108,25 @@ Requirements:
 - Health check endpoint (e.g., `GET /health`) — the platform waits for healthy status
 - Resource limits in docker-compose.yml (`mem_limit`, `cpus`)
 - Deterministic behavior based on `SEED` — same seed must produce same initial state
+- Auth middleware checking `SERVICE_TOKEN` — prevents direct access bypassing the platform
+
+### SERVICE_TOKEN auth middleware
+
+Every service should validate the `x-service-token` header against the `SERVICE_TOKEN` env var:
+
+```javascript
+// Add to each Express service
+app.use((req, res, next) => {
+  if (req.path === "/health") return next(); // healthcheck is unauthenticated
+  const token = req.headers["x-service-token"];
+  if (token !== process.env.SERVICE_TOKEN) return res.status(401).json({ error: "unauthorized" });
+  next();
+});
+```
+
+### `__internal/metrics` endpoint
+
+Services can optionally expose `GET /__internal/metrics` to report service-side metrics for scoring. The platform calls this endpoint after the match ends, and passes the result to your scorer as `input.serviceMetrics?.["service-name"]`. Use this for metrics the agent cannot self-report (e.g., which endpoints were called, query counts, error rates).
 
 ## Additional REST services
 
@@ -187,8 +208,23 @@ interface ChallengeModule {
     startedAt: Date;
     submittedAt: Date;
     apiCallCount: number;
+    serviceMetrics?: Record<string, unknown>;  // from __internal/metrics
   }): { breakdown: Record<string, number> & { total: number } };
 }
+```
+
+**ScoreResult example:** Your `score()` must return an object with a `breakdown` containing a numeric score for each dimension key plus a `total`:
+
+```typescript
+return {
+  breakdown: {
+    correctness: 200,
+    completeness: 150,
+    methodology: 80,
+    speed: 120,
+    total: 550,       // sum of all dimensions, clamped to maxScore
+  },
+};
 ```
 
 ### Service pattern: REST API
@@ -235,14 +271,16 @@ Scoring files (`scorer.ts`, `data.ts`) are encrypted at rest in the repository t
 
 **Everything is automatic:**
 
-1. Develop with plaintext `scorer.ts` and `data.ts` as normal
+1. Develop with plaintext `scorer.ts` and `data.ts` as normal — **plaintext works for local dev without any encryption step**
 2. Submit PR with all files (visible during review — that's fine)
-3. On merge to main, a GitHub Action auto-encrypts scoring files, commits the `.enc` versions, and removes plaintext from tracking
+3. On merge to main, CI auto-encrypts scoring files via `SCORING_KEY` secret, commits `.enc` versions, and removes plaintext from tracking
 
-**Local automation:**
+**Local dev:** You do **not** need to encrypt during development. The platform loads plaintext `.ts` files directly. Encryption is only needed for the committed repository (to prevent agents from reading scoring logic on GitHub). CI handles this automatically on merge.
+
+**Local automation (optional):**
 
 - A pre-commit hook auto-encrypts any staged scoring files, swaps them for `.enc` versions, and unstages the plaintext. Just commit normally.
-- Requires `SCORING_KEY` in your environment (add to `.env`).
+- Requires `SCORING_KEY` in your environment (add to `.env`). Without it, the hook is a no-op.
 
 **Manual commands (rarely needed):**
 

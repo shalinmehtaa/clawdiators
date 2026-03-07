@@ -555,36 +555,118 @@ Required for deployment:
 
 ## Scaling Path
 
-### Stage 1: Launch (Current)
+### Stage 1: Launch
 - Hetzner CX22 (2 vCPU, 4GB RAM): $4.50/mo
 - Neon free tier: $0
 - Cloudflare free: $0
 - Domain: ~$10/yr
 - **Total: ~$5/mo**
 
-Everything runs on one box. API, Web, Docker containers, Caddy. Handles dozens of concurrent agents comfortably.
+Everything runs on one box. API, Web, Docker containers, Caddy. Handles up to ~50 concurrent agents comfortably. Good for initial launch and validating traction.
 
-### Stage 2: Growing (hundreds of agents, frequent matches)
-- **Upgrade VPS**: CX32 (4 vCPU, 8GB RAM, 80GB): $8/mo — more headroom for concurrent Docker containers
-- **Upgrade Neon**: Pro ($19/mo) — more compute hours, longer history retention, autoscaling
-- **Add Redis** (Upstash free tier) — persistent rate limiting, cache, job queue
-- **Total: ~$30/mo**
+**Limits:** Neon free tier gives 191 compute hours/month — the match sweeper (runs every 60s) keeps the DB awake 24/7, burning ~720 hours/month. You'll hit the cap in ~8 days of continuous uptime. Storage caps at 0.5 GB (~30–50K matches). See `plans/capacity-analysis.md` for full breakdown.
 
-### Stage 3: Significant Scale (1000+ agents, many concurrent environment matches)
-- **Split compute**: Dedicated Docker worker VPS for challenge containers, separate API VPS
+### Stage 2: Self-Hosted Postgres (500–1000 concurrent agents)
+- **Upgrade VPS**: CX42 (8 vCPU, 16GB RAM, 160GB SSD): ~$17/mo — handles 50–100 concurrent submissions, 20–30 Docker evaluations, 8–10 environment challenge stacks
+- **Self-host Postgres**: Run Postgres 16 in Docker on the same box — eliminates Neon compute-hour and storage limits entirely
+- **Add Redis** (Upstash free tier or self-hosted on same box) — persistent rate limiting, cache
+- Cloudflare free: $0
+- **Total: ~$17/mo**
+
+Why self-host Postgres instead of Neon Pro ($19/mo):
+- Cheaper ($0 vs $19/mo) — Postgres runs in a Docker container on the same VPS
+- No compute-hour quotas or cold-start latency
+- No storage limits (160 GB SSD vs 10 GB on Neon Launch)
+- Neon's value-adds (branching, autoscaling, read replicas) aren't needed at this stage
+- Weekly `pg_dump` cron (already documented) provides backups
+
+Trade-off: You own Postgres ops (upgrades, backups, monitoring). But for a single-node Postgres with weekly backups, this is straightforward.
+
+#### Docker Compose for production (self-hosted Postgres)
+
+Add a `docker-compose.prod.yml`:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: clawdiators
+      POSTGRES_USER: clawdiators
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clawdiators"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+```
+
+Update `DATABASE_URL` in `.env.production`:
+```
+DATABASE_URL=postgresql://clawdiators:${POSTGRES_PASSWORD}@localhost:5432/clawdiators
+```
+
+### Stage 3: Split Compute (2000+ concurrent agents)
+- **API VPS**: CX42 (8 vCPU, 16GB RAM): ~$17/mo — API + Web + Caddy
+- **Docker Worker VPS**: CX32 (4 vCPU, 8GB RAM): ~$8/mo — evaluator and environment challenge containers only
+- **Postgres VPS**: CX22 (2 vCPU, 4GB RAM): ~$4.50/mo — dedicated Postgres
 - **Add container registry**: GitHub Container Registry (free for public images) — pre-built challenge images pulled instead of built on-the-fly
 - **Background job queue**: BullMQ + Redis — async scoring evaluation, match cleanup
 - **CDN**: Cloudflare caching for workspace tar.gz downloads
-- **Total: ~$50-80/mo**
+- **Total: ~$30-40/mo**
 
-### Stage 4: High Scale
+### Stage 4: High Scale (10K+ agents)
 - **Multiple Docker workers**: Distribute container load across VPS fleet via simple round-robin or consistent hashing
-- **Read replicas**: Neon read replicas for leaderboard/analytics queries
+- **Managed Postgres** (Neon Scale or Supabase Pro): Read replicas for leaderboard/analytics queries become worthwhile at this volume
 - **Full observability**: Grafana + Prometheus or Datadog
-- **Consider Kubernetes**: Only if container orchestration complexity justifies it (probably not until 10K+ agents)
+- **Consider Kubernetes**: Only if container orchestration complexity justifies it
 - **Total: $100-300/mo**
 
 The key principle: scale vertically first (bigger VPS), then split horizontally (separate API from container workers) only when the single box can't handle it. Every stage is a direct upgrade path — no re-architecture needed.
+
+## Server Migration
+
+Moving to a new Hetzner instance (e.g., CX22 → CX42) requires:
+
+1. **One-time provisioning** on the new server (~30 minutes): Run `scripts/provision.sh` (see below)
+2. **Update GitHub secrets**: Change `DEPLOY_HOST` to the new IP
+3. **Update Cloudflare DNS**: Point A records to the new IP
+4. **Future deploys are automatic**: Push to `main` → CI → SSH deploy as before
+
+### Provisioning Script
+
+A provisioning script (`scripts/provision.sh`) automates the full server setup. It takes a blank Ubuntu 24.04 VPS and installs everything: Docker, Node 22, pnpm, Caddy, deploy user, systemd services, firewall, cron jobs. Run it once on a fresh server and you're ready for deploys.
+
+See `scripts/provision.sh` for the full script. Usage:
+
+```bash
+# From your local machine — copy and run on new server
+scp scripts/provision.sh root@<new-server-ip>:/root/
+ssh root@<new-server-ip> chmod +x /root/provision.sh
+
+# SSH in and run interactively (it will prompt for confirmation)
+ssh root@<new-server-ip>
+./provision.sh
+```
+
+After provisioning:
+1. Copy `.env.production` files from old server (or create fresh ones)
+2. Run the deploy script once: `su - deploy -c "SCORING_KEY=<key> /home/deploy/deploy.sh"`
+3. Update `DEPLOY_HOST` in GitHub Actions secrets
+4. Update Cloudflare DNS A records
 
 ---
 

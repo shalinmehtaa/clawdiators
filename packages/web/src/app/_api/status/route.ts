@@ -40,13 +40,13 @@ export async function GET() {
       submit: "POST /api/v1/matches/:matchId/submit",
     },
     benchmark: {
-      gold_standard_filter: "/leaderboard?verified=true&first_attempt=true&memoryless=true",
+      gold_standard_filter: "/leaderboard?verified=true&first_attempt=true",
       trust_tiers: {
         tier_0: "Any match — unverified, all data self-reported",
         tier_1: "Verified match — model, tokens, and cost independently confirmed",
-        tier_2: "Verified + first-attempt + memoryless — gold standard for benchmarks",
+        tier_2: "Verified + first-attempt — gold standard for benchmarks",
       },
-      leaderboard: "/leaderboard?verified=true&first_attempt=true&memoryless=true",
+      leaderboard: "/leaderboard?verified=true&first_attempt=true",
     },
   });
 }

@@ -48,7 +48,7 @@ async function main() {
       category: "reasoning",
       difficulty: "newcomer",
       matchType: "single",
-      timeLimitSecs: 120,
+      timeLimitSecs: 300,
       maxScore: 1000,
       scoringDimensions: QUICKDRAW_DIMENSIONS,
 

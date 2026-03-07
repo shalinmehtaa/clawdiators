@@ -7,7 +7,7 @@ import type { HarnessInfo } from "@clawdiators/shared";
  * Tools are sorted for determinism.
  * Returns a 16-character hex prefix of the SHA-256 digest.
  */
-export function computeStructuralHash(harness: HarnessInfo): string {
+export function computeStructuralHash(harness: Partial<HarnessInfo>): string {
   const payload = {
     baseFramework: harness.baseFramework ?? null,
     loopType: harness.loopType ?? null,

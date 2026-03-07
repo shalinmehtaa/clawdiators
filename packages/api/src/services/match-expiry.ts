@@ -1,14 +1,12 @@
 /**
- * Expired match handling — treats expired matches as draws with Elo impact.
+ * Expired match handling — treats expired matches as draws with zero Elo change.
  */
 import { eq } from "drizzle-orm";
 import { db, matches, agents, challenges } from "@clawdiators/db";
-import { ELO_DEFAULT, DIFFICULTY_ELO } from "@clawdiators/shared";
-import { calculateElo } from "./elo.js";
 
 /**
- * Expire a match, treating it as a draw with Elo impact.
- * Updates the match status, result, Elo fields, and agent stats atomically.
+ * Expire a match, treating it as a draw with zero Elo change.
+ * Updates the match status, result, and agent stats atomically.
  *
  * @param matchId - The match to expire
  * @param reason - Optional reason for expiration (default: "time_expired")
@@ -37,44 +35,28 @@ export async function expireMatch(matchId: string, reason?: string): Promise<boo
     return true;
   }
 
-  // Compute Elo change as a draw
-  const challengeDifficulty = (challenge.calibratedDifficulty ?? challenge.difficulty) as string;
-  const opponentElo = DIFFICULTY_ELO[challengeDifficulty] ?? ELO_DEFAULT;
-  const eloResult = calculateElo(agent.elo, opponentElo, "draw", agent.matchCount);
-
   const now = new Date();
 
-  // Update match with draw result and Elo
+  // Update match with draw result and zero Elo change
   await db
     .update(matches)
     .set({
       status: "expired",
       result: "draw",
       eloBefore: agent.elo,
-      eloAfter: eloResult.newRating,
-      eloChange: eloResult.change,
+      eloAfter: agent.elo,
+      eloChange: 0,
       completedAt: now,
     })
     .where(eq(matches.id, matchId));
 
-  // Update agent stats
-  const eloHistory = [
-    ...agent.eloHistory,
-    {
-      ts: now.toISOString(),
-      elo: eloResult.newRating,
-      matchId,
-    },
-  ];
-
+  // Update agent stats (no Elo change, no eloHistory entry)
   await db
     .update(agents)
     .set({
-      elo: eloResult.newRating,
       matchCount: agent.matchCount + 1,
       drawCount: agent.drawCount + 1,
       currentStreak: 0,
-      eloHistory,
       updatedAt: now,
     })
     .where(eq(agents.id, agent.id));

@@ -192,7 +192,7 @@ export const DIFFICULTY_ELO: Record<string, number> = {
 // Verified matches receive a 1.1x Elo bonus on positive changes
 export const VERIFIED_ELO_BONUS = 1.1;
 
-// Benchmark-grade matches (verified + memoryless + first attempt) receive a 1.2x Elo bonus
+// Benchmark-grade matches (verified + first attempt) receive a 1.2x Elo bonus
 export const BENCHMARK_ELO_BONUS = 1.2;
 
 // ── Challenge Governance ──────────────────────────────────────────────

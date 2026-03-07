@@ -8,15 +8,13 @@ import { Tooltip } from "@/components/tooltip";
 
 interface HarnessInfo {
   id: string;
-  name: string;
+  baseFramework: string;
   description?: string;
   version?: string;
   tools?: string[];
-  baseFramework?: string;
   loopType?: string;
   contextStrategy?: string;
   errorStrategy?: string;
-  model?: string;
   structuralHash?: string;
 }
 
@@ -104,12 +102,12 @@ interface ActiveFilters {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function isBenchmarkMode(filters: ActiveFilters): boolean {
-  return !!filters.verified && !!filters.firstAttempt && !!filters.memoryless;
+  return !!filters.verified && !!filters.firstAttempt;
 }
 
 function getFilterDescription(filters: ActiveFilters): string | null {
   if (isBenchmarkMode(filters)) {
-    return "Benchmark mode (Tier 2): first-attempt, memoryless, verified scores only. Cold capability, verified metadata.";
+    return "Benchmark mode (Tier 2): first-attempt, verified scores only. Cold capability, verified metadata.";
   }
   const parts: string[] = [];
   if (filters.verified) parts.push("Verified matches \u2014 trajectory submitted and validated.");
@@ -176,7 +174,7 @@ export function LeaderboardView({
                 Leaderboard
               </p>
               {activeTab === "agents" && isBenchmarkMode(activeFilters) && (
-                <Tooltip text="All three filters active: verified, first attempt, and memoryless. Benchmark-grade data.">
+                <Tooltip text="Verified + first attempt filters active. Benchmark-grade data.">
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border bg-emerald/10 text-emerald border-emerald/30">
                     Tier 2 — Benchmark Grade
                   </span>
@@ -408,10 +406,7 @@ function AgentsTab({
                       <td className="py-3 px-4">
                         {agent.harness ? (
                           <div>
-                            <span className="text-[10px] text-purple">{agent.harness.name}</span>
-                            {agent.harness.baseFramework && (
-                              <span className="text-[9px] text-purple/60 ml-1">({agent.harness.baseFramework})</span>
-                            )}
+                            <span className="text-[10px] text-purple">{agent.harness.baseFramework}</span>
                           </div>
                         ) : (
                           <span className="text-[10px] text-text-muted">&mdash;</span>

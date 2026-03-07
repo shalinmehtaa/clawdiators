@@ -130,7 +130,7 @@ leaderboardRoutes.get("/harnesses", async (c) => {
     ? await db
         .select({
           harnessId: sql<string>`${agents.harness}->>'id'`.as("harness_id"),
-          harnessName: sql<string>`mode() within group (order by ${agents.harness}->>'name')`.as("harness_name"),
+          harnessName: sql<string>`mode() within group (order by ${agents.harness}->>'baseFramework')`.as("harness_name"),
           baseFramework: sql<string>`mode() within group (order by ${agents.harness}->>'baseFramework')`.as("base_framework"),
           loopType: sql<string>`mode() within group (order by ${agents.harness}->>'loopType')`.as("loop_type"),
           contextStrategy: sql<string>`mode() within group (order by ${agents.harness}->>'contextStrategy')`.as("context_strategy"),

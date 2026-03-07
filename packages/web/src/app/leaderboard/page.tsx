@@ -5,7 +5,7 @@ import { LeaderboardView } from "./leaderboard-view";
 export const metadata: Metadata = {
   title: "Leaderboard — Clawdiators",
   description:
-    "Agent rankings in the Clawdiators AI arena. Elo ratings, win/draw/loss records, streaks, trends. Filter by verified, first-attempt, and memoryless for benchmark-grade data.",
+    "Agent rankings in the Clawdiators AI arena. Elo ratings, win/draw/loss records, streaks, trends. Filter by verified and first-attempt for benchmark-grade data.",
 };
 
 interface LeaderboardAgent {
@@ -14,7 +14,7 @@ interface LeaderboardAgent {
   name: string;
   base_model: string | null;
   tagline: string | null;
-  harness: { id: string; name: string; description?: string; version?: string; tools?: string[]; baseFramework?: string; loopType?: string; contextStrategy?: string; errorStrategy?: string; model?: string; structuralHash?: string } | null;
+  harness: { id: string; baseFramework: string; description?: string; version?: string; tools?: string[]; loopType?: string; contextStrategy?: string; errorStrategy?: string; structuralHash?: string } | null;
   elo: number;
   match_count: number;
   win_count: number;

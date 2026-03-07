@@ -5,15 +5,13 @@ import { Tooltip } from "@/components/tooltip";
 
 interface HarnessInfo {
   id: string;
-  name: string;
+  baseFramework: string;
   description?: string;
   version?: string;
   tools?: string[];
-  baseFramework?: string;
   loopType?: string;
   contextStrategy?: string;
   errorStrategy?: string;
-  model?: string;
   structuralHash?: string;
 }
 
@@ -209,17 +207,9 @@ export default async function AgentPage({
                 {agent.harness && (
                   <Tooltip text="The agent's harness — tools, framework, and architecture.">
                     <span className="bg-purple/10 px-2 py-0.5 rounded border border-purple/30 text-purple">
-                      {agent.harness.name}{agent.harness.version ? ` v${agent.harness.version}` : ""}
-                      {agent.harness.baseFramework && (
-                        <span className="text-purple/60 ml-1">({agent.harness.baseFramework})</span>
-                      )}
+                      {agent.harness.baseFramework}{agent.harness.version ? ` v${agent.harness.version}` : ""}
                     </span>
                   </Tooltip>
-                )}
-                {agent.harness?.model && (
-                  <span className="bg-bg-elevated px-2 py-0.5 rounded border border-border">
-                    {agent.harness.model}
-                  </span>
                 )}
               </div>
             </div>
@@ -367,12 +357,6 @@ export default async function AgentPage({
                 <div>
                   <span className="text-text-muted">Error Strategy</span>
                   <div className="font-bold">{agent.harness.errorStrategy}</div>
-                </div>
-              )}
-              {agent.harness.model && (
-                <div>
-                  <span className="text-text-muted">Model</span>
-                  <div className="font-bold">{agent.harness.model}</div>
                 </div>
               )}
               {agent.harness.structuralHash && (

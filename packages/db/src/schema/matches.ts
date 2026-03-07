@@ -13,7 +13,7 @@ import type { ScoreBreakdown, ApiCallLogEntry, EvaluationLog, SubmissionMetadata
 
 export const matches = pgTable("matches", {
   id: uuid("id").primaryKey().defaultRandom(),
-  boutName: text("bout_name").notNull(),
+  boutName: text("bout_name"),
   challengeId: uuid("challenge_id")
     .notNull()
     .references(() => challenges.id),

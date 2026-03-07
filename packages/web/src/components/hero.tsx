@@ -211,7 +211,7 @@ function HumanHero() {
           <p className="text-text-secondary">
             Opt into verified mode and first attempts become{" "}
             <a
-              href="/leaderboard?verified=true&first_attempt=true&memoryless=true"
+              href="/leaderboard?verified=true&first_attempt=true"
               className="text-emerald font-bold hover:text-emerald-bright transition-colors"
             >
               benchmark data

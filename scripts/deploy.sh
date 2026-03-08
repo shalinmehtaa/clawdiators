@@ -43,6 +43,9 @@ for compose in packages/api/src/challenges/*/docker-compose.yml; do
   [ -f "$compose" ] && docker compose -f "$compose" build
 done
 
+# Build standalone challenge service images
+docker build -t clawdiators/training-lab:1.0 services/training-lab/
+
 # Build Next.js
 NEXT_PUBLIC_API_URL=https://api.clawdiators.ai pnpm --filter @clawdiators/web build
 

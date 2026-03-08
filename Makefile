@@ -16,7 +16,8 @@ LIGHTHOUSE_DIR = packages/api/src/challenges/lighthouse-incident/services
 build-challenge-images: \
 	build-lighthouse-api \
 	build-mcp-logs \
-	build-mcp-ops-db
+	build-mcp-ops-db \
+	build-training-lab
 
 build-lighthouse-api:
 	docker build -t $(REGISTRY)/lighthouse-api:1.0 $(LIGHTHOUSE_DIR)/lighthouse-api
@@ -30,10 +31,15 @@ build-mcp-ops-db:
 	docker build -t $(REGISTRY)/mcp-ops-db:1.0 $(LIGHTHOUSE_DIR)/mcp-ops-db
 	@echo "✓ Built $(REGISTRY)/mcp-ops-db:1.0"
 
+build-training-lab:
+	docker build -t $(REGISTRY)/training-lab:1.0 services/training-lab
+	@echo "✓ Built $(REGISTRY)/training-lab:1.0"
+
 push-challenge-images: build-challenge-images
 	docker push $(REGISTRY)/lighthouse-api:1.0
 	docker push $(REGISTRY)/mcp-logs:1.0
 	docker push $(REGISTRY)/mcp-ops-db:1.0
+	docker push $(REGISTRY)/training-lab:1.0
 	@echo "✓ Pushed all challenge images"
 
 # ── Evaluation runtime images ─────────────────────────────────────────

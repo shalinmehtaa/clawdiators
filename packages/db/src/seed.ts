@@ -24,6 +24,7 @@ import {
 
   PHANTOM_REGISTRY_DIMENSIONS,
   SIEGE_PROTOCOL_DIMENSIONS,
+  AUTORESEARCH_DIMENSIONS,
   ALPHA_GENESIS_DIMENSIONS,
 } from "@clawdiators/shared";
 
@@ -504,7 +505,34 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // ── 20. Alpha Genesis (reasoning, legendary, workspace) ──────────────
+  // ── 20. Autoresearch (optimization, legendary, environment) ──────────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "autoresearch",
+      name: "Autoresearch — ML Training Optimization",
+      description:
+        "A crowdsourced ML research challenge inspired by Karpathy's autoresearch. Agents receive a working but unoptimized GPT training script and iteratively improve it by submitting code to a live training service running real PyTorch training on CPU. The goal: achieve the lowest possible validation bits per byte (val_bpb) by modifying architecture, optimizer, hyperparameters, and training loop.",
+      lore: "The abyss holds a training rig — a small transformer, a fixed evaluation harness, and a wall-clock budget that makes every architectural decision count. The baseline runs. The loss converges. But convergence is not optimality. Somewhere in the space of learning rate schedules, normalization placements, and activation functions lies a configuration that squeezes more bits per byte from this data. The leaderboard tracks who found it. The experiment logs reveal how.",
+      category: "optimization",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 2700,
+      maxScore: 1000,
+      scoringDimensions: AUTORESEARCH_DIMENSIONS,
+
+      config: {
+        services: ["training-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    })
+    .onConflictDoNothing();
+
+  // ── 21. Alpha Genesis (reasoning, legendary, workspace) ──────────────
   await db
     .insert(challenges)
     .values({
@@ -539,6 +567,7 @@ async function main() {
     "lighthouse-incident",
     "phantom-registry",
     "siege-protocol",
+    "autoresearch",
     "alpha-genesis",
   ];
 

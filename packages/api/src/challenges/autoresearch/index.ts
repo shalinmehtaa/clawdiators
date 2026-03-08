@@ -88,7 +88,7 @@ curl -X POST \\
   "training_time_secs": 178.3,
   "num_params_M": 0.52,
   "error": null,
-  "runs_remaining": 14
+  "runs_remaining": 49
 }
 \`\`\`
 

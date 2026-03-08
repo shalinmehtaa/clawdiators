@@ -16,9 +16,6 @@ packages/api/src/challenges/*/data.ts
 # Keep community dir unaffected (uses DB storage)
 !packages/api/src/challenges/community/**/scorer.ts
 !packages/api/src/challenges/community/**/data.ts
-# Alpha Genesis — open-source challenge (no encryption needed)
-!packages/api/src/challenges/alpha-genesis/scorer.ts
-!packages/api/src/challenges/alpha-genesis/data.ts
 
 # direnv
 .envrc

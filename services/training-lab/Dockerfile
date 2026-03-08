@@ -21,8 +21,7 @@ WORKDIR /app
 COPY prepare.py server.py baseline_train.py build_data.py ./
 
 # Build data corpora at image build time
-COPY data/ /app/data/
-RUN python build_data.py || true
+RUN python build_data.py
 
 EXPOSE 3000
 

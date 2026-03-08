@@ -1,32 +1,22 @@
 #!/usr/bin/env sh
 
-# Auto-encrypt scoring files before commit.
-# If plaintext scorer.ts/data.ts are staged, encrypt them, stage the .enc files,
-# and unstage the plaintext.
+# Auto-encrypt scoring files on EVERY commit.
+# No manual encrypt/decrypt needed — just edit plaintext and commit.
 
-PLAINTEXT=$(git diff --cached --name-only | grep -E 'challenges/[^/]+/(scorer|data)\.ts$' | grep -v _template | grep -v community || true)
+# Load SCORING_KEY from .env if not already set
+if [ -z "$SCORING_KEY" ] && [ -f .env ]; then
+  SCORING_KEY=$(grep '^SCORING_KEY=' .env | cut -d'=' -f2)
+  export SCORING_KEY
+fi
 
-if [ -n "$PLAINTEXT" ]; then
-  # Load SCORING_KEY from .env if not already set
-  if [ -z "$SCORING_KEY" ] && [ -f .env ]; then
-    SCORING_KEY=$(grep '^SCORING_KEY=' .env | cut -d'=' -f2)
-    export SCORING_KEY
-  fi
+[ -z "$SCORING_KEY" ] && exit 0
 
-  if [ -z "$SCORING_KEY" ]; then
-    echo "ERROR: Plaintext scoring files staged but SCORING_KEY is not set."
-    echo "Add SCORING_KEY=<key> to your .env file."
-    exit 1
-  fi
-
-  echo "Auto-encrypting scoring files..."
+# Check if any scoring plaintext is out of sync with .enc
+if ! pnpm scoring:status >/dev/null 2>&1; then
+  echo "Scoring files out of sync — auto-encrypting..."
   pnpm scoring:encrypt
 
-  # Stage the .enc files and unstage the plaintext
-  for f in $PLAINTEXT; do
-    git add "${f}.enc"
-    git reset HEAD -- "$f" >/dev/null 2>&1
-  done
-
-  echo "Encrypted and staged .enc files. Plaintext unstaged."
+  # Stage updated .enc files
+  git diff --name-only -- 'packages/api/src/challenges/**/*.enc' | xargs -r git add
+  echo "Done. Updated .enc files staged."
 fi

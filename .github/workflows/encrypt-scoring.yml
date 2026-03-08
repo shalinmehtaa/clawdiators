@@ -1,22 +1,26 @@
 name: Encrypt Scoring Files
 
+# Trigger on any challenge file changes — since scorer.ts/data.ts are gitignored,
+# we can't trigger on them directly. Instead trigger on .enc changes and challenge
+# index.ts changes, then verify everything is in sync.
 on:
   push:
     branches: [main]
     paths:
-      - 'packages/api/src/challenges/*/scorer.ts'
-      - 'packages/api/src/challenges/*/data.ts'
+      - 'packages/api/src/challenges/**/*.enc'
+      - 'packages/api/src/challenges/*/index.ts'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/api/src/challenges/**/*.enc'
+      - 'packages/api/src/challenges/*/index.ts'
 
 jobs:
-  encrypt:
+  verify-sync:
+    name: Verify scoring files in sync
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
 
@@ -27,38 +31,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Encrypt scoring files
-        run: pnpm scoring:encrypt
+      - name: Decrypt scoring files
+        run: pnpm scoring:decrypt
         env:
           SCORING_KEY: ${{ secrets.SCORING_KEY }}
 
-      - name: Remove plaintext and commit .enc files
-        run: |
-          # Stage new/updated .enc files
-          git add 'packages/api/src/challenges/**/*.enc'
-
-          # Remove plaintext from git (keep on disk via .gitignore)
-          PLAIN=$(git ls-files -- 'packages/api/src/challenges/*/scorer.ts' 'packages/api/src/challenges/*/data.ts' | grep -v _template | grep -v community || true)
-          if [ -n "$PLAIN" ]; then
-            echo "$PLAIN" | xargs git rm --cached
-          fi
-
-          # Commit if there are changes
-          if git diff --cached --quiet; then
-            echo "No scoring files to encrypt."
-          else
-            BRANCH="chore/encrypt-scoring-$(date +%s)"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git checkout -b "$BRANCH"
-            git commit -m "chore: auto-encrypt scoring files"
-            git push -u origin "$BRANCH"
-            gh pr create \
-              --title "chore: auto-encrypt scoring files" \
-              --body "Automated encryption of scoring files (data.ts, scorer.ts) after merge to main." \
-              --base main \
-              --head "$BRANCH"
-            gh pr merge "$BRANCH" --auto --squash --delete-branch
-          fi
+      - name: Verify .enc files match plaintext
+        run: pnpm scoring:status
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCORING_KEY: ${{ secrets.SCORING_KEY }}

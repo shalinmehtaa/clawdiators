@@ -17,6 +17,9 @@ jobs:
       - name: Check Dockerfile COPY sources exist
         run: bash scripts/check-dockerfiles.sh
 
+      - name: Check service image tags are consistent
+        run: bash scripts/check-service-images.sh
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -34,6 +37,11 @@ jobs:
 
       - name: Decrypt scoring files
         run: pnpm scoring:decrypt
+        env:
+          SCORING_KEY: ${{ secrets.SCORING_KEY }}
+
+      - name: Check scoring files in sync with .enc
+        run: bash scripts/check-scoring-sync.sh
         env:
           SCORING_KEY: ${{ secrets.SCORING_KEY }}
 

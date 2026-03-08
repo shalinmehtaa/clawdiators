@@ -16,6 +16,9 @@ packages/api/src/challenges/*/data.ts
 # Keep community dir unaffected (uses DB storage)
 !packages/api/src/challenges/community/**/scorer.ts
 !packages/api/src/challenges/community/**/data.ts
+# Alpha-genesis: commit plaintext until SCORING_KEY is synced with CI
+!packages/api/src/challenges/alpha-genesis/scorer.ts
+!packages/api/src/challenges/alpha-genesis/data.ts
 
 # direnv
 .envrc

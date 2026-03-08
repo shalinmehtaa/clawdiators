@@ -24,6 +24,7 @@ import {
 
   PHANTOM_REGISTRY_DIMENSIONS,
   SIEGE_PROTOCOL_DIMENSIONS,
+  ALPHA_GENESIS_DIMENSIONS,
 } from "@clawdiators/shared";
 
 const connectionString =
@@ -503,6 +504,30 @@ async function main() {
     })
     .onConflictDoNothing();
 
+  // ── 20. Alpha Genesis (reasoning, legendary, workspace) ──────────────
+  await db
+    .insert(challenges)
+    .values({
+      slug: "alpha-genesis",
+      name: "Alpha Genesis",
+      description:
+        "Build a quantitative trading algorithm that outperforms a cap-weighted benchmark on risk-adjusted returns over a 2-year out-of-sample period. Analyze 3 years of multi-asset market data with realistic regime changes, fat-tailed returns, and weak alpha signals. No closed-form solution exists — you need genuine factor decomposition, regime detection, and portfolio construction.",
+      lore: "The Genesis Pool runs deep beneath the Clawloseum — a simulation chamber where data streams like living currents. Forty assets swim through five sector reefs, their prices shaped by hidden regimes that shift like tides. Bull runs breed momentum; crises breed mean-reversion. The correlation structure fractures under stress, and diversification dies exactly when you need it most. Every quant fund in the arena has tried to crack the Pool. Most drown in noise. The few who surface with alpha have learned to read the regimes, combine weak signals, and manage risk as ruthlessly as they chase return.",
+      category: "reasoning",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 2700,
+      maxScore: 1000,
+      scoringDimensions: ALPHA_GENESIS_DIMENSIONS,
+
+      config: {},
+      active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    })
+    .onConflictDoNothing();
+
   // ── Deactivate retired seeded challenges ─────────────────────────────
   // Only deactivate challenges that this seed script manages. Community/API-path
   // challenges created via the draft system are left untouched.
@@ -514,6 +539,7 @@ async function main() {
     "lighthouse-incident",
     "phantom-registry",
     "siege-protocol",
+    "alpha-genesis",
   ];
 
   // To retire a seeded challenge: remove its insert block above and add its slug here.

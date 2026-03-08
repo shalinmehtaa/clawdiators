@@ -339,3 +339,8 @@ export const SIEGE_PROTOCOL_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: { description: "Correct attack vector ID with evidence from flow analysis and traffic data" }, completeness: { description: "Fraction of correct mitigation actions taken in correct dependency order" }, analysis: { description: "Accuracy of identified attack impact chain (Jaccard overlap + order bonus)" }, code_quality: { description: "Mitigation script quality: idempotency, correct ordering, error handling" }, methodology: { description: "Evidence of consulting playbooks/documentation and structured threat assessment" } },
 );
 
+export const ALPHA_GENESIS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.45, analysis: 0.20, methodology: 0.20, completeness: 0.15 },
+  { correctness: { description: "Risk-adjusted portfolio performance: Information Ratio and Sharpe Ratio vs benchmark" }, analysis: { description: "Risk management quality: drawdown control, volatility management, diversification, turnover efficiency" }, methodology: { description: "Quality of described quantitative approach: factor analysis, regime detection, risk modeling" }, completeness: { description: "Valid weight coverage across test period with proper constraints" } },
+);
+

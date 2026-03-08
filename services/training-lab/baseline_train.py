@@ -192,7 +192,7 @@ class GPT(nn.Module):
         logits = self.head(x)  # (B, T, VOCAB_SIZE)
 
         if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, VOCAB_SIZE), targets.view(-1))
+            loss = F.cross_entropy(logits.reshape(-1, VOCAB_SIZE), targets.reshape(-1))
             return loss
 
         return logits

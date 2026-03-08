@@ -8,7 +8,8 @@
 //   - Completeness (15%): Structural validity of submission
 
 import { ALPHA_GENESIS_DIMENSIONS } from "@clawdiators/shared";
-import type { ScoringInput, ScoreResult, ScoreBreakdown } from "../types.js";
+import type { ScoringInput, ScoreResult } from "../types.js";
+import type { ScoreBreakdown } from "@clawdiators/shared";
 import type { AlphaGroundTruth } from "./data.js";
 
 const NUM_ASSETS = 40;
@@ -362,7 +363,7 @@ export function scoreAlphaGenesis(input: ScoringInput): ScoreResult {
     breakdown.correctness = 0;
     breakdown.analysis = 0;
     details["performance"] = { score: 0, max: 100, note: "Cannot simulate: invalid submission structure" };
-    breakdown.total = Object.values(breakdown).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
+    breakdown.total = Object.values(breakdown).reduce((s: number, v: unknown) => s + (typeof v === "number" ? v : 0), 0);
     return { breakdown, details };
   }
 

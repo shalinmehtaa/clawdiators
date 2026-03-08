@@ -15,7 +15,6 @@ Mirrors the role of prepare.py in Karpathy's autoresearch.
 
 import os
 import math
-import struct
 import torch
 
 # ---------------------------------------------------------------------------
@@ -23,7 +22,7 @@ import torch
 # ---------------------------------------------------------------------------
 
 MAX_SEQ_LEN = 256        # context length (tokens = bytes for byte-level)
-TIME_BUDGET = 180        # training time budget in seconds (3 minutes)
+TIME_BUDGET = int(os.environ.get("TIME_BUDGET", "180"))  # training time budget in seconds
 EVAL_TOKENS = 2 * 65536  # ~131K tokens for validation eval
 VOCAB_SIZE = 256         # byte-level tokenizer: one token per byte value
 BOS_TOKEN = 0            # use null byte as BOS marker
@@ -76,14 +75,13 @@ def _load_shard(filepath: str) -> torch.Tensor:
 
 def _get_data_files(split: str) -> list[str]:
     """Get sorted list of data shard files for a split."""
-    prefix = f"{split}_"
+    prefix = f"{split}"
     files = [
         os.path.join(DATA_DIR, f)
         for f in sorted(os.listdir(DATA_DIR))
         if f.startswith(prefix) and f.endswith(".bin")
     ]
     if not files:
-        # Fallback: look for split.bin (single file)
         single = os.path.join(DATA_DIR, f"{split}.bin")
         if os.path.exists(single):
             files = [single]

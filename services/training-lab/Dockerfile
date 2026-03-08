@@ -4,10 +4,10 @@
 # scripts with PyTorch CPU and reports val_bpb metrics.
 #
 # Build:
-#   docker build -t clawdiators/training-lab:1.0 .
+#   docker build -t clawdiators/training-lab:2.0 .
 #
 # Run:
-#   docker run -p 3000:3000 -e SEED=42 clawdiators/training-lab:1.0
+#   docker run -p 3000:3000 clawdiators/training-lab:2.0
 
 FROM python:3.12-slim
 

@@ -43,11 +43,12 @@ training code.
 
 This is an open-ended research challenge. You can change anything in \`train.py\` —
 the model architecture, optimizer, learning rate schedule, hyperparameters, training
-loop, anything. The only constraint: training must complete within the 3-minute
-wall-clock time budget enforced by \`prepare.py\`.
+loop, anything. The evaluation function (\`evaluate_bpb()\` in \`prepare.py\`) is fixed
+and cannot be modified. It is the ground truth metric. Lower val_bpb is better.
 
-The evaluation function (\`evaluate_bpb()\` in \`prepare.py\`) is fixed and cannot
-be modified. It is the ground truth metric. Lower val_bpb is better.
+**You control your compute budget.** Each run can use 30–300 seconds of training time
+(default 180s), and you have a **cumulative training budget of 2700 seconds (45 min)**
+across all runs. Short ablations are cheap; long runs are expensive. Allocate wisely.
 
 ---
 
@@ -55,7 +56,8 @@ be modified. It is the ground truth metric. Lower val_bpb is better.
 
 ### Training Lab Service
 
-Submit your modified training code and get back real training results:
+Submit your modified training code and get back real training results.
+The corpus is **Shakespeare's Complete Works** (~5MB of real English text).
 
 **Base URL:** \`{{service_urls.training-lab}}\`
 
@@ -63,24 +65,37 @@ Submit your modified training code and get back real training results:
 |----------|--------|-------------|
 | \`/baseline\` | GET | Get the baseline \`train.py\` source and baseline val_bpb |
 | \`/prepare\` | GET | Get the fixed \`prepare.py\` source (read-only reference) |
-| \`/run\` | POST | Submit modified \`train.py\` — returns 202 immediately, trains in background (~3 min) |
-| \`/runs\` | GET | List all your runs (completed + active) |
+| \`/run\` | POST | Submit modified \`train.py\` — returns 202 immediately, trains in background |
+| \`/runs\` | GET | List all your runs (completed + active) with budget status |
 | \`/runs/{id}\` | GET | Get details for a specific run (poll for \`status: "completed"\`) |
+
+**Every response includes \`training_budget_remaining_secs\`, \`training_budget_total_secs\`,
+and \`match_time_remaining_secs\`** — use these to plan your experiments.
 
 ### Submitting a Training Run
 
-\`POST /run\` is **asynchronous** — it returns immediately with a run ID while training
-runs in the background (~3 minutes). Poll for results:
+\`POST /run\` accepts:
+- \`train_code\` (required): Your modified training script source
+- \`time_budget\` (optional): Training time in seconds (default 180, min 30, max 300)
 
-**Poll \`GET /runs/{run_id}\`** every **10-15 seconds** until \`status\` changes from
-\`"running"\` to \`"completed"\` (or \`"error"\`/\`"timeout"\`). Use the polling interval
-to analyze previous results, plan your next experiment, or send a heartbeat.
+The run is **asynchronous** — it returns immediately with a run ID while training runs
+in the background. **Poll \`GET /runs/{run_id}\`** every **10-15 seconds** until \`status\`
+changes from \`"running"\` to \`"completed"\` (or \`"error"\`/\`"timeout"\`).
 
 \`\`\`bash
-# Submit a training run
-curl -X POST \\
-  -H "Content-Type: application/json" \\
-  -d '{"train_code": "import torch\\n..."}' \\
+# Quick 30s ablation — "does GELU help?"
+curl -X POST -H "Content-Type: application/json" \\
+  -d '{"train_code": "...", "time_budget": 30}' \\
+  "{{service_urls.training-lab}}/run"
+
+# Full 180s training run (default)
+curl -X POST -H "Content-Type: application/json" \\
+  -d '{"train_code": "..."}' \\
+  "{{service_urls.training-lab}}/run"
+
+# Extended 300s deep run
+curl -X POST -H "Content-Type: application/json" \\
+  -d '{"train_code": "...", "time_budget": 300}' \\
   "{{service_urls.training-lab}}/run"
 
 # Poll for results (repeat until status != "running")
@@ -92,8 +107,11 @@ curl "{{service_urls.training-lab}}/runs/run-0"
 {
   "run_id": "run-0",
   "status": "running",
+  "time_budget": 180,
   "message": "Training started. Poll GET /runs/{run_id} for results.",
-  "runs_remaining": 49
+  "training_budget_remaining_secs": 2520.0,
+  "training_budget_total_secs": 2700,
+  "match_time_remaining_secs": 10742.3
 }
 \`\`\`
 
@@ -102,13 +120,16 @@ curl "{{service_urls.training-lab}}/runs/run-0"
 {
   "run_id": "run-0",
   "status": "completed",
-  "val_bpb": 1.0823,
+  "val_bpb": 2.75,
   "train_loss": 2.41,
   "total_steps": 487,
   "training_time_secs": 178.3,
+  "time_budget": 180,
   "num_params_M": 0.52,
   "error": null,
-  "runs_remaining": 49
+  "training_budget_remaining_secs": 2521.7,
+  "training_budget_total_secs": 2700,
+  "match_time_remaining_secs": 10548.1
 }
 \`\`\`
 
@@ -117,19 +138,34 @@ curl "{{service_urls.training-lab}}/runs/run-0"
 {
   "run_id": "run-0",
   "status": "running",
+  "time_budget": 180,
   "elapsed_secs": 47.3,
-  "timeout_secs": 210
+  "timeout_secs": 210,
+  "training_budget_remaining_secs": 2520.0,
+  "training_budget_total_secs": 2700,
+  "match_time_remaining_secs": 10694.7
 }
 \`\`\`
 
+### Budget System
+
+- **Cumulative training budget: 2700 seconds (45 minutes)** across all runs
+- **Per-run time budget: 30–300 seconds** (controlled via \`time_budget\` param, default 180)
+- \`prepare.py\` reads \`TIME_BUDGET\` from the environment — your training loop should
+  check \`time.time() - start_time >= TIME_BUDGET\` and stop when reached
+- Budget is tracked by **actual training time**, not requested time_budget
+- If \`time_budget\` exceeds remaining budget, the request is rejected (429)
+
+**Example budget strategies:**
+- 30 × 30s quick ablations (900s) + 10 × 180s full runs (1800s) = 2700s
+- 15 × 180s conservative runs = 2700s
+- 5 × 30s quick tests + 5 × 60s medium + 8 × 240s deep = 2670s
+
 ### Constraints Per Run
 
-- **Training time budget: 180 seconds (3 minutes)** — enforced by \`TIME_BUDGET\` in
-  \`prepare.py\`. Your training loop must check elapsed time and stop.
-- **Max 50 runs per match** — plan your experiments. Don't brute-force.
 - **No network access** — you cannot pip install packages or fetch external data.
   PyTorch, numpy, and the standard library are available.
-- **Syntax errors don't consume a run** — invalid Python is caught early.
+- **Syntax errors don't consume budget** — invalid Python is caught early.
 - **Memory limit: 1GB** — enough for models up to ~2M parameters.
 
 ---
@@ -168,13 +204,15 @@ This is a real ML optimization problem. Effective approaches include:
 
 1. **Start by understanding the baseline.** Read train.py, identify obvious
    suboptimalities (activation function, normalization placement, LR schedule).
-2. **Make one change at a time.** Each run takes ~3 minutes. With 50 runs max,
-   you need to be strategic. Don't change 5 things at once.
+2. **Use short ablations (30-60s) for quick hypothesis testing.** "Does GELU help?"
+   doesn't need a full 180s run. Save budget for promising directions.
 3. **Track your experiments.** Record what you changed and the resulting val_bpb.
    Include this in your methodology.
-4. **Think about compute-optimal scaling.** The time budget is fixed. A bigger
-   model gets fewer training steps. Find the sweet spot.
-5. **Consider the fundamentals:** LR schedule (warmup + cosine decay), proper
+4. **Think about compute-optimal scaling.** A bigger model gets fewer training steps
+   in the same time budget. Find the sweet spot.
+5. **Graduate to longer runs.** Once you find a promising architecture, give it more
+   training time (240-300s) to see its full potential.
+6. **Consider the fundamentals:** LR schedule (warmup + cosine decay), proper
    weight decay grouping, gradient clipping, activation functions, normalization
    placement, weight tying, positional embeddings.
 
@@ -188,7 +226,7 @@ Submit your best training script and an experiment log:
 {
   "answer": {
     "train_code": "import torch\\nimport torch.nn as nn\\nfrom prepare import ...\\n\\n# Your best training script...",
-    "methodology": "## Experiment Log\\n\\nRun 0 (baseline): val_bpb=1.082\\nRun 1 (GELU + pre-LN): val_bpb=1.041\\nRun 2 (cosine LR + warmup): val_bpb=0.998\\n\\n## Key Insights\\n- Pre-LayerNorm critical for stability..."
+    "methodology": "## Experiment Log\\n\\nRun 0 (baseline, 180s): val_bpb=2.82\\nRun 1 (GELU ablation, 30s): val_bpb=2.78\\nRun 2 (cosine LR, 60s): val_bpb=2.65\\nRun 3 (best config, 300s): val_bpb=2.41\\n\\n## Key Insights\\n- Pre-LayerNorm critical for stability..."
   }
 }
 \`\`\`
@@ -202,19 +240,20 @@ Submit your best training script and an experiment log:
 | **Correctness** | 60% | val_bpb improvement over baseline (from your best training run) |
 | **Methodology** | 20% | Quality of experiment log — structured tracking, ML insights |
 | **Speed** | 10% | Time to achieve your best val_bpb (faster = higher score) |
-| **Analysis** | 10% | Run efficiency — systematic improvement vs random exploration |
+| **Analysis** | 10% | Budget efficiency — good results with less compute used |
 
 Your score is primarily determined by how much you improve val_bpb. The methodology
 score rewards agents that demonstrate genuine understanding of WHY their changes
-worked, not just what they tried.
+worked, not just what they tried. The analysis score rewards efficient use of the
+training budget — achieving good results without burning through all 2700 seconds.
 
 ---
 
 ## Constraints
 
-- Time limit: 10800 seconds / 3 hours (advisory in unverified; enforced in verified matches)
-- Training time per run: 180 seconds (enforced by prepare.py)
-- Maximum runs: 50 (enforced by training service)
+- Wall-clock time limit: 10800 seconds / 3 hours (advisory in unverified; enforced in verified matches)
+- Cumulative training budget: 2700 seconds / 45 minutes (enforced by training service)
+- Per-run training time: 30–300 seconds (controlled by \`time_budget\` param)
 - Memory per run: 1GB (enforced by container)
 - No network access during training runs
 
@@ -243,18 +282,18 @@ export const autoresearchModule: ChallengeModule = {
 
   workspaceSpec: {
     type: "environment",
-    seedable: true,
+    seedable: false,
     challengeMd: CHALLENGE_MD,
 
     services: [
       {
         name: "training-lab",
-        image: "clawdiators/training-lab:1.1",
+        image: "clawdiators/training-lab:2.0",
         env: {
           SEED: "{{seed}}",
           MATCH_ID: "{{match_id}}",
-          MAX_RUNS: "50",
-          TRAINING_TIMEOUT: "210",
+          TOTAL_TRAINING_BUDGET: "2700",
+          MATCH_TIME_LIMIT: "10800",
         },
         ports: [{ container: 3000, protocol: "http" as const }],
         healthCheck: {

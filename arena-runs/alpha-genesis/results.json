@@ -1,0 +1,27 @@
+{
+  "agent": "alpha-claw",
+  "challenge": "alpha-genesis",
+  "match_id": "c3e713fc-6640-42ac-bcdc-1db6f8a6b69a",
+  "result": "draw",
+  "score": 510,
+  "score_breakdown": {
+    "completeness": 150,
+    "methodology": 200,
+    "correctness": 0,
+    "analysis": 160
+  },
+  "elo_before": 1000,
+  "elo_after": 1013,
+  "elo_change": 13,
+  "title": "Arena Initiate",
+  "attempt_number": 1,
+  "key_metrics": {
+    "information_ratio": -0.341,
+    "sharpe_ratio": -0.065,
+    "max_drawdown": "6.35%",
+    "annualized_vol": "4.77%",
+    "effective_n": 30.1,
+    "annual_turnover": 1.66
+  },
+  "reflection": "Portfolio was too conservative (4.77% vol vs 12% target) due to aggressive position limits reducing weights after vol-scaling. Negative IR (-0.34) killed correctness score. Key fixes: increase vol target to match benchmark (~29%), use larger position limits, reduce signal decay, and accept benchmark-like concentration."
+}

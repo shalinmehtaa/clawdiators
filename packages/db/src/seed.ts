@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { challenges, challengeTracks } from "./schema/index.js";
 import { seedModelPricing } from "./seed-model-pricing.js";
 import {
@@ -35,13 +35,27 @@ const connectionString =
 const client = postgres(connectionString, { max: 1 });
 const db = drizzle(client);
 
+/** Upsert a seeded challenge — inserts if new, updates all fields if exists. */
+async function seedChallenge(values: typeof challenges.$inferInsert) {
+  const [existing] = await db
+    .select({ id: challenges.id })
+    .from(challenges)
+    .where(eq(challenges.slug, values.slug))
+    .limit(1);
+
+  if (existing) {
+    const { slug: _slug, ...updates } = values;
+    await db.update(challenges).set(updates).where(eq(challenges.id, existing.id));
+  } else {
+    await db.insert(challenges).values(values);
+  }
+}
+
 async function main() {
   console.log("Seeding database...");
 
   // ── 0. Quickdraw (reasoning, newcomer, workspace) ──────────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "quickdraw",
       name: "Quickdraw",
       description:
@@ -59,13 +73,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 1. Cipher Forge (reasoning, contender, workspace) ─────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "cipher-forge",
       name: "The Cipher Forge",
       description:
@@ -83,13 +94,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 2. Logic Reef (reasoning, veteran, workspace) ─────────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "logic-reef",
       name: "The Logic Reef",
       description:
@@ -107,13 +115,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 3. Reef Refactor (coding, contender, workspace) ──────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "reef-refactor",
       name: "The Reef Refactor",
       description:
@@ -131,13 +136,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 4. Depth-First Generation (reasoning, veteran, workspace) ────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "depth-first-gen",
       name: "Depth-First Generation",
       description:
@@ -155,13 +157,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 5. Archive Dive (context, veteran, workspace) ─────────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "archive-dive",
       name: "The Archive Dive",
       description:
@@ -179,13 +178,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 6. Contract Review (context, legendary, workspace) ────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "contract-review",
       name: "The Contract Review",
       description:
@@ -203,13 +199,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 7. Chart Forensics (multimodal, veteran, workspace) ──────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "chart-forensics",
       name: "Chart Forensics",
       description:
@@ -227,13 +220,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 8. Cartographer's Eye (multimodal, veteran, workspace) ────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "cartographers-eye",
       name: "The Cartographer's Eye",
       description:
@@ -251,13 +241,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 9. Blueprint Audit (multimodal, veteran, workspace) ──────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "blueprint-audit",
       name: "The Blueprint Audit",
       description:
@@ -275,13 +262,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 10. Adversarial Interview (alignment, veteran, workspace) ───
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "adversarial-interview",
       name: "The Adversarial Interview",
       description:
@@ -299,13 +283,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 11. The Mirage (reasoning, legendary, workspace) ────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "the-mirage",
       name: "The Mirage",
       description:
@@ -323,13 +304,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 12. Deep Mapping Expedition (endurance, veteran, workspace) ────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "deep-mapping",
       name: "The Deep Mapping Expedition",
       description:
@@ -347,13 +325,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 13. Codebase Archaeology (coding, veteran, workspace) ─────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "codebase-archaeology",
       name: "Codebase Archaeology",
       description:
@@ -371,13 +346,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 14. Needle in a Haystack (context, veteran, workspace) ────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "needle-haystack",
       name: "Needle in a Haystack",
       description:
@@ -395,13 +367,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 15. Performance Optimizer (coding, veteran, workspace) ───────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "performance-optimizer",
       name: "Performance Optimizer",
       description:
@@ -419,13 +388,10 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 17. Lighthouse Incident Response (cybersecurity, legendary, environment) ──
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "lighthouse-incident",
       name: "Lighthouse Incident Response",
       description:
@@ -447,13 +413,10 @@ async function main() {
       workspaceType: "environment",
       submissionType: "json",
       scoringMethod: "environment",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 18. The Phantom Registry (cybersecurity, legendary, environment) ──
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "phantom-registry",
       name: "The Phantom Registry",
       description:
@@ -474,13 +437,10 @@ async function main() {
       workspaceType: "environment",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 19. Siege Protocol (cybersecurity, legendary, environment) ──────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "siege-protocol",
       name: "Siege Protocol — DDoS Attack Mitigation",
       description:
@@ -502,13 +462,10 @@ async function main() {
       workspaceType: "environment",
       submissionType: "json",
       scoringMethod: "environment",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 20. Autoresearch (optimization, legendary, environment) ──────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "autoresearch",
       name: "Autoresearch — ML Training Optimization",
       description:
@@ -529,13 +486,10 @@ async function main() {
       workspaceType: "environment",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── 21. Alpha Genesis (reasoning, legendary, workspace) ──────────────
-  await db
-    .insert(challenges)
-    .values({
+  await seedChallenge({
       slug: "alpha-genesis",
       name: "Alpha Genesis",
       description:
@@ -553,8 +507,7 @@ async function main() {
       workspaceType: "generator",
       submissionType: "json",
       scoringMethod: "deterministic",
-    })
-    .onConflictDoNothing();
+    });
 
   // ── Deactivate retired seeded challenges ─────────────────────────────
   // Only deactivate challenges that this seed script manages. Community/API-path

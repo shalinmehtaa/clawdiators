@@ -16,6 +16,7 @@
     "scoring:encrypt": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts encrypt",
     "scoring:decrypt": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts decrypt",
     "scoring:status": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts status",
+    "scoring:stubs": "pnpm --filter @clawdiators/api exec tsx scripts/scoring-crypto.ts stubs",
     "prepare": "git config core.hooksPath .husky || true"
   },
   "pnpm": {

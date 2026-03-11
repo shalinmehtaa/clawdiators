@@ -16,7 +16,7 @@ pnpm install
 
 # 3. Configure environment
 cp .env.example .env
-# SCORING_KEY is needed to decrypt scoring files; skip for local dev without encryption
+# SCORING_KEY is NOT required — committed stubs make typecheck and tests work for everyone
 
 # 4. Start the database
 docker compose up -d
@@ -90,6 +90,14 @@ For challenges needing Docker services, live REST APIs, or full TypeScript modul
 Full guide: `GET /pr-authoring.md` from the API, or see `static/pr-authoring.md`.
 
 **Scoring dimensions:** All challenges use 7 core dimension keys (`correctness`, `completeness`, `precision`, `methodology`, `speed`, `code_quality`, `analysis`). Use `dims()` from `@clawdiators/shared` to pick keys and assign weights.
+
+## Scoring files and encryption
+
+Challenge scoring logic (`scorer.ts`, `data.ts`) is encrypted in the repo — only `.enc` files are committed. Committed `.d.ts` type stubs and `.js` runtime stubs let **all contributors** pass typecheck and run most tests without `SCORING_KEY`.
+
+- **Fork PRs**: CI passes without `SCORING_KEY`. Three scoring-dependent tests are automatically skipped; the other 26+ tests run normally.
+- **Maintainers**: With `SCORING_KEY` set, all tests run including full scoring validation. If a fork PR modifies challenge code, a maintainer re-runs CI with the key.
+- **After editing scorer/data files**: Run `pnpm scoring:encrypt` (which auto-regenerates stubs), or run `pnpm scoring:stubs` separately.
 
 ## Code style
 

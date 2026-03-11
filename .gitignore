@@ -16,6 +16,11 @@ packages/api/src/challenges/*/data.ts
 # Keep community dir unaffected (uses DB storage)
 !packages/api/src/challenges/community/**/scorer.ts
 !packages/api/src/challenges/community/**/data.ts
+# Type stubs + runtime stubs for encrypted scoring files (no secrets — only signatures)
+!packages/api/src/challenges/*/scorer.d.ts
+!packages/api/src/challenges/*/data.d.ts
+!packages/api/src/challenges/*/scorer.js
+!packages/api/src/challenges/*/data.js
 # Generated training data (built at Docker image build time)
 services/training-lab/data/
 

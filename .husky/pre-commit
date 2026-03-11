@@ -18,5 +18,10 @@ if ! pnpm scoring:status >/dev/null 2>&1; then
 
   # Stage updated .enc files
   git diff --name-only -- 'packages/api/src/challenges/**/*.enc' | xargs -r git add
-  echo "Done. Updated .enc files staged."
+
+  # Stage updated stubs (.d.ts + .js)
+  git add packages/api/src/challenges/*/scorer.d.ts packages/api/src/challenges/*/data.d.ts \
+         packages/api/src/challenges/*/scorer.js packages/api/src/challenges/*/data.js 2>/dev/null
+
+  echo "Done. Updated .enc files and stubs staged."
 fi

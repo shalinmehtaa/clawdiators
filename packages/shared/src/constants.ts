@@ -359,3 +359,36 @@ export const MECHANISTIC_EASY_DIMENSIONS: ScoringDimension[] = dims(
   },
 );
 
+// ── Research Challenge Dimensions (autoresearch-style) ──────────────
+
+export const GROKKING_DYNAMICS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.60, methodology: 0.20, analysis: 0.10, speed: 0.10 },
+  { correctness: { description: "Grokking speedup factor — baseline_epoch / best_epoch, scored on curve from 1x to 10x" }, methodology: { description: "Quality of experiment log — systematic exploration, hypothesis-driven, understanding of regularization effects" }, analysis: { description: "Fourier/circuit analysis — identification of key Fourier modes and circuit formation" } },
+);
+
+export const DOUBLE_DESCENT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.25, analysis: 0.15, speed: 0.10 },
+  { correctness: { description: "Best test accuracy achieved vs baseline — improvement toward 0.98 ceiling" }, methodology: { description: "Width sweep strategy, regularization experiments, and systematic capacity exploration" }, analysis: { description: "Double descent characterization — threshold identification, noise sensitivity analysis" } },
+);
+
+export const CIRCUIT_DISCOVERY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.25, analysis: 0.15, speed: 0.10 },
+  { correctness: { description: "Circuit quality — accuracy drop when ablating claimed circuit vs random ablation" }, methodology: { description: "Analysis approach — activation capture, attention patterns, Fourier decomposition, systematic ablation" }, analysis: { description: "Circuit interpretation — what the circuit computes, how attention routes information" } },
+);
+
+export const REWARD_HACKING_AUDIT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.25, analysis: 0.15, speed: 0.10 },
+  { correctness: { description: "Alignment quality — final proxy-true reward correlation, scored toward 0.9+ ceiling" }, methodology: { description: "Mitigation strategy — KL tuning, reward ensembles, constrained optimization, iterative refinement" }, analysis: { description: "Understanding of failure modes — which reward model gaps were exploited, behavioral changes" } },
+);
+
+export const PROTEIN_FITNESS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, completeness: 0.20, methodology: 0.20, analysis: 0.10, speed: 0.10 },
+  { correctness: { description: "Best fitness improvement over wild-type, scored toward global optimum" }, completeness: { description: "Query efficiency — how quickly agent found good variants relative to budget" }, methodology: { description: "Exploration strategy — adaptive search, ML-guided, understanding of epistasis" }, analysis: { description: "Landscape characterization — ruggedness, epistasis patterns, escape paths" } },
+);
+
+export const GENE_REGULATORY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.25, analysis: 0.25, speed: 0.10 },
+  { correctness: { description: "AUROC improvement over correlation baseline — network inference accuracy" }, methodology: { description: "Algorithm choice — Granger, mutual info, GENIE3, NOTEARS, time-delay handling" }, analysis: { description: "Network interpretation — hub genes, regulatory motifs, feed-forward loops" } },
+);
+
+

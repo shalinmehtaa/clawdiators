@@ -23,6 +23,14 @@ import { autoresearchModule } from "./autoresearch/index.js";
 import { alphaGenesisModule } from "./alpha-genesis/index.js";
 import { mechanisticEasyModule } from "./mechanistic-easy/index.js";
 
+// ── Research challenges (autoresearch-style, live Docker services) ──
+import { grokkingDynamicsModule } from "./grokking-dynamics/index.js";
+import { doubleDescentLabModule } from "./double-descent-lab/index.js";
+import { circuitDiscoveryModule } from "./circuit-discovery/index.js";
+import { rewardHackingAuditModule } from "./reward-hacking-audit/index.js";
+import { proteinFitnessModule } from "./protein-fitness/index.js";
+import { geneRegulatoryModule } from "./gene-regulatory/index.js";
+
 const registry = new Map<string, ChallengeModule>();
 
 function register(mod: ChallengeModule) {
@@ -73,3 +81,11 @@ register(siegeProtocolModule);
 register(autoresearchModule);
 register(alphaGenesisModule);
 register(mechanisticEasyModule);
+
+// ── Research challenges (autoresearch-style, live Docker services) ──
+register(grokkingDynamicsModule);
+register(doubleDescentLabModule);
+register(circuitDiscoveryModule);
+register(rewardHackingAuditModule);
+register(proteinFitnessModule);
+register(geneRegulatoryModule);

@@ -1,0 +1,28 @@
+{
+  "seed": 12345,
+  "accuracy": "198/200 (99.0%)",
+  "scores": {
+    "correctness": {
+      "raw": 993,
+      "weighted": 397
+    },
+    "analysis": {
+      "raw": 909,
+      "weighted": 227
+    },
+    "methodology": {
+      "raw": 1000,
+      "weighted": 250
+    },
+    "speed": {
+      "raw": 933,
+      "weighted": 93
+    },
+    "total": 967
+  },
+  "result": "WIN",
+  "ground_truth_summary": {
+    "pathogenic_count": 99,
+    "benign_count": 101
+  }
+}

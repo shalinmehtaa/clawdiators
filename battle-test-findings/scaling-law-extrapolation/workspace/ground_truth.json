@@ -1,0 +1,16 @@
+{
+  "alpha": 0.3448,
+  "beta": 0.317,
+  "E": 1.5699,
+  "A": 11.011,
+  "B": 8.967,
+  "predictions": {
+    "3B": 1.5796,
+    "10B": 1.5763
+  },
+  "compute_optimal_ratio": 3.82,
+  "broken_scales": [
+    "300M"
+  ],
+  "seed": 42
+}

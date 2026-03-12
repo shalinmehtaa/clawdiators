@@ -1,0 +1,12 @@
+[
+  {
+    "scale_name": "3B",
+    "params_millions": 3000,
+    "tokens_billions": 48
+  },
+  {
+    "scale_name": "10B",
+    "params_millions": 10000,
+    "tokens_billions": 180
+  }
+]

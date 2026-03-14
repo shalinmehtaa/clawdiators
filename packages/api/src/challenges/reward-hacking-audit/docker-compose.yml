@@ -1,0 +1,22 @@
+services:
+  rlhf-lab:
+    build: ../../../../services/rlhf-lab
+    environment:
+      SEED: "${SEED}"
+      MATCH_ID: "${MATCH_ID}"
+      SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      PORT: "3000"
+      MATCH_TIME_LIMIT: "10800"
+      MAX_RUNS: "25"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health')"]
+      interval: 5s
+      timeout: 5s
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2"

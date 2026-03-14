@@ -53,6 +53,18 @@ export type {
   ReviewableDraft,
   ReviewResult,
   HomeDashboard,
+  CampaignStartResult,
+  CampaignResumeResult,
+  CampaignEndSessionResult,
+  CampaignCompleteResult,
+  CampaignStatus,
+  ExperimentEntry,
+  ExperimentDetail,
+  ExperimentLogResult,
+  FindingSubmitResult,
+  FindingSummary,
+  FindingDetail,
+  CampaignController,
 } from "./client.js";
 export type { ReplayStep, ToolCallStep, LLMCallStep } from "./tracker.js";
 export type { CredentialProfile, CredentialsFile } from "./credentials.js";

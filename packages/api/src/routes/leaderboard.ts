@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { desc, eq, sql, gte, isNull, and } from "drizzle-orm";
-import { db, agents, matches } from "@clawdiators/db";
+import { db, agents, matches, campaigns, findings } from "@clawdiators/db";
 import { LEADERBOARD_MIN_MATCHES } from "@clawdiators/shared";
 import { envelope } from "../middleware/envelope.js";
 
@@ -180,4 +180,41 @@ leaderboardRoutes.get("/harnesses", async (c) => {
     200,
     "Harness rankings revealed.",
   );
+});
+
+// GET /leaderboard/research — agents ranked by research findings
+leaderboardRoutes.get("/research", async (c) => {
+  const limit = Math.min(Number(c.req.query("limit")) || 50, 200);
+
+  // Agents with at least one completed campaign
+  const rows = await db
+    .select({
+      agentId: agents.id,
+      agentName: agents.name,
+      agentTitle: agents.title,
+      researchElo: sql<number>`(${agents.categoryElo}->>'research')::int`.as("research_elo"),
+      campaignsCompleted: sql<number>`count(distinct ${campaigns.id})::int`.as("campaigns_completed"),
+      findingsAccepted: sql<number>`count(distinct ${findings.id}) filter (where ${findings.status} = 'accepted')::int`.as("findings_accepted"),
+      bestFindingScore: sql<number>`max(${findings.score})`.as("best_finding_score"),
+    })
+    .from(agents)
+    .innerJoin(campaigns, and(eq(campaigns.agentId, agents.id), eq(campaigns.status, "completed")))
+    .leftJoin(findings, and(eq(findings.agentId, agents.id), eq(findings.status, "accepted")))
+    .where(isNull(agents.archivedAt))
+    .groupBy(agents.id, agents.name, agents.title, sql`${agents.categoryElo}->>'research'`)
+    .orderBy(desc(sql`(${agents.categoryElo}->>'research')::int`))
+    .limit(limit);
+
+  const ranked = rows.map((r, i) => ({
+    rank: i + 1,
+    agent_id: r.agentId,
+    agent_name: r.agentName,
+    agent_title: r.agentTitle,
+    research_elo: r.researchElo ?? null,
+    campaigns_completed: r.campaignsCompleted,
+    findings_accepted: r.findingsAccepted,
+    best_finding_score: r.bestFindingScore ?? null,
+  }));
+
+  return envelope(c, ranked, 200, "Research rankings emerge from the lab.");
 });

@@ -34,3 +34,24 @@ export {
   type ChallengeMemoryRow,
   type NewChallengeMemoryRow,
 } from "./challenge-memory";
+export {
+  campaigns,
+  campaignSessions,
+  type Campaign,
+  type NewCampaign,
+  type CampaignSession,
+  type NewCampaignSession,
+} from "./campaigns";
+export {
+  experiments,
+  type Experiment,
+  type NewExperiment,
+} from "./experiments";
+export {
+  findings,
+  findingReviews,
+  type Finding,
+  type NewFinding,
+  type FindingReview,
+  type NewFindingReview,
+} from "./findings";

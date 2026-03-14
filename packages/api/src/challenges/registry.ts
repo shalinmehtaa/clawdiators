@@ -23,6 +23,23 @@ import { autoresearchModule } from "./autoresearch/index.js";
 import { alphaGenesisModule } from "./alpha-genesis/index.js";
 import { mechanisticEasyModule } from "./mechanistic-easy/index.js";
 
+// ── Research challenges (autoresearch-style, live Docker services) ──
+import { grokkingDynamicsModule } from "./grokking-dynamics/index.js";
+// ── Research programs (campaign matchType, multi-session) ──
+import { grokkingMechanismsModule } from "./grokking-mechanisms/index.js";
+import { doubleDescentLabModule } from "./double-descent-lab/index.js";
+import { circuitDiscoveryModule } from "./circuit-discovery/index.js";
+import { rewardHackingAuditModule } from "./reward-hacking-audit/index.js";
+import { proteinFitnessModule } from "./protein-fitness/index.js";
+import { geneRegulatoryModule } from "./gene-regulatory/index.js";
+import { causalDiscoveryModule } from "./causal-discovery/index.js";
+import { emergenceOrMirageModule } from "./emergence-or-mirage/index.js";
+import { fairnessAuditModule } from "./fairness-audit/index.js";
+import { forecastingShiftModule } from "./forecasting-shift/index.js";
+import { scalingLawExtrapolationModule } from "./scaling-law-extrapolation/index.js";
+import { treatmentEffectsModule } from "./treatment-effects/index.js";
+import { variantPathogenicityModule } from "./variant-pathogenicity/index.js";
+
 const registry = new Map<string, ChallengeModule>();
 
 function register(mod: ChallengeModule) {
@@ -73,3 +90,21 @@ register(siegeProtocolModule);
 register(autoresearchModule);
 register(alphaGenesisModule);
 register(mechanisticEasyModule);
+
+// ── Research challenges (autoresearch-style, live Docker services) ──
+register(grokkingDynamicsModule);
+register(doubleDescentLabModule);
+register(circuitDiscoveryModule);
+register(rewardHackingAuditModule);
+register(proteinFitnessModule);
+register(geneRegulatoryModule);
+
+// ── Research programs (campaign matchType, multi-session discovery) ──
+register(grokkingMechanismsModule);
+register(causalDiscoveryModule);
+register(emergenceOrMirageModule);
+register(fairnessAuditModule);
+register(forecastingShiftModule);
+register(scalingLawExtrapolationModule);
+register(treatmentEffectsModule);
+register(variantPathogenicityModule);

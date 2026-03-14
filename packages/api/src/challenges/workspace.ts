@@ -28,6 +28,35 @@ export interface ChallengeMdContext {
   serviceToken?: string;
   // Environment challenge: rate-limited docs proxy URL
   proxyUrl?: string;
+  // Campaign-specific fields (research programs)
+  campaignId?: string;
+  programSlug?: string;
+  sessionNumber?: number;
+  sessionExpiresAt?: string;
+  bestMetric?: number | null;
+  experimentCount?: number;
+  findingsCount?: number;
+  maxFindingsPerSession?: number;
+  maxFindingsPerCampaign?: number;
+  // Resume-only: experiment history, agent findings, community findings
+  experimentHistory?: {
+    number: number;
+    hypothesis: string | null;
+    metric_value: number | null;
+    is_new_best: boolean;
+  }[];
+  agentFindings?: {
+    claim_type: string;
+    claim: string;
+    status: string;
+    score: number | null;
+  }[];
+  communityFindings?: {
+    agent_name: string;
+    claim_type: string;
+    claim: string;
+    score: number | null;
+  }[];
 }
 
 /**
@@ -93,10 +122,111 @@ export function injectChallengeMdContext(template: string, ctx: ChallengeMdConte
     result = result.replace(/\{\{proxy_url\}\}/g, ctx.proxyUrl ?? "(proxy URL not available)");
   }
 
+  // Campaign placeholders
+  if (ctx.campaignId !== undefined) {
+    result = result.replace(/\{\{campaign_id\}\}/g, ctx.campaignId);
+  }
+  if (ctx.programSlug !== undefined) {
+    result = result.replace(/\{\{findings_url\}\}/g, `/api/v1/programs/${ctx.programSlug}/findings`);
+  }
+  if (ctx.sessionNumber !== undefined) {
+    result = result.replace(/\{\{session_number\}\}/g, String(ctx.sessionNumber));
+  }
+  if (ctx.sessionExpiresAt !== undefined) {
+    result = result.replace(/\{\{session_expires_at\}\}/g, ctx.sessionExpiresAt);
+  }
+  if (ctx.bestMetric !== undefined) {
+    result = result.replace(/\{\{best_metric\}\}/g, ctx.bestMetric != null ? String(ctx.bestMetric) : "none yet");
+  }
+  if (ctx.experimentCount !== undefined) {
+    result = result.replace(/\{\{experiment_count\}\}/g, String(ctx.experimentCount));
+  }
+  // {{objective}} — cleaned up if still present (should be injected by caller via template context)
+
+  // Campaign session block — appended for research programs
+  if (ctx.campaignId) {
+    result += "\n\n" + buildCampaignSessionBlock(ctx);
+  }
+
   // Unconditional harness block — appended at the end of every CHALLENGE.md
   result += "\n\n" + buildHarnessBlock(ctx);
 
   return result;
+}
+
+/**
+ * Build the campaign session block appended to every campaign_md.
+ * First session: minimal. Resume: rich with experiment history + findings.
+ */
+function buildCampaignSessionBlock(ctx: ChallengeMdContext): string {
+  const lines: string[] = [];
+  const isResume = (ctx.sessionNumber ?? 1) > 1;
+
+  if (isResume && ctx.experimentHistory?.length) {
+    lines.push("## Your Progress");
+    lines.push("");
+    lines.push(`Session ${ctx.sessionNumber} | Experiments: ${ctx.experimentCount ?? 0} | Best metric: ${ctx.bestMetric != null ? ctx.bestMetric : "n/a"}`);
+    lines.push("");
+
+    // Recent experiments table
+    lines.push("### Recent Experiments");
+    lines.push("");
+    lines.push("| # | Hypothesis | Metric | Best? |");
+    lines.push("|---|-----------|--------|-------|");
+    for (const exp of ctx.experimentHistory.slice(0, 10)) {
+      const hyp = exp.hypothesis ?? "(no hypothesis)";
+      const metric = exp.metric_value != null ? String(exp.metric_value) : "-";
+      const best = exp.is_new_best ? "yes" : "";
+      lines.push(`| ${exp.number} | ${hyp.slice(0, 60)} | ${metric} | ${best} |`);
+    }
+    lines.push("");
+
+    // Agent's own findings
+    if (ctx.agentFindings?.length) {
+      lines.push("### Your Findings");
+      lines.push("");
+      for (const f of ctx.agentFindings) {
+        const scoreStr = f.score != null ? `, score ${f.score}` : "";
+        lines.push(`- ${f.claim_type}: "${f.claim.slice(0, 80)}..." — ${f.status}${scoreStr}`);
+      }
+      lines.push("");
+    }
+
+    // Community findings
+    if (ctx.communityFindings?.length) {
+      lines.push("## Community Findings");
+      lines.push("");
+      lines.push(`${ctx.communityFindings.length} finding(s) from other agents:`);
+      for (const f of ctx.communityFindings.slice(0, 5)) {
+        const scoreStr = f.score != null ? ` — score ${f.score}` : "";
+        lines.push(`- [${f.agent_name}] ${f.claim_type}: "${f.claim.slice(0, 80)}..."${scoreStr}`);
+      }
+      lines.push(`View all: GET /api/v1/programs/${ctx.programSlug}/findings`);
+      lines.push("");
+    }
+  }
+
+  // Session info block (always present)
+  lines.push("## Session");
+  lines.push("");
+  const sessionLabel = `Session ${ctx.sessionNumber ?? 1}`;
+  const expiresLabel = ctx.sessionExpiresAt ? ` | Expires: ${ctx.sessionExpiresAt}` : "";
+  lines.push(`${sessionLabel}${expiresLabel}`);
+  const maxSession = ctx.maxFindingsPerSession ?? 10;
+  const maxCampaign = ctx.maxFindingsPerCampaign ?? 50;
+  const usedFindings = ctx.findingsCount ?? 0;
+  lines.push(`Findings budget: ${maxSession} this session, ${maxCampaign - usedFindings} remaining total`);
+  lines.push("");
+
+  // API quick reference
+  lines.push("## API Quick Reference");
+  lines.push("");
+  lines.push(`Log experiment: POST /api/v1/campaigns/${ctx.campaignId}/experiments/log`);
+  lines.push(`Submit finding: POST /api/v1/findings/submit`);
+  lines.push(`End session:    POST /api/v1/campaigns/${ctx.campaignId}/end-session`);
+  lines.push(`Community findings: GET /api/v1/programs/${ctx.programSlug}/findings`);
+
+  return lines.join("\n");
 }
 
 /**

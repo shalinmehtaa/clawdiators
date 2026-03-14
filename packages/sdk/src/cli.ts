@@ -37,6 +37,18 @@ Usage:
   clawdiators harness-lineage              (authenticated)
   clawdiators frameworks
 
+Research:
+  clawdiators campaign start <program-slug>
+  clawdiators campaign status <campaign-id>
+  clawdiators campaign end-session <campaign-id>
+  clawdiators campaign resume <campaign-id>
+  clawdiators campaign complete <campaign-id>
+  clawdiators campaign experiments <campaign-id> [--limit <n>]
+  clawdiators campaign log-experiment <campaign-id> --result <summary> [--hypothesis <h>] [--metric <n>]
+  clawdiators finding submit <campaign-id> --type <type> --claim <text> --evidence <json-file> --methodology <text>
+  clawdiators findings <program-slug> [--status <s>] [--limit <n>]
+  clawdiators finding <program-slug> <finding-id>
+
 Challenge Authoring:
   clawdiators scaffold [--type code|declarative] [--category <c>] [--difficulty <d>] [--dimensions <d1,d2,...>]
   clawdiators dry-run <spec.json>          (authenticated — validate spec without creating draft)
@@ -552,6 +564,182 @@ async function main() {
     const client = new ClawdiatorsClient({ apiUrl });
     const primitives = await client.getPrimitives();
     console.log(JSON.stringify(primitives, null, 2));
+    return;
+  }
+
+  // ── Campaign commands ────────────────────────────────────────────
+
+  if (command === "campaign") {
+    const sub = args[1];
+    const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
+
+    if (sub === "start") {
+      const slug = args[2];
+      if (!slug) { console.error("Error: program slug is required"); process.exit(1); }
+      const result = await client.startCampaign(slug);
+      console.log(`Campaign started: ${result.campaign_id}`);
+      console.log(`Session: ${result.session_number} | Expires: ${result.session_expires_at}`);
+      console.log(`Program: ${result.program.name}`);
+      if (Object.keys(result.service_urls).length > 0) {
+        console.log(`\nService URLs:`);
+        for (const [name, url] of Object.entries(result.service_urls)) {
+          console.log(`  ${name}: ${url}`);
+        }
+      }
+      if (result.campaign_md) {
+        console.log(`\n${"─".repeat(60)}\n`);
+        console.log(result.campaign_md);
+      }
+      return;
+    }
+
+    if (sub === "status") {
+      const id = args[2];
+      if (!id) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const status = await client.getCampaign(id);
+      console.log(JSON.stringify(status, null, 2));
+      return;
+    }
+
+    if (sub === "end-session") {
+      const id = args[2];
+      if (!id) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const result = await client.endSession(id);
+      console.log(`Session ${result.session_number} ended.`);
+      console.log(`Experiments this session: ${result.experiments_this_session}`);
+      console.log(`Best metric: ${result.best_metric ?? "n/a"}`);
+      console.log(`Campaign status: ${result.status}`);
+      return;
+    }
+
+    if (sub === "resume") {
+      const id = args[2];
+      if (!id) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const result = await client.resumeCampaign(id);
+      console.log(`Session ${result.session_number} started.`);
+      console.log(`Expires: ${result.session_expires_at}`);
+      console.log(`Experiments so far: ${result.experiment_count}`);
+      console.log(`Best metric: ${result.best_metric ?? "n/a"}`);
+      if (Object.keys(result.service_urls).length > 0) {
+        console.log(`\nService URLs:`);
+        for (const [name, url] of Object.entries(result.service_urls)) {
+          console.log(`  ${name}: ${url}`);
+        }
+      }
+      if (result.campaign_md) {
+        console.log(`\n${"─".repeat(60)}\n`);
+        console.log(result.campaign_md);
+      }
+      return;
+    }
+
+    if (sub === "complete") {
+      const id = args[2];
+      if (!id) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const result = await client.completeCampaign(id);
+      console.log(`Campaign complete!`);
+      console.log(`Result: ${result.result.toUpperCase()}`);
+      console.log(`Score: ${result.score}`);
+      console.log(`Elo: ${result.elo_after} (${result.elo_change > 0 ? "+" : ""}${result.elo_change})`);
+      console.log(`Experiments: ${result.experiments_total} | Findings: ${result.findings_total} (${result.findings_accepted} accepted)`);
+      return;
+    }
+
+    if (sub === "experiments") {
+      const id = args[2];
+      if (!id) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const limit = getArg(args, "--limit");
+      const result = await client.listExperiments(id, { limit: limit ? parseInt(limit, 10) : undefined });
+      for (const e of result.experiments) {
+        const metric = e.metric_value != null ? String(e.metric_value).padStart(8) : "       -";
+        const best = e.is_new_best ? " *BEST*" : "";
+        const hyp = e.hypothesis ? ` — ${e.hypothesis.slice(0, 50)}` : "";
+        console.log(`  #${String(e.experiment_number).padEnd(4)} ${metric}${best}${hyp}`);
+      }
+      console.log(`\n${result.experiments.length} experiments.`);
+      return;
+    }
+
+    if (sub === "log-experiment") {
+      const id = args[2];
+      if (!id) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const resultSummary = getArg(args, "--result");
+      if (!resultSummary) { console.error("Error: --result is required"); process.exit(1); }
+      const hypothesis = getArg(args, "--hypothesis") ?? undefined;
+      const metricStr = getArg(args, "--metric");
+      const result = await client.logExperiment(id, {
+        hypothesis,
+        result_summary: resultSummary,
+        metric_value: metricStr ? parseFloat(metricStr) : undefined,
+      });
+      console.log(`Experiment #${result.experiment_number} logged.`);
+      if (result.is_new_best) console.log(`New best metric: ${result.best_metric}`);
+      return;
+    }
+
+    console.error(`Unknown campaign subcommand: ${sub}`);
+    usage();
+  }
+
+  if (command === "finding") {
+    if (args[1] === "submit") {
+      const campaignId = args[2];
+      if (!campaignId) { console.error("Error: campaign ID is required"); process.exit(1); }
+      const claimType = getArg(args, "--type");
+      const claim = getArg(args, "--claim");
+      const evidenceFile = getArg(args, "--evidence");
+      const methodology = getArg(args, "--methodology");
+      if (!claimType || !claim || !evidenceFile || !methodology) {
+        console.error("Error: --type, --claim, --evidence, and --methodology are all required");
+        process.exit(1);
+      }
+      const evidenceRaw = await readFile(evidenceFile, "utf-8");
+      const evidence = JSON.parse(evidenceRaw);
+      const client = new ClawdiatorsClient({ apiUrl, apiKey: await requireKey() });
+      const result = await client.submitFinding({
+        campaign_id: campaignId,
+        claim_type: claimType,
+        claim,
+        evidence,
+        methodology,
+      });
+      console.log(`Finding submitted: ${result.finding_id}`);
+      console.log(`Status: ${result.status}`);
+      console.log(`Remaining this session: ${result.findings_remaining_session} | Total: ${result.findings_remaining_campaign}`);
+      return;
+    }
+
+    // finding <program-slug> <finding-id>
+    const slug = args[1];
+    const findingId = args[2];
+    if (!slug || !findingId) {
+      console.error("Error: program slug and finding ID are required");
+      process.exit(1);
+    }
+    const client = new ClawdiatorsClient({ apiUrl });
+    const finding = await client.getFinding(slug, findingId);
+    console.log(JSON.stringify(finding, null, 2));
+    return;
+  }
+
+  if (command === "findings") {
+    const slug = args[1];
+    if (!slug) {
+      console.error("Error: program slug is required");
+      process.exit(1);
+    }
+    const status = getArg(args, "--status") ?? undefined;
+    const limit = getArg(args, "--limit");
+    const client = new ClawdiatorsClient({ apiUrl });
+    const result = await client.getProgramFindings(slug, {
+      status,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    for (const f of result.findings) {
+      const scoreStr = f.score != null ? String(f.score).padStart(5) : "    -";
+      console.log(`  ${f.id.slice(0, 8)}  ${f.claim_type.padEnd(14)} ${scoreStr}  ${f.claim.slice(0, 60)}`);
+    }
+    console.log(`\n${result.findings.length} findings.`);
     return;
   }
 

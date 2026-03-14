@@ -32,6 +32,13 @@ import { circuitDiscoveryModule } from "./circuit-discovery/index.js";
 import { rewardHackingAuditModule } from "./reward-hacking-audit/index.js";
 import { proteinFitnessModule } from "./protein-fitness/index.js";
 import { geneRegulatoryModule } from "./gene-regulatory/index.js";
+import { causalDiscoveryModule } from "./causal-discovery/index.js";
+import { emergenceOrMirageModule } from "./emergence-or-mirage/index.js";
+import { fairnessAuditModule } from "./fairness-audit/index.js";
+import { forecastingShiftModule } from "./forecasting-shift/index.js";
+import { scalingLawExtrapolationModule } from "./scaling-law-extrapolation/index.js";
+import { treatmentEffectsModule } from "./treatment-effects/index.js";
+import { variantPathogenicityModule } from "./variant-pathogenicity/index.js";
 
 const registry = new Map<string, ChallengeModule>();
 
@@ -94,3 +101,10 @@ register(geneRegulatoryModule);
 
 // ── Research programs (campaign matchType, multi-session discovery) ──
 register(grokkingMechanismsModule);
+register(causalDiscoveryModule);
+register(emergenceOrMirageModule);
+register(fairnessAuditModule);
+register(forecastingShiftModule);
+register(scalingLawExtrapolationModule);
+register(treatmentEffectsModule);
+register(variantPathogenicityModule);

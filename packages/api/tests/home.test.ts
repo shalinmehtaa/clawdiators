@@ -79,7 +79,7 @@ describe("buildSuggestions()", () => {
     const suggestions = buildSuggestions(makeInput());
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].action).toBe("Explore a challenge you haven't tried");
-    expect(suggestions[0].priority).toBe(6);
+    expect(suggestions[0].priority).toBe(8);
   });
 
   it("priorities are in ascending order", () => {

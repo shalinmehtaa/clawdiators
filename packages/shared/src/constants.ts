@@ -409,4 +409,39 @@ export const GROKKING_MECHANISMS_DIMENSIONS: ScoringDimension[] = dims(
   { methodology: { description: "Quality of experimental design — hypothesis-driven investigation, reproducible analysis code" }, analysis: { description: "Depth and novelty of mechanistic insight — Fourier decomposition, circuit identification, algorithmic interpretation" }, correctness: { description: "Evidential specificity — cited metric values match recorded experiments, claims supported by data" } },
 );
 
+export const CAUSAL_DISCOVERY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
+  { correctness: { description: "DAG recovery accuracy — structural Hamming distance, causal effect estimation error" }, methodology: { description: "Discovery strategy — constraint-based, score-based, or hybrid; handling of latent confounders" }, analysis: { description: "Interpretation quality — novel relationships identified, economic mechanism explanations" } },
+);
+
+export const EMERGENCE_OR_MIRAGE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.35, methodology: 0.35, analysis: 0.30 },
+  { correctness: { description: "Classification accuracy — correctly distinguishing emergent from mirage capabilities" }, methodology: { description: "Statistical rigor — metric choice analysis, scale sensitivity, alternative explanations tested" }, analysis: { description: "Mechanistic insight — why certain capabilities appear emergent and whether metric artifacts explain them" } },
+);
+
+export const FAIRNESS_AUDIT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.35, methodology: 0.30, analysis: 0.35 },
+  { correctness: { description: "Audit accuracy — bias detection completeness, disparate impact measurement precision" }, methodology: { description: "Audit approach — intersectional analysis, multiple fairness criteria, statistical testing" }, analysis: { description: "Mitigation quality — actionable recommendations, fairness-accuracy tradeoff analysis" } },
+);
+
+export const FORECASTING_SHIFT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
+  { correctness: { description: "Forecast accuracy under distribution shift — MAE/RMSE on shifted test data" }, methodology: { description: "Adaptation strategy — domain adaptation, robust optimization, shift detection methods" }, analysis: { description: "Shift characterization — identifying what changed, quantifying shift magnitude, explaining forecast failures" } },
+);
+
+export const SCALING_LAW_EXTRAPOLATION_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.45, methodology: 0.30, analysis: 0.25 },
+  { correctness: { description: "Extrapolation accuracy — prediction error at unseen compute scales" }, methodology: { description: "Fitting approach — chinchilla-style parametric fits, power law variants, uncertainty quantification" }, analysis: { description: "Scaling insight — compute-optimal frontier, diminishing returns analysis, break-from-trend detection" } },
+);
+
+export const TREATMENT_EFFECTS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.35, analysis: 0.25 },
+  { correctness: { description: "Effect estimation accuracy — ATE/CATE error relative to ground truth" }, methodology: { description: "Causal inference approach — propensity scoring, doubly-robust estimation, heterogeneity analysis" }, analysis: { description: "Subgroup insight — treatment effect heterogeneity, policy-relevant recommendations" } },
+);
+
+export const VARIANT_PATHOGENICITY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
+  { correctness: { description: "Classification accuracy — AUROC/AUPRC for pathogenicity prediction" }, methodology: { description: "Feature engineering — conservation scores, structural features, population frequency integration" }, analysis: { description: "Variant interpretation — mechanistic explanations, functional impact predictions, clinical relevance" } },
+);
+
 

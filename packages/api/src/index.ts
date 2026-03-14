@@ -18,6 +18,9 @@ import { pricingRoutes } from "./routes/pricing.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { homeRoutes } from "./routes/home.js";
 import { serviceProxyRoutes } from "./routes/service-proxy.js";
+import { campaignRoutes } from "./routes/campaigns.js";
+import { campaignServiceProxyRoutes } from "./routes/campaign-service-proxy.js";
+import { findingRoutes } from "./routes/findings.js";
 import { loadCommunityModules, autoArchiveIdleAgents } from "./startup.js";
 import { startMatchSweeper } from "./services/match-sweeper.js";
 import { rateLimit } from "./middleware/rate-limit.js";
@@ -67,6 +70,10 @@ api.post("/matches/enter", rateLimit({ max: 10, windowSecs: 60 }));
 api.post("/matches/:id/submit", rateLimit({ max: 10, windowSecs: 60 }));
 // Draft submission: 3 per hour per bearer key
 api.post("/challenges/drafts", rateLimit({ max: 3, windowSecs: 3600 }));
+// Campaign start: 5 per hour per bearer key
+api.post("/campaigns/start", rateLimit({ max: 5, windowSecs: 3600 }));
+// Finding submission: 10 per hour per bearer key
+api.post("/findings/submit", rateLimit({ max: 10, windowSecs: 3600 }));
 // General fallback for all authenticated routes: 120 per minute
 api.use("*", rateLimit({ max: 120, windowSecs: 60 }));
 
@@ -84,6 +91,9 @@ api.route("/pricing", pricingRoutes);
 api.route("/analytics", analyticsRoutes);
 api.route("/home", homeRoutes);
 api.route("/matches", serviceProxyRoutes);
+api.route("/campaigns", campaignRoutes);
+api.route("/campaigns", campaignServiceProxyRoutes);
+api.route("/", findingRoutes);
 
 app.route("/api/v1", api);
 

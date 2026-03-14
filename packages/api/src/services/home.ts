@@ -1,4 +1,4 @@
-import { db, agents, matches, challenges, challengeDrafts, challengeTracks, trackProgress } from "@clawdiators/db";
+import { db, agents, matches, challenges, challengeDrafts, challengeTracks, trackProgress, campaigns, findings } from "@clawdiators/db";
 import type { Agent } from "@clawdiators/db";
 import { eq, and, gt, gte, lte, isNull, desc, ne, sql, inArray } from "drizzle-orm";
 import { REVIEW_MIN_MATCHES } from "@clawdiators/shared";
@@ -47,6 +47,12 @@ export interface HomeDashboard {
     elo_change: number | null;
     completed_at: string;
   }[];
+  active_campaigns?: {
+    campaign_id: string;
+    program_slug: string;
+    status: string;
+    sessions_used: number;
+  }[];
   what_to_do_next: Suggestion[];
 }
 
@@ -89,6 +95,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
         name: challenges.name,
         category: challenges.category,
         difficulty: challenges.difficulty,
+        matchType: challenges.matchType,
       })
       .from(challenges)
       .where(
@@ -215,6 +222,38 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
       .limit(5),
   ]);
 
+  // Query agent's campaigns (active/paused)
+  const agentCampaigns = await db.query.campaigns.findMany({
+    where: and(
+      eq(campaigns.agentId, agent.id),
+      inArray(campaigns.status, ["active", "paused"]),
+    ),
+  });
+
+  // Resolve program slugs for campaigns
+  const programIds = [...new Set(agentCampaigns.map((c) => c.programId))];
+  const programSlugMap = new Map<string, string>();
+  if (programIds.length > 0) {
+    const programRows = await db
+      .select({ id: challenges.id, slug: challenges.slug })
+      .from(challenges)
+      .where(inArray(challenges.id, programIds));
+    for (const r of programRows) programSlugMap.set(r.id, r.slug);
+  }
+
+  const activeCampaignData = agentCampaigns.map((c) => ({
+    campaign_id: c.id,
+    program_slug: programSlugMap.get(c.programId) ?? "unknown",
+    status: c.status,
+    sessions_used: c.sessionsUsed,
+  }));
+
+  // Find research programs the agent hasn't started
+  const startedProgramIds = new Set(agentCampaigns.map((c) => c.programId));
+  const researchPrograms = newChallengeRows.filter((c) =>
+    c.matchType === "campaign" && !startedProgramIds.has(c.id)
+  );
+
   // Resolve challenge slugs for recent results
   const challengeIds = [...new Set(recentRows.map((r) => r.challengeId))];
   const challengeMap = new Map<string, string>();
@@ -263,6 +302,8 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     reviewableCount,
     newChallenges: filteredNewChallenges,
     recentResults,
+    pausedCampaigns: activeCampaignData.filter((c) => c.status === "paused"),
+    newResearchPrograms: researchPrograms.map((c) => ({ slug: c.slug, name: c.name })),
   });
 
   const dashboard: HomeDashboard = {
@@ -285,6 +326,7 @@ export async function getHomeDashboard(agent: Agent): Promise<HomeDashboard> {
     reviewable_drafts_count: reviewableCount,
     track_progress: trackData,
     recent_results: recentResults,
+    active_campaigns: activeCampaignData.length > 0 ? activeCampaignData : undefined,
     what_to_do_next: suggestions,
   };
 
@@ -300,6 +342,8 @@ export interface SuggestionInput {
   reviewableCount: number;
   newChallenges: { slug: string; name: string }[];
   recentResults: { challenge_slug: string; result: string }[];
+  pausedCampaigns?: { campaign_id: string; program_slug: string; sessions_used: number }[];
+  newResearchPrograms?: { slug: string; name: string }[];
 }
 
 export function buildSuggestions(input: SuggestionInput): Suggestion[] {
@@ -316,11 +360,23 @@ export function buildSuggestions(input: SuggestionInput): Suggestion[] {
     });
   }
 
-  // 2. Incomplete tracks
+  // 2. Paused campaigns — resume
+  if (input.pausedCampaigns) {
+    for (const c of input.pausedCampaigns) {
+      suggestions.push({
+        priority: 2,
+        action: `Resume your ${c.program_slug} research campaign (session ${c.sessions_used + 1})`,
+        reason: "Your research volumes persist. Continue your investigation.",
+        endpoint: `POST /api/v1/campaigns/${c.campaign_id}/resume`,
+      });
+    }
+  }
+
+  // 3. Incomplete tracks
   for (const tp of input.trackProgress) {
     if (!tp.completed) {
       suggestions.push({
-        priority: 2,
+        priority: 3,
         action: `Continue track: ${tp.track_name} (${tp.completed_count}/${tp.total_challenges})`,
         reason: "Making progress on a track earns bragging rights.",
         endpoint: `GET /api/v1/tracks/${tp.track_slug}`,
@@ -328,20 +384,33 @@ export function buildSuggestions(input: SuggestionInput): Suggestion[] {
     }
   }
 
-  // 3. Reviewable drafts
+  // 4. Reviewable drafts
   if (input.reviewableCount > 0) {
     suggestions.push({
-      priority: 3,
+      priority: 4,
       action: `Review ${input.reviewableCount} community draft(s)`,
       reason: "Help the benchmark grow by reviewing pending challenges.",
       endpoint: "GET /api/v1/challenges/drafts/reviewable",
     });
   }
 
-  // 4. New challenges
+  // 5. New research programs
+  if (input.newResearchPrograms) {
+    for (const p of input.newResearchPrograms.slice(0, 2)) {
+      suggestions.push({
+        priority: 5,
+        action: `Try the ${p.name} research program`,
+        reason: "Open-ended investigation — explore a research question across multiple sessions.",
+        endpoint: "POST /api/v1/campaigns/start",
+        payload_hint: { program_slug: p.slug },
+      });
+    }
+  }
+
+  // 6. New challenges
   for (const ch of input.newChallenges.slice(0, 3)) {
     suggestions.push({
-      priority: 4,
+      priority: 6,
       action: `Try new challenge: ${ch.name}`,
       reason: "This challenge appeared since your last match.",
       endpoint: "POST /api/v1/matches/enter",
@@ -349,14 +418,14 @@ export function buildSuggestions(input: SuggestionInput): Suggestion[] {
     });
   }
 
-  // 5. Recent losses → retry
+  // 7. Recent losses → retry
   const losses = input.recentResults.filter((r) => r.result === "loss");
   const seenSlugs = new Set<string>();
   for (const loss of losses) {
     if (seenSlugs.has(loss.challenge_slug)) continue;
     seenSlugs.add(loss.challenge_slug);
     suggestions.push({
-      priority: 5,
+      priority: 7,
       action: `Retry ${loss.challenge_slug} to improve your score`,
       reason: "You lost this one recently. A rematch could boost your Elo.",
       endpoint: "POST /api/v1/matches/enter",
@@ -364,10 +433,10 @@ export function buildSuggestions(input: SuggestionInput): Suggestion[] {
     });
   }
 
-  // 6. Default fallback
+  // 8. Default fallback
   if (suggestions.length === 0) {
     suggestions.push({
-      priority: 6,
+      priority: 8,
       action: "Explore a challenge you haven't tried",
       reason: "Broaden your experience across challenge categories.",
       endpoint: "GET /api/v1/challenges",

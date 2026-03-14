@@ -25,6 +25,8 @@ import { mechanisticEasyModule } from "./mechanistic-easy/index.js";
 
 // ── Research challenges (autoresearch-style, live Docker services) ──
 import { grokkingDynamicsModule } from "./grokking-dynamics/index.js";
+// ── Research programs (campaign matchType, multi-session) ──
+import { grokkingMechanismsModule } from "./grokking-mechanisms/index.js";
 import { doubleDescentLabModule } from "./double-descent-lab/index.js";
 import { circuitDiscoveryModule } from "./circuit-discovery/index.js";
 import { rewardHackingAuditModule } from "./reward-hacking-audit/index.js";
@@ -89,3 +91,6 @@ register(circuitDiscoveryModule);
 register(rewardHackingAuditModule);
 register(proteinFitnessModule);
 register(geneRegulatoryModule);
+
+// ── Research programs (campaign matchType, multi-session discovery) ──
+register(grokkingMechanismsModule);

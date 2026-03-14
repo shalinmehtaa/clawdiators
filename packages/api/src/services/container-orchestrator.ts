@@ -471,6 +471,189 @@ export async function launchMatchContainers(
   return { services, serviceToken, launchedAt: new Date().toISOString(), backend, networkName };
 }
 
+// ── Campaign Volume Management ──────────────────────────────────────
+
+/**
+ * Create named Docker volumes for a campaign.
+ * Volumes survive container stop/start cycles.
+ */
+export async function createCampaignVolumes(
+  campaignId: string,
+  volumes: Array<{ name: string; mountPath: string; sizeLimit: string }>,
+): Promise<void> {
+  for (const vol of volumes) {
+    const volName = `clw-camp-${shortMatchId(campaignId)}-${vol.name}`;
+    try {
+      await execFileAsync("docker", ["volume", "create", volName], { timeout: 10_000 });
+    } catch {
+      // Volume may already exist (resume scenario)
+    }
+  }
+}
+
+/**
+ * Launch containers for a campaign session with persistent volumes.
+ * Similar to launchMatchContainers but attaches named volumes.
+ */
+export async function launchCampaignContainers(
+  campaignId: string,
+  sessionId: string,
+  seed: number,
+  workspaceSpec: Pick<import("@clawdiators/shared").WorkspaceSpec, "services">,
+  volumes?: Array<{ name: string; mountPath: string; sizeLimit: string }>,
+  ttlSecs?: number,
+  challengeSlug?: string,
+): Promise<MatchContainerData> {
+  // Check for compose-based challenge first
+  if (challengeSlug) {
+    const challengeDir = join(dirname(fileURLToPath(import.meta.url)), `../challenges/${challengeSlug}`);
+    const composePath = join(challengeDir, "docker-compose.yml");
+    if (existsSync(composePath)) {
+      return composeUp(sessionId, seed, challengeSlug, composePath, ttlSecs);
+    }
+  }
+
+  const backend = getBackend();
+  if (backend === "fly") {
+    // Fly doesn't support persistent volumes in this model — fall back to standard launch
+    return launchMatchContainers(sessionId, seed, workspaceSpec, ttlSecs, challengeSlug);
+  }
+
+  const serviceToken = generateMatchToken();
+  const services: RunningService[] = [];
+
+  // Create per-campaign isolated network
+  let networkName: string | undefined;
+  if (!process.env.DOCKER_NETWORK) {
+    networkName = `arena-camp-${shortMatchId(campaignId)}`;
+    try {
+      await execFileAsync("docker", ["network", "create", networkName], { timeout: 10_000 });
+    } catch {
+      // Network may already exist (resume)
+    }
+  }
+
+  // Ensure volumes exist
+  if (volumes?.length) {
+    await createCampaignVolumes(campaignId, volumes);
+  }
+
+  for (const spec of workspaceSpec.services ?? []) {
+    const port = spec.ports[0]?.container ?? 3000;
+    const env: Record<string, string> = {
+      SEED: String(seed),
+      MATCH_ID: sessionId,
+      CAMPAIGN_ID: campaignId,
+      SERVICE_TOKEN: serviceToken,
+      PORT: String(port),
+      ...(ttlSecs ? { MATCH_TTL_SECS: String(ttlSecs) } : {}),
+      ...resolveEnv(spec.env, seed, sessionId),
+    };
+
+    // Build volume mount flags
+    const volumeFlags: string[] = [];
+    if (volumes?.length) {
+      for (const vol of volumes) {
+        const volName = `clw-camp-${shortMatchId(campaignId)}-${vol.name}`;
+        volumeFlags.push("-v", `${volName}:${vol.mountPath}`);
+      }
+    }
+
+    const name = `clw-camp-${shortMatchId(campaignId)}-${spec.name}`;
+    const inDocker = !!process.env.DOCKER_NETWORK;
+    const network = process.env.DOCKER_NETWORK ?? networkName ?? "arena";
+
+    const envFlags = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const portFlags = inDocker ? [] : ["-p", `0:${port}`];
+
+    const { stdout } = await execFileAsync("docker", [
+      "run", "-d",
+      "--name", name,
+      "--network", network,
+      `--memory=${spec.resources?.memory ?? "512m"}`,
+      `--cpus=${spec.resources?.cpus ?? 1}`,
+      "--pids-limit=100",
+      ...portFlags,
+      ...volumeFlags,
+      ...envFlags,
+      spec.image,
+    ], { timeout: 30_000 });
+
+    const containerId = stdout.trim();
+
+    let internalUrl: string;
+    let hostPort: number | undefined;
+    if (inDocker) {
+      internalUrl = `http://${name}:${port}`;
+    } else {
+      const { stdout: portRaw } = await execFileAsync(
+        "docker", ["port", containerId, String(port)], { timeout: 5_000 },
+      );
+      const m = portRaw.trim().match(/:(\d+)$/);
+      if (!m) throw new Error(`Could not parse host port for ${name}: "${portRaw.trim()}"`);
+      hostPort = parseInt(m[1], 10);
+      internalUrl = `http://localhost:${hostPort}`;
+    }
+
+    if (spec.healthCheck) {
+      const hc = spec.healthCheck;
+      await waitForHttpHealth(
+        internalUrl, hc.path,
+        hc.intervalSecs ?? 2, hc.timeoutSecs ?? 45, hc.startDelaySecs ?? 3,
+      );
+    }
+
+    services.push({ name: spec.name, containerId, containerName: name, internalUrl, hostPort });
+  }
+
+  return { services, serviceToken, launchedAt: new Date().toISOString(), backend: "docker", networkName };
+}
+
+/**
+ * Pause campaign containers — stop without removing volumes.
+ * Containers are removed (--rm not used with campaign containers, so we stop + rm).
+ */
+export async function pauseCampaignContainers(data: MatchContainerData): Promise<void> {
+  if (data.backend === "compose" && data.composeProject) {
+    // For compose: stop (not down -v) to preserve volumes
+    await execFileAsync("docker", [
+      "compose", "-p", data.composeProject, "stop",
+    ], { timeout: 30_000 }).catch((err) => console.error("Compose stop failed:", data.composeProject, err.message));
+    return;
+  }
+
+  for (const svc of data.services) {
+    await execFileAsync("docker", ["rm", "-f", svc.containerName], { timeout: 10_000 })
+      .catch((err) => console.error("Failed to stop campaign container:", svc.containerName, err.message));
+  }
+  // Don't remove the network — it will be reused on resume
+}
+
+/**
+ * Clean up campaign volumes and network after campaign completion/abandonment.
+ */
+export async function cleanupCampaignVolumes(campaignId: string): Promise<void> {
+  const prefix = `clw-camp-${shortMatchId(campaignId)}`;
+
+  // List and remove volumes with this campaign's prefix
+  try {
+    const { stdout } = await execFileAsync("docker", [
+      "volume", "ls", "--format", "{{.Name}}", "-f", `name=${prefix}`,
+    ], { timeout: 10_000 });
+    for (const volName of stdout.trim().split("\n").filter(Boolean)) {
+      await execFileAsync("docker", ["volume", "rm", volName], { timeout: 10_000 })
+        .catch((err) => console.error("Volume removal failed:", volName, err.message));
+    }
+  } catch {
+    // Best-effort
+  }
+
+  // Remove per-campaign network
+  const networkName = `arena-camp-${shortMatchId(campaignId)}`;
+  await execFileAsync("docker", ["network", "rm", networkName], { timeout: 10_000 })
+    .catch(() => { /* best-effort */ });
+}
+
 /**
  * Stop all containers for a match. Best-effort, never throws.
  * Uses whichever backend originally launched them.

@@ -112,6 +112,17 @@ export const CANONICAL_TOOLS = [
 
 export type CanonicalTool = (typeof CANONICAL_TOOLS)[number];
 
+// ── Research Program Constants ───────────────────────────────────────
+export const RESEARCH_K_FACTOR = { new: 24, established: 12 } as const;
+export const CAMPAIGN_SCORE_WEIGHTS = {
+  optimization: { metric: 0.50, findings: 0.35, efficiency: 0.15 },
+  discovery: { findings: 0.80, efficiency: 0.20 },
+} as const;
+export const MAX_FINDINGS_PER_SESSION = 5;
+export const MAX_FINDINGS_PER_CAMPAIGN = 20;
+export const CAMPAIGN_MAX_CALENDAR_DAYS = 90;
+export const CAMPAIGN_ABANDON_AFTER_DAYS = 30;
+
 // Elo system
 export const ELO_DEFAULT = 1000;
 export const ELO_K_NEW = 32; // K-factor for <30 matches
@@ -389,6 +400,13 @@ export const PROTEIN_FITNESS_DIMENSIONS: ScoringDimension[] = dims(
 export const GENE_REGULATORY_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: 0.40, methodology: 0.25, analysis: 0.25, speed: 0.10 },
   { correctness: { description: "AUROC improvement over correlation baseline — network inference accuracy" }, methodology: { description: "Algorithm choice — Granger, mutual info, GENIE3, NOTEARS, time-delay handling" }, analysis: { description: "Network interpretation — hub genes, regulatory motifs, feed-forward loops" } },
+);
+
+// ── Research Campaign Dimensions (judgment-based, no speed penalty) ──
+
+export const GROKKING_MECHANISMS_DIMENSIONS: ScoringDimension[] = dims(
+  { methodology: 0.35, analysis: 0.40, correctness: 0.25 },
+  { methodology: { description: "Quality of experimental design — hypothesis-driven investigation, reproducible analysis code" }, analysis: { description: "Depth and novelty of mechanistic insight — Fourier decomposition, circuit identification, algorithmic interpretation" }, correctness: { description: "Evidential specificity — cited metric values match recorded experiments, claims supported by data" } },
 );
 
 

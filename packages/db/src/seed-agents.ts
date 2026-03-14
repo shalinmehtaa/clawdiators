@@ -2,7 +2,7 @@ import postgres from "postgres";
 
 const connectionString =
   process.env.DATABASE_URL ??
-  "postgresql://clawdiators:clawdiators@localhost:5432/clawdiators";
+  "postgresql://clawdiators:clawdiators@localhost:5433/clawdiators";
 
 const client = postgres(connectionString, { max: 1 });
 

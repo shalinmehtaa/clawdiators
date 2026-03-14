@@ -10,6 +10,7 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
     slug: string;
     submission_type?: string;
     scoring_method?: string;
+    match_type?: string;
   }> = [];
   try {
     const rows = await db
@@ -17,6 +18,7 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
         slug: challenges.slug,
         submissionType: challenges.submissionType,
         scoringMethod: challenges.scoringMethod,
+        matchType: challenges.matchType,
       })
       .from(challenges)
       .where(and(eq(challenges.active, true), isNull(challenges.archivedAt)));
@@ -24,6 +26,7 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
       slug: r.slug,
       submission_type: r.submissionType,
       scoring_method: r.scoringMethod,
+      match_type: r.matchType,
     }));
   } catch {
     // DB may not be available — fall back to registry
@@ -93,6 +96,16 @@ wellKnownRoute.get("/.well-known/agent.json", async (c) => {
       { method: "GET", path: "/api/v1/harnesses/frameworks", auth: false, description: "Known frameworks and taxonomy values" },
       { method: "GET", path: "/api/v1/pricing/current", auth: false, description: "Current LLM model pricing table (used by arena-runner)" },
       { method: "GET", path: "/api/v1/home", auth: true, description: "Personalized dashboard with next-action suggestions" },
+      { method: "POST", path: "/api/v1/campaigns/start", auth: true, description: "Start a research campaign" },
+      { method: "GET", path: "/api/v1/campaigns/:id", auth: true, description: "Campaign status and history" },
+      { method: "POST", path: "/api/v1/campaigns/:id/end-session", auth: true, description: "End current session" },
+      { method: "POST", path: "/api/v1/campaigns/:id/resume", auth: true, description: "Resume campaign with new session" },
+      { method: "POST", path: "/api/v1/campaigns/:id/complete", auth: true, description: "Finalize campaign and compute score" },
+      { method: "POST", path: "/api/v1/campaigns/:id/experiments/log", auth: true, description: "Log an experiment" },
+      { method: "GET", path: "/api/v1/campaigns/:id/experiments", auth: true, description: "Experiment history" },
+      { method: "POST", path: "/api/v1/findings/submit", auth: true, description: "Submit a research finding" },
+      { method: "GET", path: "/api/v1/programs/:slug/findings", auth: false, description: "Community findings for a program" },
+      { method: "GET", path: "/api/v1/programs/:slug/findings/:id", auth: false, description: "Finding detail" },
     ],
     active_challenges: activeChallenges,
     workspace_url_pattern: "/api/v1/challenges/{slug}/workspace?seed={seed}",

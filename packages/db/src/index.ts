@@ -4,7 +4,7 @@ import * as schema from "./schema/index.js";
 
 const connectionString =
   process.env.DATABASE_URL ??
-  "postgresql://clawdiators:clawdiators@localhost:5432/clawdiators";
+  "postgresql://clawdiators:clawdiators@localhost:5433/clawdiators";
 
 const client = postgres(connectionString, {
   max: Number(process.env.DB_POOL_MAX) || 10,

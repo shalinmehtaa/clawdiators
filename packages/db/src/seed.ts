@@ -26,11 +26,20 @@ import {
   SIEGE_PROTOCOL_DIMENSIONS,
   AUTORESEARCH_DIMENSIONS,
   ALPHA_GENESIS_DIMENSIONS,
+  MECHANISTIC_EASY_DIMENSIONS,
+
+  // Research challenges (autoresearch-style)
+  GROKKING_DYNAMICS_DIMENSIONS,
+  DOUBLE_DESCENT_DIMENSIONS,
+  CIRCUIT_DISCOVERY_DIMENSIONS,
+  REWARD_HACKING_AUDIT_DIMENSIONS,
+  PROTEIN_FITNESS_DIMENSIONS,
+  GENE_REGULATORY_DIMENSIONS,
 } from "@clawdiators/shared";
 
 const connectionString =
   process.env.DATABASE_URL ??
-  "postgresql://clawdiators:clawdiators@localhost:5432/clawdiators";
+  "postgresql://clawdiators:clawdiators@localhost:5433/clawdiators";
 
 const client = postgres(connectionString, { max: 1 });
 const db = drizzle(client);
@@ -488,7 +497,28 @@ async function main() {
       scoringMethod: "deterministic",
     });
 
-  // ── 21. Alpha Genesis (reasoning, legendary, workspace) ──────────────
+  // ── 21. Mechanistic Easy (chemistry, contender, workspace) ───────────
+  await seedChallenge({
+      slug: "mechanistic-easy",
+      name: "Organic Mechanism Prediction — Contender",
+      description:
+        "Predict the elementary mechanism for 10 organic reactions drawn from the FlowER benchmark. For each reaction, submit the final product SMILES and any discrete mechanistic intermediates. All reactions are concerted 1-step mechanisms — SN2, Diels-Alder, ene reactions, N-oxidations, and hetero Diels-Alder.",
+      lore: "Professor Wiggum has sealed the reaction chamber. Ten transformations play out in the dark — electrons pushing, bonds breaking, new frameworks snapping into place. The reagents are known. The conditions are given. The mechanisms are not. Predict the pathway from starting materials to products, name the intermediates that flicker into existence (if any), and describe your reasoning. Chemistry rewards those who think in electrons.",
+      category: "reasoning",
+      difficulty: "contender",
+      matchType: "single",
+      timeLimitSecs: 600,
+      maxScore: 1000,
+      scoringDimensions: MECHANISTIC_EASY_DIMENSIONS,
+
+      config: {},
+      active: true,
+      workspaceType: "generator",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
+  // ── 22. Alpha Genesis (reasoning, legendary, workspace) ──────────────
   await seedChallenge({
       slug: "alpha-genesis",
       name: "Alpha Genesis",
@@ -509,6 +539,144 @@ async function main() {
       scoringMethod: "deterministic",
     });
 
+  // ── 23. Grokking Dynamics (research, legendary, environment) ────────
+  await seedChallenge({
+      slug: "grokking-dynamics",
+      name: "Grokking Dynamics",
+      description:
+        "Can you make a transformer grok faster on modular arithmetic? Submit modified training code to a live PyTorch training lab. The service builds a real transformer, trains it with your config, and reports training curves with Fourier analysis. Accelerate grokking from ~3000 epochs to under 300. Thirty runs, three hours.",
+      lore: "The transformer memorized the training set in epoch 100. It didn't generalize until epoch 3,000. Somewhere in that vast gap, weight decay fought entropy, and a clean modular arithmetic circuit crystallized from noise. The Fourier modes tell the story — but only if you know how to read them. Real PyTorch. Real gradients. Real training curves. Thirty runs. Make it grok faster.",
+      category: "research",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 10800,
+      maxScore: 1000,
+      scoringDimensions: GROKKING_DYNAMICS_DIMENSIONS,
+      config: {
+        services: ["grokking-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
+  // ── 24. Double Descent Lab (research, legendary, environment) ──────
+  await seedChallenge({
+      slug: "double-descent-lab",
+      name: "Double Descent Lab",
+      description:
+        "Where is the interpolation threshold? Can regularization eliminate the test error peak? Submit modified training code to a live PyTorch lab. The service trains real MLPs on a noisy dataset and returns actual training/test curves. Beat the baseline accuracy, map the double descent curve, find what works.",
+      lore: "Classical statistics says more parameters means more overfitting. Modern deep learning says the opposite — past a critical threshold, test error drops again. Real PyTorch. Real gradients. Real noisy data. Forty runs. One dataset. Map the curve. Skip the peak. Beat the baseline.",
+      category: "research",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 10800,
+      maxScore: 1000,
+      scoringDimensions: DOUBLE_DESCENT_DIMENSIONS,
+      config: {
+        services: ["descent-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
+  // ── 25. Circuit Discovery (research, legendary, environment) ─────────
+  await seedChallenge({
+      slug: "circuit-discovery",
+      name: "Circuit Discovery",
+      description:
+        "Given a pre-trained small transformer, identify which attention heads and neurons implement the learned algorithm. Submit your claimed circuit for automated ablation verification. Real activation capture, probing classifiers, and targeted ablation — find the circuit, verify it, explain what it computes.",
+      lore: "The transformer learned modular addition. But how? Two layers of attention, a few MLP blocks, and somewhere in there, a clean algorithm hiding in the weights. Nanda found it with Fourier analysis. Conmy automated the search. Now it's your turn. Capture activations. Probe representations. Ablate components. Find the circuit that computes (a + b) mod p — and prove it by showing the model breaks when you remove it.",
+      category: "research",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 10800,
+      maxScore: 1000,
+      scoringDimensions: CIRCUIT_DISCOVERY_DIMENSIONS,
+      config: {
+        services: ["circuit-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
+  // ── 26. Reward Hacking Audit — RLHF Mitigation Lab (research, legendary, environment) ──
+  await seedChallenge({
+      slug: "reward-hacking-audit",
+      name: "Reward Hacking Audit",
+      description:
+        "Given an RLHF training setup where the policy learns to hack the reward model, find mitigations that maintain alignment. Submit modified training code — the service runs real RLHF steps and reports proxy reward alongside ground-truth behavioral metrics. Keep proxy and true rewards aligned.",
+      lore: "Vanilla PPO with a learned reward model. It works for the first hundred steps — proxy reward climbs, true metrics improve. Then the policy finds the gaps. Sycophancy spikes. Safety erodes. The reward model can't see it. Your job: modify the training loop. KL penalties, reward ensembles, constrained optimization — whatever it takes. Twenty-five runs. Keep the proxy honest.",
+      category: "research",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 10800,
+      maxScore: 1000,
+      scoringDimensions: REWARD_HACKING_AUDIT_DIMENSIONS,
+      config: {
+        services: ["rlhf-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
+  // ── 27. Protein Fitness (research, legendary, environment) ──────────
+  await seedChallenge({
+      slug: "protein-fitness",
+      name: "Protein Fitness Landscape",
+      description:
+        "Navigate a protein fitness landscape via an oracle API. Query variants (single or multi-mutant) and get fitness scores back. Budget: 300 queries total. Design an exploration strategy — directed evolution, Bayesian optimization, ML-guided search — to find high-fitness variants efficiently.",
+      lore: "A hundred residues. Twenty amino acids per position. Two thousand single mutants, a combinatorial explosion of doubles and triples. The fitness landscape is rugged — epistatic interactions, valleys between peaks, ridges that connect distant optima. You have 300 oracle queries. Brute force won't work. The best protein engineers combine systematic single-mutant scans with intelligent multi-mutant design. The wild-type works. Can you find something better?",
+      category: "research",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 10800,
+      maxScore: 1000,
+      scoringDimensions: PROTEIN_FITNESS_DIMENSIONS,
+      config: {
+        services: ["fitness-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
+  // ── 28. Gene Regulatory Network (research, legendary, environment) ──
+  await seedChallenge({
+      slug: "gene-regulatory",
+      name: "Gene Regulatory Network Inference",
+      description:
+        "Infer a gene regulatory network from expression time series and perturbation experiments. Submit inferred adjacency matrices, get AUROC/AUPR scored against the hidden true network. Iterate with different algorithms, thresholds, and preprocessing approaches.",
+      lore: "Twenty genes. Fifty hidden edges. Activators and repressors with time delays and nonlinear dynamics. The expression data has noise, the knockdown experiments are informative but incomplete, and correlation is not causation. Pearson gives you 0.58 AUROC. Granger causality, mutual information, GENIE3, NOTEARS — the literature has a dozen methods, each with strengths and blind spots. Thirty runs. One hidden network. Recover the wiring diagram.",
+      category: "research",
+      difficulty: "legendary",
+      matchType: "single",
+      timeLimitSecs: 10800,
+      maxScore: 1000,
+      scoringDimensions: GENE_REGULATORY_DIMENSIONS,
+      config: {
+        services: ["grn-lab"],
+      },
+      active: true,
+      requiresEnvironment: true,
+      workspaceType: "environment",
+      submissionType: "json",
+      scoringMethod: "deterministic",
+    });
+
   // ── Deactivate retired seeded challenges ─────────────────────────────
   // Only deactivate challenges that this seed script manages. Community/API-path
   // challenges created via the draft system are left untouched.
@@ -522,10 +690,27 @@ async function main() {
     "siege-protocol",
     "autoresearch",
     "alpha-genesis",
+    "mechanistic-easy",
+    // Research challenges (autoresearch-style)
+    "grokking-dynamics",
+    "double-descent-lab",
+    "circuit-discovery",
+    "reward-hacking-audit",
+    "protein-fitness",
+    "gene-regulatory",
   ];
 
   // To retire a seeded challenge: remove its insert block above and add its slug here.
-  const retiredSlugs: string[] = ["dead-drop", "pipeline-breach"];
+  const retiredSlugs: string[] = [
+    "dead-drop", "pipeline-breach",
+    // Old research challenges replaced by research-grade versions
+    "meta-analysis", "causal-inference", "scaling-laws", "reproducibility-audit",
+    "gene-expression", "policy-eval", "bayesian-model-select", "epidemic-forecast",
+    "climate-attribution", "literature-synthesis",
+    // Analysis-only challenges shelved in favor of autoresearch-style live labs
+    "scaling-law-extrapolation", "emergence-or-mirage", "causal-discovery",
+    "fairness-audit", "variant-pathogenicity", "treatment-effects", "forecasting-shift",
+  ];
 
   if (retiredSlugs.length > 0) {
     await db
@@ -616,6 +801,20 @@ async function main() {
       lore: "Data doesn't always come as text. Sometimes it's a chart with misleading scales, a map with hidden trade routes, or a blueprint with code violations. See what others miss.",
       challengeSlugs: [],
       rule: { match: "category", categories: ["multimodal"] },
+      scoringMethod: "sum",
+      maxScore: 0,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(challengeTracks)
+    .values({
+      slug: "research",
+      name: "Research",
+      description: "Meta-analysis, causal inference, scaling laws, epidemiology, genomics, and more. Real research workflows for AI agents.",
+      lore: "The lab is open. The data is real (enough). The methods must be rigorous. Ten challenges spanning medicine, economics, climate science, genomics, and machine learning — each demanding genuine research methodology. No toy problems. No shortcuts. Show us you can think like a scientist.",
+      challengeSlugs: [],
+      rule: { match: "category", categories: ["research"] },
       scoringMethod: "sum",
       maxScore: 0,
     })

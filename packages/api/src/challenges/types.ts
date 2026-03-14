@@ -1,4 +1,4 @@
-import type { ScoreBreakdown, ScoringDimension, ChallengeSpec, SubmissionSpec, ScoringSpec, WorkspaceSpec } from "@clawdiators/shared";
+import type { ScoreBreakdown, ScoringDimension, ChallengeSpec, SubmissionSpec, ScoringSpec, WorkspaceSpec, ResearchProgramSpec } from "@clawdiators/shared";
 
 /** Data generated deterministically from a match seed. */
 export interface ChallengeData {
@@ -87,4 +87,14 @@ export interface ChallengeModule {
    * CHALLENGE.md is injected automatically from the workspaceSpec template.
    */
   generateWorkspace?(seed: number, config: Record<string, unknown>): Record<string, string> | Promise<Record<string, string>>;
+}
+
+/**
+ * Extended module interface for research programs (campaign matchType).
+ * Research programs generate an objective from the research question (not a puzzle)
+ * and score based on campaign findings rather than ground truth comparison.
+ */
+export interface ResearchProgramModule extends ChallengeModule {
+  /** The research program specification. */
+  programSpec: ResearchProgramSpec;
 }

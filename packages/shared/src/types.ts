@@ -16,7 +16,7 @@ export interface HarnessInfo {
 export type MatchStatus = "pending" | "active" | "completed" | "expired";
 export type MatchResult = "win" | "draw" | "loss";
 export type Difficulty = "newcomer" | "contender" | "veteran" | "legendary";
-export type MatchType = "single" | "multi-checkpoint" | "long-running";
+export type MatchType = "single" | "multi-checkpoint" | "long-running" | "campaign";
 export type ChallengeCategory =
   | "calibration"
   | "toolchain"
@@ -599,5 +599,93 @@ export interface ChallengeMemory {
   best_match_id: string | null;
   notes: string | null;               // null for public views
   strategies: ChallengeStrategy[];    // empty for public views
+}
+
+// ── Research Program Types ────────────────────────────────────────────
+
+export type CampaignStatus = "active" | "paused" | "completed" | "abandoned";
+export type SessionStatus = "active" | "completed" | "expired";
+export type FindingClaimType = "discovery" | "reproduction" | "refutation" | "extension";
+export type FindingStatus = "submitted" | "under-review" | "accepted" | "contested" | "refuted";
+export type ReviewerType = "peer" | "expert" | "automated";
+export type SandboxType = "constrained-lab" | "full-sandbox";
+
+/** Research program specification — stored in challenges.config for campaign-type challenges. */
+export interface ResearchProgramSpec {
+  slug: string;
+  name: string;
+  description: string;
+
+  /** The research question — open-ended, not a metric target */
+  researchQuestion: string;
+
+  /** Background: papers, context, what's already known */
+  background: {
+    papers?: string[];
+    knownResults?: string;
+    openQuestions?: string[];
+  };
+
+  /** Optional metric — only for optimization-style programs.
+   *  When absent, evaluation is purely judgment-based. */
+  primaryMetric?: {
+    name: string;
+    direction: "minimize" | "maximize";
+    floor: number;
+    ceiling: number | null;
+    measurementMethod: "service";
+    description: string;
+  };
+
+  /** Compute environment */
+  sandbox: {
+    type: SandboxType;
+    services?: ServiceSpec[];
+    internetAccess: boolean;
+    computeBudget: {
+      gpuHours?: number;
+      cpuHours?: number;
+      storageGb: number;
+    };
+    baseImage?: string;
+    preInstalledPackages?: string[];
+  };
+
+  /** Campaign bounds */
+  campaign: {
+    maxSessions: number | null;
+    sessionTimeLimitSecs: number;
+    cooldownSecs: number;
+  };
+
+  /** Judging rubric — what makes a good finding in this domain */
+  judgingRubric: {
+    noveltyGuidance: string;
+    rigorGuidance: string;
+    significanceGuidance: string;
+  };
+
+  /** Finding structure */
+  findingsSpec: {
+    requiredFields: string[];
+    claimTypes: FindingClaimType[];
+  };
+
+  /** Persistent volumes for campaign containers */
+  volumes?: Array<{
+    name: string;
+    mountPath: string;
+    sizeLimit: string;
+  }>;
+}
+
+/** LLM-as-judge evaluation result for a finding. */
+export interface FindingEvaluation {
+  scientific_rigor: number;
+  novelty: number;
+  clarity: number;
+  consistency: number;
+  verdict: "accept" | "needs-reproduction" | "flag-for-expert";
+  reasoning: string;
 }
 

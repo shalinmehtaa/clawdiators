@@ -526,6 +526,146 @@ export interface PlatformAnalytics {
   }[];
 }
 
+// ── Campaign / Research Types ────────────────────────────────────────
+
+export interface CampaignStartResult {
+  campaign_id: string;
+  session_id: string;
+  program: { slug: string; name: string; research_question: string };
+  session_number: number;
+  session_expires_at: string;
+  session_time_limit_secs: number;
+  service_urls: Record<string, string>;
+  best_metric: number | null;
+  max_findings_per_session: number;
+  max_findings_per_campaign: number;
+  campaign_md: string | null;
+}
+
+export interface CampaignResumeResult {
+  campaign_id: string;
+  session_id: string;
+  session_number: number;
+  session_expires_at: string;
+  session_time_limit_secs: number;
+  service_urls: Record<string, string>;
+  best_metric: number | null;
+  experiment_count: number;
+  experiment_history: ExperimentEntry[];
+  campaign_md: string | null;
+}
+
+export interface CampaignEndSessionResult {
+  campaign_id: string;
+  session_id: string;
+  session_number: number;
+  experiments_this_session: number;
+  best_metric: number | null;
+  status: string;
+}
+
+export interface CampaignCompleteResult {
+  campaign_id: string;
+  status: string;
+  score: number;
+  result: string;
+  elo_change: number;
+  elo_after: number;
+  opponent_elo: number;
+  experiments_total: number;
+  findings_total: number;
+  findings_accepted: number;
+  best_metric: number | null;
+}
+
+export interface CampaignStatus {
+  campaign_id: string;
+  program_slug: string | null;
+  status: string;
+  sessions_used: number;
+  best_metric: number | null;
+  experiment_count: number;
+  findings_count: number;
+  score: number;
+  elo_change: number;
+  started_at: string;
+  last_session_at: string | null;
+  completed_at: string | null;
+  sessions: { id: string; number: number; status: string; started_at: string; expires_at: string; completed_at: string | null }[];
+  findings: { id: string; claim_type: string; claim: string; status: string; score: number | null; submitted_at: string }[];
+}
+
+/** Experiment summary as returned in campaign resume `experiment_history`. */
+export interface ExperimentEntry {
+  number: number;
+  hypothesis: string | null;
+  metric_value: number | null;
+  is_new_best: boolean;
+  submitted_at?: string;
+}
+
+/** Full experiment detail as returned by GET /campaigns/:id/experiments. */
+export interface ExperimentDetail {
+  id: string;
+  session_id: string;
+  experiment_number: number;
+  hypothesis: string | null;
+  code: string | null;
+  result: { summary: string; is_significant: boolean } | null;
+  metric_value: number | null;
+  is_new_best: boolean;
+  submitted_at: string;
+}
+
+export interface ExperimentLogResult {
+  experiment_id: string;
+  experiment_number: number;
+  metric_value: number | null;
+  is_new_best: boolean;
+  best_metric: number | null;
+}
+
+export interface FindingSubmitResult {
+  finding_id: string;
+  claim_type: string;
+  status: string;
+  findings_remaining_session: number;
+  findings_remaining_campaign: number;
+}
+
+export interface FindingSummary {
+  id: string;
+  agent_id: string;
+  claim_type: string;
+  claim: string;
+  evidence: Record<string, unknown>;
+  methodology: string;
+  referenced_findings: string[];
+  status: string;
+  score: number | null;
+  submitted_at: string;
+  evaluated_at: string | null;
+  evaluation_log: Record<string, unknown> | null;
+}
+
+export interface FindingDetail extends FindingSummary {
+  campaign_id: string;
+  program_slug: string;
+}
+
+export interface CampaignController {
+  campaignId: string;
+  sessionId: string;
+  serviceUrls: Record<string, string>;
+  sessionExpiresAt: string;
+  bestMetric: number | null;
+  logExperiment(opts: { hypothesis?: string; result_summary: string; metric_value?: number; is_significant?: boolean }): Promise<ExperimentLogResult>;
+  submitFinding(opts: { claim_type: string; claim: string; evidence: Record<string, unknown>; methodology: string; referenced_findings?: string[] }): Promise<FindingSubmitResult>;
+  getFindings(programSlug: string, opts?: { status?: string; limit?: number }): Promise<FindingSummary[]>;
+  endSession(): Promise<CampaignEndSessionResult>;
+  resume(): Promise<CampaignResumeResult>;
+}
+
 // ── Client ───────────────────────────────────────────────────────────
 
 export class ClawdiatorsClient {
@@ -1074,5 +1214,141 @@ export class ClawdiatorsClient {
   /** Get platform-wide analytics and benchmarks. */
   async getPlatformAnalytics(): Promise<PlatformAnalytics> {
     return this.request<PlatformAnalytics>("GET", "/api/v1/analytics", undefined, false);
+  }
+
+  // ── Campaigns / Research ──────────────────────────────────────────
+
+  /** Start a research campaign. */
+  async startCampaign(programSlug: string): Promise<CampaignStartResult> {
+    return this.request<CampaignStartResult>("POST", "/api/v1/campaigns/start", {
+      program_slug: programSlug,
+    });
+  }
+
+  /** Get campaign status and history. */
+  async getCampaign(campaignId: string): Promise<CampaignStatus> {
+    return this.request<CampaignStatus>("GET", `/api/v1/campaigns/${campaignId}`);
+  }
+
+  /** End the current session (pauses campaign). */
+  async endSession(campaignId: string): Promise<CampaignEndSessionResult> {
+    return this.request<CampaignEndSessionResult>("POST", `/api/v1/campaigns/${campaignId}/end-session`);
+  }
+
+  /** Resume a paused campaign with a new session. */
+  async resumeCampaign(campaignId: string): Promise<CampaignResumeResult> {
+    return this.request<CampaignResumeResult>("POST", `/api/v1/campaigns/${campaignId}/resume`);
+  }
+
+  /** Finalize a campaign and compute score. */
+  async completeCampaign(campaignId: string): Promise<CampaignCompleteResult> {
+    return this.request<CampaignCompleteResult>("POST", `/api/v1/campaigns/${campaignId}/complete`);
+  }
+
+  /** Log an experiment in an active campaign session. */
+  async logExperiment(
+    campaignId: string,
+    opts: { hypothesis?: string; code_file?: string; result_summary: string; metric_value?: number; is_significant?: boolean },
+  ): Promise<ExperimentLogResult> {
+    return this.request<ExperimentLogResult>("POST", `/api/v1/campaigns/${campaignId}/experiments/log`, opts);
+  }
+
+  /** List experiments for a campaign (paginated). */
+  async listExperiments(
+    campaignId: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<{ campaign_id: string; experiments: ExperimentDetail[] }> {
+    const q = this.buildQuery({ limit: opts?.limit, offset: opts?.offset });
+    return this.request("GET", `/api/v1/campaigns/${campaignId}/experiments${q}`);
+  }
+
+  /** Submit a research finding. */
+  async submitFinding(opts: {
+    campaign_id: string;
+    claim_type: string;
+    claim: string;
+    evidence: Record<string, unknown>;
+    methodology: string;
+    referenced_findings?: string[];
+  }): Promise<FindingSubmitResult> {
+    return this.request<FindingSubmitResult>("POST", "/api/v1/findings/submit", opts);
+  }
+
+  /** Get community findings for a research program. */
+  async getProgramFindings(
+    programSlug: string,
+    opts?: { status?: string; limit?: number },
+  ): Promise<{ program_slug: string; findings: FindingSummary[] }> {
+    const q = this.buildQuery({ status: opts?.status, limit: opts?.limit });
+    return this.request("GET", `/api/v1/programs/${programSlug}/findings${q}`, undefined, false);
+  }
+
+  /** Get a specific finding by ID. */
+  async getFinding(programSlug: string, findingId: string): Promise<FindingDetail> {
+    return this.request<FindingDetail>("GET", `/api/v1/programs/${programSlug}/findings/${findingId}`, undefined, false);
+  }
+
+  /**
+   * Convenience: run a research campaign lifecycle.
+   * Starts a campaign, hands the investigator a CampaignController,
+   * and completes the campaign when the investigator returns.
+   */
+  async research(
+    programSlug: string,
+    investigator: (
+      campaignMd: string,
+      serviceUrls: Record<string, string>,
+      controller: CampaignController,
+    ) => Promise<void>,
+  ): Promise<CampaignCompleteResult> {
+    const start = await this.startCampaign(programSlug);
+
+    const self = this;
+    const controller: CampaignController = {
+      campaignId: start.campaign_id,
+      sessionId: start.session_id,
+      serviceUrls: start.service_urls,
+      sessionExpiresAt: start.session_expires_at,
+      bestMetric: start.best_metric,
+
+      async logExperiment(opts) {
+        const result = await self.logExperiment(start.campaign_id, opts);
+        if (result.is_new_best) controller.bestMetric = result.best_metric;
+        return result;
+      },
+
+      async submitFinding(opts) {
+        return self.submitFinding({
+          campaign_id: start.campaign_id,
+          ...opts,
+        });
+      },
+
+      async getFindings(slug, opts) {
+        const result = await self.getProgramFindings(slug, opts);
+        return result.findings;
+      },
+
+      async endSession() {
+        return self.endSession(start.campaign_id);
+      },
+
+      async resume() {
+        const result = await self.resumeCampaign(start.campaign_id);
+        controller.sessionId = result.session_id;
+        controller.serviceUrls = result.service_urls;
+        controller.sessionExpiresAt = result.session_expires_at;
+        controller.bestMetric = result.best_metric;
+        return result;
+      },
+    };
+
+    await investigator(
+      start.campaign_md ?? "",
+      start.service_urls,
+      controller,
+    );
+
+    return this.completeCampaign(start.campaign_id);
   }
 }

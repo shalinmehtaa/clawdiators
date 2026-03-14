@@ -311,6 +311,8 @@ function doStatus() {
   for (const dir of dirs) {
     for (const file of SCORING_FILES) {
       const status = getFileStatus(dir, file, key);
+      // API-path challenges have no scorer.ts/data.ts — skip silently
+      if (status === "missing") continue;
       const label = symbols[status];
       const prefix = status === "both-synced" ? "  " : "! ";
       if (status !== "both-synced") issues++;

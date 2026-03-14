@@ -112,6 +112,17 @@ export const CANONICAL_TOOLS = [
 
 export type CanonicalTool = (typeof CANONICAL_TOOLS)[number];
 
+// ── Research Program Constants ───────────────────────────────────────
+export const RESEARCH_K_FACTOR = { new: 24, established: 12 } as const;
+export const CAMPAIGN_SCORE_WEIGHTS = {
+  optimization: { metric: 0.50, findings: 0.35, efficiency: 0.15 },
+  discovery: { findings: 0.80, efficiency: 0.20 },
+} as const;
+export const MAX_FINDINGS_PER_SESSION = 5;
+export const MAX_FINDINGS_PER_CAMPAIGN = 20;
+export const CAMPAIGN_MAX_CALENDAR_DAYS = 90;
+export const CAMPAIGN_ABANDON_AFTER_DAYS = 30;
+
 // Elo system
 export const ELO_DEFAULT = 1000;
 export const ELO_K_NEW = 32; // K-factor for <30 matches
@@ -348,4 +359,89 @@ export const ALPHA_GENESIS_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: 0.45, analysis: 0.20, methodology: 0.20, completeness: 0.15 },
   { correctness: { description: "Risk-adjusted portfolio performance: Information Ratio and Sharpe Ratio vs benchmark" }, analysis: { description: "Risk management quality: drawdown control, volatility management, diversification, turnover efficiency" }, methodology: { description: "Quality of described quantitative approach: factor analysis, regime detection, risk modeling" }, completeness: { description: "Valid weight coverage across test period with proper constraints" } },
 );
+
+export const MECHANISTIC_EASY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.30, completeness: 0.30, electron_push: 0.20, speed: 0.10, methodology: 0.10 },
+  {
+    correctness:    { label: "Product Accuracy",      description: "Fraction of 10 reactions with correct final product SMILES (exact match after canonicalization)", color: "emerald" },
+    completeness:   { label: "Pathway Coverage",      description: "Step count accuracy + Jaccard overlap of intermediate species vs. known mechanism, averaged across reactions", color: "gold" },
+    electron_push:  { label: "Electron Push Quality", description: "Jaccard overlap of submitted electron push types (lp/sigma/pi) vs. ground truth per step — partial credit for correct types even without exact atom indices", color: "sky" },
+    methodology:    { label: "Methodology",           description: "Presence of a non-empty methodology description string — any non-empty string scores full credit", color: "purple" },
+  },
+);
+
+// ── Research Challenge Dimensions (autoresearch-style) ──────────────
+
+export const GROKKING_DYNAMICS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.60, methodology: 0.20, analysis: 0.10, speed: 0.10 },
+  { correctness: { description: "Grokking speedup factor — baseline_epoch / best_epoch, scored on curve from 1x to 10x" }, methodology: { description: "Quality of experiment log — systematic exploration, hypothesis-driven, understanding of regularization effects" }, analysis: { description: "Fourier/circuit analysis — identification of key Fourier modes and circuit formation" } },
+);
+
+export const DOUBLE_DESCENT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.25, analysis: 0.15, speed: 0.10 },
+  { correctness: { description: "Best test accuracy achieved vs baseline — improvement toward 0.98 ceiling" }, methodology: { description: "Width sweep strategy, regularization experiments, and systematic capacity exploration" }, analysis: { description: "Double descent characterization — threshold identification, noise sensitivity analysis" } },
+);
+
+export const CIRCUIT_DISCOVERY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.25, analysis: 0.15, speed: 0.10 },
+  { correctness: { description: "Circuit quality — accuracy drop when ablating claimed circuit vs random ablation" }, methodology: { description: "Analysis approach — activation capture, attention patterns, Fourier decomposition, systematic ablation" }, analysis: { description: "Circuit interpretation — what the circuit computes, how attention routes information" } },
+);
+
+export const REWARD_HACKING_AUDIT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.50, methodology: 0.25, analysis: 0.15, speed: 0.10 },
+  { correctness: { description: "Alignment quality — final proxy-true reward correlation, scored toward 0.9+ ceiling" }, methodology: { description: "Mitigation strategy — KL tuning, reward ensembles, constrained optimization, iterative refinement" }, analysis: { description: "Understanding of failure modes — which reward model gaps were exploited, behavioral changes" } },
+);
+
+export const PROTEIN_FITNESS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, completeness: 0.20, methodology: 0.20, analysis: 0.10, speed: 0.10 },
+  { correctness: { description: "Best fitness improvement over wild-type, scored toward global optimum" }, completeness: { description: "Query efficiency — how quickly agent found good variants relative to budget" }, methodology: { description: "Exploration strategy — adaptive search, ML-guided, understanding of epistasis" }, analysis: { description: "Landscape characterization — ruggedness, epistasis patterns, escape paths" } },
+);
+
+export const GENE_REGULATORY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.25, analysis: 0.25, speed: 0.10 },
+  { correctness: { description: "AUROC improvement over correlation baseline — network inference accuracy" }, methodology: { description: "Algorithm choice — Granger, mutual info, GENIE3, NOTEARS, time-delay handling" }, analysis: { description: "Network interpretation — hub genes, regulatory motifs, feed-forward loops" } },
+);
+
+// ── Research Campaign Dimensions (judgment-based, no speed penalty) ──
+
+export const GROKKING_MECHANISMS_DIMENSIONS: ScoringDimension[] = dims(
+  { methodology: 0.35, analysis: 0.40, correctness: 0.25 },
+  { methodology: { description: "Quality of experimental design — hypothesis-driven investigation, reproducible analysis code" }, analysis: { description: "Depth and novelty of mechanistic insight — Fourier decomposition, circuit identification, algorithmic interpretation" }, correctness: { description: "Evidential specificity — cited metric values match recorded experiments, claims supported by data" } },
+);
+
+export const CAUSAL_DISCOVERY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
+  { correctness: { description: "DAG recovery accuracy — structural Hamming distance, causal effect estimation error" }, methodology: { description: "Discovery strategy — constraint-based, score-based, or hybrid; handling of latent confounders" }, analysis: { description: "Interpretation quality — novel relationships identified, economic mechanism explanations" } },
+);
+
+export const EMERGENCE_OR_MIRAGE_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.35, methodology: 0.35, analysis: 0.30 },
+  { correctness: { description: "Classification accuracy — correctly distinguishing emergent from mirage capabilities" }, methodology: { description: "Statistical rigor — metric choice analysis, scale sensitivity, alternative explanations tested" }, analysis: { description: "Mechanistic insight — why certain capabilities appear emergent and whether metric artifacts explain them" } },
+);
+
+export const FAIRNESS_AUDIT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.35, methodology: 0.30, analysis: 0.35 },
+  { correctness: { description: "Audit accuracy — bias detection completeness, disparate impact measurement precision" }, methodology: { description: "Audit approach — intersectional analysis, multiple fairness criteria, statistical testing" }, analysis: { description: "Mitigation quality — actionable recommendations, fairness-accuracy tradeoff analysis" } },
+);
+
+export const FORECASTING_SHIFT_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
+  { correctness: { description: "Forecast accuracy under distribution shift — MAE/RMSE on shifted test data" }, methodology: { description: "Adaptation strategy — domain adaptation, robust optimization, shift detection methods" }, analysis: { description: "Shift characterization — identifying what changed, quantifying shift magnitude, explaining forecast failures" } },
+);
+
+export const SCALING_LAW_EXTRAPOLATION_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.45, methodology: 0.30, analysis: 0.25 },
+  { correctness: { description: "Extrapolation accuracy — prediction error at unseen compute scales" }, methodology: { description: "Fitting approach — chinchilla-style parametric fits, power law variants, uncertainty quantification" }, analysis: { description: "Scaling insight — compute-optimal frontier, diminishing returns analysis, break-from-trend detection" } },
+);
+
+export const TREATMENT_EFFECTS_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.35, analysis: 0.25 },
+  { correctness: { description: "Effect estimation accuracy — ATE/CATE error relative to ground truth" }, methodology: { description: "Causal inference approach — propensity scoring, doubly-robust estimation, heterogeneity analysis" }, analysis: { description: "Subgroup insight — treatment effect heterogeneity, policy-relevant recommendations" } },
+);
+
+export const VARIANT_PATHOGENICITY_DIMENSIONS: ScoringDimension[] = dims(
+  { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
+  { correctness: { description: "Classification accuracy — AUROC/AUPRC for pathogenicity prediction" }, methodology: { description: "Feature engineering — conservation scores, structural features, population frequency integration" }, analysis: { description: "Variant interpretation — mechanistic explanations, functional impact predictions, clinical relevance" } },
+);
+
 

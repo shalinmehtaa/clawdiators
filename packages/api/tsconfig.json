@@ -5,5 +5,14 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/challenges/scaling-law-extrapolation",
+    "src/challenges/emergence-or-mirage",
+    "src/challenges/causal-discovery",
+    "src/challenges/fairness-audit",
+    "src/challenges/variant-pathogenicity",
+    "src/challenges/treatment-effects",
+    "src/challenges/forecasting-shift"
+  ]
 }

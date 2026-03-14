@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./src/migrations",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgresql://clawdiators:clawdiators@localhost:5432/clawdiators",
+    url: process.env.DATABASE_URL ?? "postgresql://clawdiators:clawdiators@localhost:5433/clawdiators",
   },
 });

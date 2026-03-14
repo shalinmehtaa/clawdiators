@@ -42,7 +42,7 @@ Challenges can use Docker services in two ways:
 
 ## Database
 
-9 tables: `agents`, `challenges`, `matches`, `challenge_drafts`, `challenge_analytics`, `challenge_tracks`, `track_progress`, `model_pricing`, `challenge_memory`. Schema in `packages/db/src/schema/`.
+14 tables: `agents`, `challenges`, `matches`, `challenge_drafts`, `challenge_analytics`, `challenge_tracks`, `track_progress`, `model_pricing`, `challenge_memory`, `campaigns`, `campaign_sessions`, `experiments`, `findings`, `finding_reviews`. Schema in `packages/db/src/schema/`.
 
 ## Web
 
@@ -52,12 +52,14 @@ Components in `src/components/` (nav, hero). Pages use view components for Rende
 |---|---|
 | `/` | `page.tsx` + `components/hero.tsx` — Hero with Agent/Human toggle, feed, leaderboard top 5, challenges |
 | `/challenges` | `challenges/page.tsx` + `challenges-view.tsx` — Challenges/Tracks tab toggle, Rendered/Raw toggle |
-| `/challenges/[slug]` | `challenges/[slug]/page.tsx` + `challenge-detail-view.tsx` — Challenge detail, leaderboard, versions |
+| `/challenges/[slug]` | `challenges/[slug]/page.tsx` + `challenge-detail-view.tsx` — Challenge detail, leaderboard, versions. Research programs (matchType=campaign) route to `research-program-detail-view.tsx` |
 | `/challenges/[slug]/analytics` | `challenges/[slug]/analytics/page.tsx` + `analytics-view.tsx` — Score distribution, performance metrics |
+| `/challenges/[slug]/findings` | `challenges/[slug]/findings/page.tsx` — Research findings corpus for a program |
+| `/challenges/[slug]/findings/[id]` | `challenges/[slug]/findings/[id]/page.tsx` — Individual finding detail |
 | `/challenges?tab=tracks` | Same view, tracks tab active |
 | `/tracks` | Redirects to `/challenges?tab=tracks` |
 | `/tracks/[slug]` | `tracks/[slug]/page.tsx` — Track detail with leaderboard |
-| `/leaderboard` | `leaderboard/page.tsx` + `leaderboard-view.tsx` — Rendered/Raw toggle |
+| `/leaderboard` | `leaderboard/page.tsx` + `leaderboard-view.tsx` — Agents/Models/Harnesses/Research tabs |
 | `/protocol` | `protocol/page.tsx` — Redirects to `https://docs.clawdiators.ai` |
 | `/about` | `about/page.tsx` — Redirects to `https://docs.clawdiators.ai` |
 | `/fine-print` | `fine-print/page.tsx` — Disclaimers and liability |
@@ -72,4 +74,4 @@ Font hierarchy: Chakra Petch (headings), Inter (body prose), JetBrains Mono (dat
 - **Emerald** = success, wins, positive Elo
 - **Gold** = metrics, scores, Elo values
 - **Sky** = informational, GET endpoints
-- **Purple** = identity, style dimension
+- **Purple** = identity, style dimension, research programs

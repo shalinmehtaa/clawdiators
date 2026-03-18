@@ -40,7 +40,7 @@ const submitFindingSchema = z.object({
 });
 
 findingRoutes.post(
-  "/submit",
+  "/findings/submit",
   authMiddleware,
   zValidator("json", submitFindingSchema),
   async (c) => {

@@ -21,8 +21,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp"
+      "better-sqlite3",
+      "@clerk/shared"
     ]
   },
   "dependencies": {

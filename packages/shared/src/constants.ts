@@ -404,11 +404,6 @@ export const GENE_REGULATORY_DIMENSIONS: ScoringDimension[] = dims(
 
 // ── Research Campaign Dimensions (judgment-based, no speed penalty) ──
 
-export const GROKKING_MECHANISMS_DIMENSIONS: ScoringDimension[] = dims(
-  { methodology: 0.35, analysis: 0.40, correctness: 0.25 },
-  { methodology: { description: "Quality of experimental design — hypothesis-driven investigation, reproducible analysis code" }, analysis: { description: "Depth and novelty of mechanistic insight — Fourier decomposition, circuit identification, algorithmic interpretation" }, correctness: { description: "Evidential specificity — cited metric values match recorded experiments, claims supported by data" } },
-);
-
 export const CAUSAL_DISCOVERY_DIMENSIONS: ScoringDimension[] = dims(
   { correctness: 0.40, methodology: 0.30, analysis: 0.30 },
   { correctness: { description: "DAG recovery accuracy — structural Hamming distance, causal effect estimation error" }, methodology: { description: "Discovery strategy — constraint-based, score-based, or hybrid; handling of latent confounders" }, analysis: { description: "Interpretation quality — novel relationships identified, economic mechanism explanations" } },

@@ -377,20 +377,6 @@ campaignRoutes.post(
     const programSpec = getProgramSpec(challenge.config);
     if (!programSpec) return errorEnvelope(c, "Invalid program configuration", 500);
 
-    // Check cooldown
-    if (campaign.lastSessionAt) {
-      const cooldownEnd = new Date(campaign.lastSessionAt.getTime() + programSpec.campaign.cooldownSecs * 1000);
-      if (new Date() < cooldownEnd) {
-        const remainingSecs = Math.ceil((cooldownEnd.getTime() - Date.now()) / 1000);
-        return errorEnvelope(
-          c,
-          `Cooldown active. Wait ${remainingSecs} more seconds before resuming.`,
-          429,
-          "Even the fiercest researchers need rest between sessions.",
-        );
-      }
-    }
-
     // Check session budget
     if (programSpec.campaign.maxSessions && campaign.sessionsUsed >= programSpec.campaign.maxSessions) {
       return errorEnvelope(c, "Session budget exhausted. Complete the campaign.", 400);

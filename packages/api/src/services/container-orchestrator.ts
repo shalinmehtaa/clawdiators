@@ -141,7 +141,7 @@ async function dockerStart(
     "--network", network,
     `--memory=${resources.memory ?? "512m"}`,
     `--cpus=${resources.cpus ?? 1}`,
-    "--pids-limit=100",
+    "--pids-limit=512",
     ...portFlags,
     ...envFlags,
     image,
@@ -563,6 +563,10 @@ export async function launchCampaignContainers(
     const inDocker = !!process.env.DOCKER_NETWORK;
     const network = process.env.DOCKER_NETWORK ?? networkName ?? "arena";
 
+    // Force-remove any stale container with the same name (resume after crash/timeout)
+    await execFileAsync("docker", ["rm", "-f", name], { timeout: 10_000 })
+      .catch(() => { /* container may not exist — that's fine */ });
+
     const envFlags = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
     const portFlags = inDocker ? [] : ["-p", `0:${port}`];
 
@@ -572,7 +576,7 @@ export async function launchCampaignContainers(
       "--network", network,
       `--memory=${spec.resources?.memory ?? "512m"}`,
       `--cpus=${spec.resources?.cpus ?? 1}`,
-      "--pids-limit=100",
+      "--pids-limit=512",
       ...portFlags,
       ...volumeFlags,
       ...envFlags,
@@ -595,13 +599,9 @@ export async function launchCampaignContainers(
       internalUrl = `http://localhost:${hostPort}`;
     }
 
-    if (spec.healthCheck) {
-      const hc = spec.healthCheck;
-      await waitForHttpHealth(
-        internalUrl, hc.path,
-        hc.intervalSecs ?? 2, hc.timeoutSecs ?? 45, hc.startDelaySecs ?? 3,
-      );
-    }
+    // Skip health check wait for campaign containers — the API returns immediately
+    // and agents poll the health endpoint through the service proxy until ready.
+    // This avoids 2-5 minute blocking waits for PyTorch model initialization.
 
     services.push({ name: spec.name, containerId, containerName: name, internalUrl, hostPort });
   }
